@@ -9,7 +9,6 @@ import { changeLog, clubSquads, setCaptain, teamAction, undoBatch, undoChange } 
 import { describeError, formatNumber } from "./format";
 import { intlLocale } from "./i18n";
 import {
-  appText,
   fieldLabel,
   massEditText,
   positionLabel,
@@ -420,11 +419,12 @@ interface TeamActionsProps {
  * and says why.
  */
 function TeamActions({ team, editable, busy, onAction }: TeamActionsProps) {
+  const { readOnlyNote } = useContext(EditorContext);
   const injured = team.players.filter((player) => player.injuries > 0).length;
   const banned = team.players.filter((player) => player.bans > 0).length;
   const empty = team.players.length === 0;
   // What a button's hover text says: why it waits, or else what it does.
-  const hover = (does: string, waiting: string | null) => (!editable ? appText.noteReadOnly : (waiting ?? does));
+  const hover = (does: string, waiting: string | null) => (!editable ? readOnlyNote : (waiting ?? does));
 
   return (
     <div className="squad-buttons" role="group" aria-label={text.actionsLabel}>

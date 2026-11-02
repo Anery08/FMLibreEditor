@@ -154,6 +154,7 @@ function App() {
 
   const editable = connection?.editable ?? false;
   // The note on applying edits, the colophon's first: whole in its hover too, should a window ever be too narrow for it.
+  // While nothing can be edited, it is also the hover of what that turns off.
   const note = !connection
     ? appText.noteNotConnected
     : editable
@@ -161,7 +162,7 @@ function App() {
       : connection.writable
         ? appText.noteUnknownBuild
         : appText.noteReadOnly;
-  const editor = useMemo(() => ({ editable, onEdited: edited }), [editable, edited]);
+  const editor = useMemo(() => ({ editable, readOnlyNote: note, onEdited: edited }), [editable, note, edited]);
 
   // With edits pending in the open profile, leaving for another view asks first.
   const show = (id: View) => {

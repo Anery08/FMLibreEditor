@@ -8,7 +8,7 @@ import { createPortal } from "react-dom";
 import { toPounds, toShown } from "./currency";
 import { addReleaseClause, changeClause, removeClause } from "./editing";
 import { describeError, formatAmount, formatMoney, formatNumber } from "./format";
-import { appText, clauseText as text, profileText } from "./labels";
+import { clauseText as text, profileText } from "./labels";
 import { Fact } from "./ProfileParts";
 import type { Clause } from "./types";
 import { useModal } from "./useModal";
@@ -62,7 +62,7 @@ interface ClauseListProps {
 
 /** The list in the profile, and the button that opens the dialog while the game can be written to. */
 export function ClauseList({ uid, name, clauses, room }: ClauseListProps) {
-  const { editable } = useContext(EditorContext);
+  const { editable, readOnlyNote } = useContext(EditorContext);
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
@@ -85,7 +85,7 @@ export function ClauseList({ uid, name, clauses, room }: ClauseListProps) {
           className="heal-toggle"
           aria-haspopup="dialog"
           disabled={!editable}
-          title={editable ? text.changeTitle : appText.noteReadOnly}
+          title={editable ? text.changeTitle : readOnlyNote}
           onClick={() => setOpen(true)}
         >
           {text.change}

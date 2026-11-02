@@ -941,7 +941,6 @@ export const en = {
     noneHint: "Logo and face packs go in the FM27 graphics folder.",
   },
 
-  /** New versions: the notice under the masthead, and the version and Check for updates at the foot of the window. */
   /**
    * The notice under the masthead when the game is a version FMLibreEditor has no profile for, or some of the checks
    * it makes before writing did not pass (`CompatibilityNotice`).
@@ -982,6 +981,7 @@ export const en = {
     clubs: "clubs",
   } satisfies Record<CheckKey, string>,
 
+  /** New versions: the notice under the masthead, and the version and Check for updates at the foot of the window. */
   update: {
     /** The notice's headline, and what a check by hand found. */
     available: (version: string) => `FMLibreEditor ${version} is available`,

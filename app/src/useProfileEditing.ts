@@ -20,13 +20,18 @@ import type { EditField, Entity, FieldValues, LoggedChange } from "./types";
 
 /** What the app tells the profiles about editing. */
 export interface EditorState {
-  /** False when Windows did not allow writing to the game: nothing can be edited. */
+  /**
+   * False when nothing can be edited: the system did not let the app write to the game, or the game is a version the
+   * editor was not checked with and Edit anyway was not pressed.
+   */
   editable: boolean;
+  /** Why nothing can be edited, for the hover of what is turned off: the colophon's note. */
+  readOnlyNote: string;
   /** Called after changes were written or undone: the lists, the open profile and the change log read again. */
   onEdited: () => void;
 }
 
-export const EditorContext = createContext<EditorState>({ editable: false, onEdited: () => {} });
+export const EditorContext = createContext<EditorState>({ editable: false, readOnlyNote: "", onEdited: () => {} });
 
 /** The inputs of the profile being edited (header and body), for the components that draw them. */
 export interface EditSession {

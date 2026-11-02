@@ -5,7 +5,7 @@ import { AbilityEditGroup, EditableValue, EditInput, PositionEditGroup } from ".
 import { call } from "./api";
 import { keepPlaying } from "./editing";
 import { describeError, formatDate, formatNumber, formatMoney } from "./format";
-import { appText, ATTRIBUTE_LABELS, fieldLabel, profileText, type AttributeKey } from "./labels";
+import { ATTRIBUTE_LABELS, fieldLabel, profileText, type AttributeKey } from "./labels";
 import { MedicalGroup } from "./MedicalGroup";
 import { MoveButton } from "./MoveDialog";
 import { ClubLogo, NationFlag, PersonFace, PICTURE_SIZE, WithPicture } from "./Picture";
@@ -376,7 +376,7 @@ function CareerGroup({ details }: { details: PlayerDetails }) {
  * game's, and he gets the trait to play on as long as possible. Like healing, it asks no question; Changes undoes it.
  */
 function RetirementPlan({ uid, retires }: { uid: number; retires: FmDate | null }) {
-  const { editable, onEdited } = useContext(EditorContext);
+  const { editable, readOnlyNote, onEdited } = useContext(EditorContext);
   const [keeping, setKeeping] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -411,7 +411,7 @@ function RetirementPlan({ uid, retires }: { uid: number; retires: FmDate | null 
             disabled={!editable}
             aria-disabled={keeping || undefined}
             aria-busy={keeping || undefined}
-            title={editable ? profileText.keepPlayingTitle : appText.noteReadOnly}
+            title={editable ? profileText.keepPlayingTitle : readOnlyNote}
             onClick={() => void keep()}
           >
             {keeping ? profileText.keepingPlaying : profileText.keepPlaying}
