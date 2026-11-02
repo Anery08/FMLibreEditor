@@ -1,0 +1,27 @@
+# FM27 on Game Pass / Microsoft Store: the update installed on 2 November 2026, whose game_plugin.dll was linked on
+# 31 October. Its arrays and the retirement manager's static sit 0x2000 further than in 0.9.2355.0, at the same
+# distances from each other; the object layout is unchanged.
+name = "FM27 0.9.2409.0 (Game Pass)"
+edition = 27
+storefront = "gamePass"
+package_version = "0.9.2409.0"
+
+# The in-game date, a variable of its own: 9 September 2026 on the test save, as the game's own "9th September 2026"
+# says. The date with the arrays (ClusterLayout::current_date) reads 1 January 1900, unset, on this save, as on the
+# arm64 Mac build.
+current_date = 0x56257C8
+
+# The static pointer to the retirement manager (RETIREMENT_MANAGER): the only pointer to the one object of that
+# class, 0xED60 before the players pair as in 0.9.2355.0.
+retirement_manager = 0x5675060
+
+# game_plugin.dll as mapped in memory; these two values identify the build.
+[plugin]
+size_of_image = 0x175DA000
+link_timestamp = 0x6AE563A1
+
+# RVAs in game_plugin.dll of the (begin, end) pointer pairs of the entity arrays.
+[arrays]
+players = 0x5683DC0
+staff = 0x5683E08
+clubs = 0x5683F78
