@@ -163,7 +163,19 @@ const TRAIT_NAMES_ES: readonly string[] = [
   "Juega el balón con los pies",
 ];
 
+/** What a check is about, from the key a failure gives, with a capital. */
+const checkName = (key: string | undefined) => {
+  const name = (es.checks as Partial<Record<string, string>>)[key ?? ""] ?? key ?? "";
+  return name.charAt(0).toUpperCase() + name.slice(1);
+};
+
 const errors: ErrorTexts = {
+  "guard.unknownBuild": () =>
+    "FMLibreEditor no se ha probado con esta versión del juego, así que no escribe en ella. «Editar de todos modos», " +
+    "en el aviso de arriba, activa la edición.",
+  "guard.failed": (p) =>
+    `${checkName(p.check)}: no han superado las comprobaciones en esta versión del juego, así que FMLibreEditor no ` +
+    "los cambia.",
   "edit.unknownField": (p) => `Aquí no hay ningún campo editable llamado «${p.field}».`,
   "edit.outOfRange": (p) => `${p.value} no es un valor válido para ${field(p.field)}: admite de ${p.min} a ${p.max}.`,
   "edit.notADate": (p) => `${p.value} no es una fecha válida para ${field(p.field)}.`,
@@ -863,6 +875,7 @@ export const es: Strings = {
     noteEditable:
       "Los cambios solo llegan al juego cuando los aplicas. Haz antes una copia de seguridad de tu partida.",
     noteReadOnly: "Solo lectura: Windows no ha permitido a FMLibreEditor escribir en el juego.",
+    noteUnknownBuild: "Solo lectura: esta versión del juego es nueva para FMLibreEditor.",
     noteNotConnected: "Nada cambia en el juego hasta que editas y aplicas.",
 
     notConnected: "Sin conexión",
@@ -926,6 +939,39 @@ export const es: Strings = {
       `${format(flags)} ${flags === 1 ? "bandera" : "banderas"} · ${format(faces)} ${faces === 1 ? "cara" : "caras"}`,
     none: "No se han encontrado paquetes gráficos",
     noneHint: "Los paquetes de escudos y caras van en la carpeta de gráficos de FM27.",
+  },
+
+  compatibility: {
+    unknownBuild: (game) => `FMLibreEditor aún no se ha probado con ${game}`,
+    unknownBuildText:
+      "Probablemente el juego se ha actualizado. FMLibreEditor ha encontrado los datos del juego y los ha comprobado, " +
+      "pero no escribe en una versión con la que no se ha probado hasta que tú lo permitas. Una nueva versión de " +
+      "FMLibreEditor que la conozca suele salir en pocos días.",
+    allowedText:
+      "La edición está activada en esta sesión, en la medida en que lo permiten las comprobaciones. Guarda una copia " +
+      "de tu partida.",
+    failedTitle: "Algunos datos del juego no han superado las comprobaciones",
+    reloadHint: "Si una partida aún se estaba cargando, «Recargar datos» vuelve a comprobarlo.",
+    noDate: "La fecha del juego no ha superado las comprobaciones, así que no se muestran las edades.",
+    failed: (names) => `Quedan en solo lectura: ${names}.`,
+    join: (names) =>
+      names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`,
+    allow: "Editar de todos modos",
+    allowTitle:
+      "Activa la edición hasta que se cierre FMLibreEditor o se vuelva a conectar. Haz antes una copia de tu partida.",
+  },
+
+  checks: {
+    gameDate: "la fecha del juego",
+    players: "los datos de los jugadores",
+    positions: "las posiciones",
+    attributes: "los atributos",
+    personality: "la personalidad",
+    liveValues: "la energía, el ritmo de competición, el cansancio y la moral",
+    contracts: "los contratos",
+    teams: "los equipos",
+    staff: "el personal",
+    clubs: "los clubes",
   },
 
   update: {

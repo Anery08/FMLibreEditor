@@ -73,8 +73,17 @@ export interface ConnectionInfo {
   /** Current in-game date, when it could be read. */
   gameDate: FmDate | null;
   loadMs: number;
-  /** Whether Windows let the app open the game for writing; without it nothing can be edited. */
+  /**
+   * Whether edits can be written: the system let the app open the game for writing (`writable`), and the game is a
+   * build the editor knows or editing it was allowed (`allow_editing`).
+   */
   editable: boolean;
+  /** Whether the system let the app open the game for writing; without it nothing can be edited. */
+  writable: boolean;
+  /** Whether the editor has a profile for this build of the game: one it was checked with. */
+  knownBuild: boolean;
+  /** What the checks the editor makes before it writes found on this game. */
+  health: Health;
 }
 
 export interface ReloadInfo {
@@ -82,6 +91,37 @@ export interface ReloadInfo {
   staff: number;
   clubs: number;
   gameDate: FmDate | null;
+  /** The checks, run again with the game as it is now. */
+  health: Health;
+}
+
+/**
+ * What a check the editor makes before it writes looks at (`Check` in health.rs). One that does not pass leaves
+ * what it covers read-only; without the in-game date, no ages are shown.
+ */
+export type CheckKey =
+  | "gameDate"
+  | "players"
+  | "positions"
+  | "attributes"
+  | "personality"
+  | "liveValues"
+  | "contracts"
+  | "teams"
+  | "staff"
+  | "clubs";
+
+/** What one check found: how many of the players, staff or clubs it looked at fit. */
+export interface CheckResult {
+  check: CheckKey;
+  passed: boolean;
+  fit: number;
+  sampled: number;
+}
+
+/** What the checks found on the running game, every check in a fixed order. */
+export interface Health {
+  results: CheckResult[];
 }
 
 export interface ClubSummary {

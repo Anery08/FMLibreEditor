@@ -250,7 +250,7 @@ impl Session {
             let end = planned.index_end;
             patches.push(planned.index_header + 8, end.to_le_bytes(), (end + index).to_le_bytes());
         }
-        self.apply_patches(&patches.0)
+        self.write_patches(&patches.0)
     }
 
     /// The retirement manager, found from its static and checked by its class; `None` when this build's profile and

@@ -14,6 +14,7 @@ use crate::clubs::{ClubSummary, finances_look_real};
 use crate::coded::Coded;
 use crate::date::FmDate;
 use crate::details::{PERSONALITY, POSITIONS};
+use crate::health::Lock;
 use crate::players::PlayerSummary;
 use crate::profile::Layout;
 use crate::session::Session;
@@ -655,6 +656,11 @@ pub enum EditError {
         expected: i64,
         found: i64,
     },
+    /// The editor does not write this field to this game: see [`Lock`].
+    Locked {
+        field: String,
+        lock: Lock,
+    },
     Memory(fmlibre_mem::Error),
 }
 
@@ -687,6 +693,7 @@ impl fmt::Display for EditError {
             EditError::Conflict { field, expected, found } => {
                 write!(f, "{field} is now {found}, not {expected}; the game has changed it since")
             }
+            EditError::Locked { field, lock } => write!(f, "{field} is left unchanged: {lock}"),
             EditError::Memory(err) => write!(f, "{err}"),
         }
     }
@@ -709,6 +716,7 @@ impl Coded for EditError {
             EditError::Implausible { .. } => "edit.implausible",
             EditError::NotApplied { .. } => "edit.notApplied",
             EditError::Conflict { .. } => "edit.conflict",
+            EditError::Locked { lock, .. } => lock.code(),
             EditError::Memory(err) => err.code(),
         }
     }
@@ -736,6 +744,7 @@ impl Coded for EditError {
             EditError::Conflict { field: key, expected, found } => {
                 vec![field(key), number("expected", expected), number("found", found)]
             }
+            EditError::Locked { field: key, lock } => [vec![field(key)], lock.params()].concat(),
             EditError::Memory(err) => err.params(),
         }
     }
@@ -841,6 +850,10 @@ impl Session {
         expected: Option<i64>,
         restoring: bool,
     ) -> Result<Change, EditError> {
+        // Putting back what was there is always allowed; anything else only where the checks allow it.
+        if !restoring && let Some(lock) = self.field_lock(field) {
+            return Err(EditError::Locked { field: field.key.clone(), lock });
+        }
         let allowed = if restoring { field.is_plausible(value) } else { field.takes(value) };
         if !allowed {
             if field.choices.is_some() && (field.min..=field.max).contains(&value) {

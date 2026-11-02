@@ -102,6 +102,11 @@ before trusting them.
   release from here on is checked on both Game Pass and Steam.
 - [x] The Game Pass update 0.9.2409.0 (November 2026), whose in-game date moved away from the arrays (see the
   [notes on it](recon/fm27-gamepass-0.9.2409.md)).
+- [x] Safeguards for the next update (see [After an update of the game](DEVELOPING.md#after-an-update-of-the-game)):
+  - a version of the game without a build profile is read-only until Edit anyway, with a notice that says so;
+  - checks of the layout against the running game before anything is written: what does not check out stays
+    read-only, and a date that does not fit the game's contracts is not used, so no age is shown wrong;
+  - `fmlibre-probe health` shows what the checks find.
 - [x] macOS, the Steam build (see the [macOS notes](recon/fm27-steam-macos.md)):
   - memory access through a task port that the game hands over: a small bridge library,
     which the game loads as it does Steam's overlay, through a launcher that a Steam launch

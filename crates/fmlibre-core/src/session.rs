@@ -1,5 +1,6 @@
 use std::fmt;
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use fmlibre_mem::{Module, Process, find_processes, list_modules};
 
@@ -8,7 +9,9 @@ use crate::clubs::{ClubDetails, ClubSummary, full_finance_class, read_club_detai
 use crate::coded::Coded;
 use crate::date::FmDate;
 use crate::details::{PlayerDetails, read_player_details};
+use crate::edit::Field;
 use crate::game::{GAME_EXE, GAME_PLUGIN, GameInfo};
+use crate::health::{Check, Health, Lock, STRUCTURE};
 use crate::players::{PlayerSummary, read_players};
 use crate::profile::{BuildProfile, Layout, PluginFingerprint, layout_for, profile_for};
 use crate::staff::{StaffDetails, StaffSummary, read_staff, read_staff_details};
@@ -121,6 +124,10 @@ pub struct Session {
     stadium_class: OnceLock<Option<u64>>,
     /// The vtable of the retirement manager, once its class name has been checked.
     pub(crate) retirement_class: OnceLock<u64>,
+    /// What the checks found: worked out the first time it is needed, and again by [`Session::recheck`].
+    health: Mutex<Option<Arc<Health>>>,
+    /// Whether editing a build without a profile was allowed.
+    unknown_build_allowed: AtomicBool,
 }
 
 impl Session {
@@ -151,7 +158,56 @@ impl Session {
             finance_class: OnceLock::new(),
             stadium_class: OnceLock::new(),
             retirement_class: OnceLock::new(),
+            health: Mutex::new(None),
+            unknown_build_allowed: AtomicBool::new(false),
         })
+    }
+
+    /// Whether the editor has a profile for this build of the game: one it has been checked with.
+    pub fn known_build(&self) -> bool {
+        self.profile.is_some()
+    }
+
+    /// Lets the editor write to a build it has no profile for, as far as the checks allow.
+    pub fn allow_unknown_build(&self) {
+        self.unknown_build_allowed.store(true, Ordering::Relaxed);
+    }
+
+    /// Whether the editor writes to this game at all: a known build, or an unknown one it was allowed to edit.
+    pub fn writes_allowed(&self) -> bool {
+        self.known_build() || self.unknown_build_allowed.load(Ordering::Relaxed)
+    }
+
+    /// What the checks found on this game, worked out the first time it is asked for.
+    pub fn health(&self) -> Arc<Health> {
+        let mut health = self.health.lock().unwrap_or_else(PoisonError::into_inner);
+        health.get_or_insert_with(|| Arc::new(crate::health::check(self, self.read_game_date()))).clone()
+    }
+
+    /// Runs the checks again, e.g. once the game has moved on or a save has been loaded meanwhile.
+    pub fn recheck(&self) -> Arc<Health> {
+        let fresh = Arc::new(crate::health::check(self, self.read_game_date()));
+        *self.health.lock().unwrap_or_else(PoisonError::into_inner) = Some(fresh.clone());
+        fresh
+    }
+
+    /// Why `field` may not be written now, if it may not: an unknown build not allowed, or its check failed.
+    pub fn field_lock(&self, field: &Field) -> Option<Lock> {
+        if !self.writes_allowed() {
+            return Some(Lock::UnknownBuild);
+        }
+        let check = Check::of_field(field);
+        (!self.health().passed(check)).then_some(Lock::Failed(check))
+    }
+
+    /// Why a change to the game's lists and records (a move, a heal, a captaincy, ...) may not be written now, if it
+    /// may not.
+    pub fn structure_lock(&self) -> Option<Lock> {
+        if !self.writes_allowed() {
+            return Some(Lock::UnknownBuild);
+        }
+        let health = self.health();
+        STRUCTURE.into_iter().find(|&check| !health.passed(check)).map(Lock::Failed)
     }
 
     /// The class (vtable) of stadiums, the only objects a stadium field is written to; `None` when it cannot be told.
@@ -171,8 +227,15 @@ impl Session {
         })
     }
 
-    /// The current in-game date, when it can be read and looks like a real date.
+    /// The current in-game date, when it can be read and fits the contracts the game has signed (see
+    /// [`Check::GameDate`]); `None` rather than a date read from the wrong place.
     pub fn game_date(&self) -> Option<FmDate> {
+        let date = self.read_game_date()?;
+        self.health().passed(Check::GameDate).then_some(date)
+    }
+
+    /// The in-game date where the build places it, when it looks like a real date.
+    pub(crate) fn read_game_date(&self) -> Option<FmDate> {
         let rva = match self.profile.as_ref().and_then(|profile| profile.current_date) {
             Some(rva) => rva,
             None => self.arrays.players.as_ref()?.pair_rva + self.layout.cluster.current_date,
