@@ -630,6 +630,32 @@ dd,
   color: var(--muted);
 }
 
+/* A version of the game the editor was not checked with, or data that did not check out: like the update notice, in
+   the colour of pending changes, with what it means under the headline. */
+.compatibility-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 12px 18px 0;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid var(--pending);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+  background: var(--accent-faint);
+}
+
+.compatibility-text {
+  flex: 1 1 420px;
+  min-width: 0;
+}
+
+.compatibility-text p {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+
 .update-actions {
   display: flex;
   gap: 8px;

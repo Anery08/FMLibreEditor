@@ -245,7 +245,7 @@ pub fn read_staff(
 
 /// Finds where `object` keeps its person block: the candidate shift under which most
 /// of the name decodes, preferring the smaller shift on a tie.
-fn person_shift(process: &Process, s: &StaffLayout, object: u64) -> u64 {
+pub(crate) fn person_shift(process: &Process, s: &StaffLayout, object: u64) -> u64 {
     let named = |text: Option<String>| u32::from(text.is_some_and(|t| is_name_like(&t)));
     let mut best = (0, 0);
     for &shift in &s.person_block_shifts {

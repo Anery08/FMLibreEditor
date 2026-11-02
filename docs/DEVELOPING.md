@@ -33,6 +33,31 @@ Before every write it checks four things:
 
 If any check fails, nothing changes.
 
+### After an update of the game
+
+Each build of the game moves its static data. A build profile in `profiles/` (identified by `game_plugin`'s headers)
+places the entity arrays, the in-game date and the retirement manager for each build the editor was checked with.
+For a build without one, the editor still finds the arrays by scanning, and then:
+- **No writes by default.** The app says that this version of the game is new to it. It writes nothing until the user
+  presses Edit anyway, which lasts until the app is closed or connects again.
+- **Checks before any write** (`crates/fmlibre-core/src/health.rs`), on every build. Each check samples up to 2,000
+  players, members of staff or clubs, and looks for what a layout that reads the wrong bytes cannot fake:
+  - every player rates 20 in his natural position;
+  - goalkeepers are better at goalkeeping than outfield players, strikers at finishing and centre-backs at tackling;
+  - goalkeeping coaches, physios and scouts are better than others at what their job is about;
+  - contracts point back at their players, and some were signed after the player joined;
+  - teams list their players, and clubs' senior teams point back at them.
+
+  A check that does not pass leaves what it covers read-only: its fields, or for the contracts, teams, staff and clubs,
+  every change to the game's lists and records. The app lists such checks under the masthead.
+- **No date read from the wrong place.** The in-game date is only used when nearly every sampled contract was signed
+  before it, and the latest not long before. Otherwise the app shows no ages, rather than wrong ones.
+
+Each check was tried against a layout broken on purpose (a field group moved by a byte or a pointer's width), and each
+such layout failed its check. After an update, `fmlibre-probe health` shows what the checks find, and `calibrate`
+where the arrays are. A new build profile takes their RVAs and the date's, which `find` locates as in the
+[Game Pass 0.9.2409.0 notes](recon/fm27-gamepass-0.9.2409.md).
+
 ### On macOS
 
 macOS lets no app read another app's memory unless the other app allows debugging, and
@@ -147,6 +172,7 @@ Start FM27, load a save, then run:
 ```powershell
 fmlibre-probe info                                   # process, storefront, modules, game_plugin.dll layout
 fmlibre-probe calibrate                              # identify the build and locate players, staff, clubs
+fmlibre-probe health                                 # the checks the editor makes before it writes, and what each found
 fmlibre-probe players "arda guler"                   # search players (accents ignored), best first
 fmlibre-probe players --position st --max-age 20 --min-pa 170 --sort pa   # wonderkid strikers
 fmlibre-probe player 7458500                         # everything read for one player
@@ -182,7 +208,8 @@ to save the results. `calibrate --scan` ignores the build profile and finds the
 arrays the way it would on an unknown build.
 
 Only `set`, `move`, `swap`, `release`, `staff-move`, `staff-job`, `heal --heal`,
-`bans --lift`, `tie-set`, `tie-add`, `tie-remove` and `captain` write to the game.
+`bans --lift`, `tie-set`, `tie-add`, `tie-remove` and `captain` write to the game. Unlike the app, the probe writes to
+a build without a profile too, as far as the checks allow, so that a new build can be mapped.
 - `set` changes one field after the checks above. Values are as stored:
   attributes run 0–100, or 1–20 with `--shown`.
 - `move` moves a player to a club's senior team; `release` leaves him a free agent.
