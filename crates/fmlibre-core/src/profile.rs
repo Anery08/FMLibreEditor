@@ -549,8 +549,8 @@ pub struct BuildProfile {
     pub plugin: PluginFingerprint,
     pub arrays: ArrayRvas,
     /// RVA in the game plugin of the in-game date, where it is not next to the arrays at
-    /// [`ClusterLayout::current_date`]: on macOS, and on Windows from Game Pass 0.9.2409.0 on, it is a variable of
-    /// its own.
+    /// [`ClusterLayout::current_date`]: on macOS, and on Windows since the November 2026 update (Game Pass
+    /// 0.9.2409.0, Steam build 26340721), it is a variable of its own.
     pub current_date: Option<u64>,
     /// RVA in the game plugin of the static pointer to the retirement manager ([`RetirementLayout`]). It is not at
     /// the same distance from the arrays in every build: 0xED60 before the players pair on Game Pass, 0xDAC0 on
@@ -635,6 +635,7 @@ const BUILDS: &[&str] = &[
     include_str!("../../../profiles/fm27/gamepass-0.9.2355.0.toml"),
     include_str!("../../../profiles/fm27/gamepass-0.9.2409.0.toml"),
     include_str!("../../../profiles/fm27/steam-26227640.toml"),
+    include_str!("../../../profiles/fm27/steam-26340721.toml"),
     include_str!("../../../profiles/fm27/steam-26227640-macos-x86_64.toml"),
     include_str!("../../../profiles/fm27/steam-26227640-macos-arm64.toml"),
 ];
@@ -788,6 +789,17 @@ mod tests {
         assert_eq!(profile.arrays.players, 0x570_37D0);
         assert_eq!(profile.edition, layout.edition);
         assert_eq!(profile.retirement_manager, Some(0x56F_5D10));
+
+        // 27.0.0 on Steam (build 26340721): moved as Game Pass 0.9.2409.0 did, the date apart from the arrays.
+        let fingerprint = PluginFingerprint::Pe { size_of_image: 0x1821_C000, link_timestamp: 0x6AE5_65AF };
+        let profile = profile_for(fingerprint).expect("Steam build 26340721 profile");
+        assert_eq!(profile.storefront, Storefront::Steam);
+        assert_eq!(
+            (profile.arrays.players, profile.arrays.staff, profile.arrays.clubs),
+            (0x570_57D0, 0x570_5818, 0x570_5988)
+        );
+        assert_eq!(profile.current_date, Some(0x56A_F378));
+        assert_eq!(profile.retirement_manager, Some(profile.arrays.players - 0xDAC0));
 
         // On macOS, the Intel half of the same build: told apart by its LC_UUID.
         let uuid = [0x22, 0xCF, 0xE5, 0xC3, 0xB5, 0xCF, 0x3C, 0x00, 0x80, 0x43, 0x1E, 0xA1, 0x90, 0xA6, 0x9B, 0x89];
