@@ -2035,11 +2035,14 @@ const CHECKS: CheckKey[] = [
 ];
 const FAILING: CheckKey[] = ["gameDate", "attributes", "contracts"];
 
-/** What the checks find in the fixtures: every one passes, but for the failing ones of `?failedchecks`. */
+/**
+ * What the checks find in the fixtures: every one passes, but for the failing ones of `?failedchecks`, and the in-game
+ * date under `?nodate`, as a date that cannot be read never passes.
+ */
 function mockHealth(): Health {
   return {
     results: CHECKS.map((check) => {
-      const passed = !(failedChecks && FAILING.includes(check));
+      const passed = !(failedChecks && FAILING.includes(check)) && !(check === "gameDate" && gameDate === null);
       return { check, passed, fit: passed ? 2000 : 640, sampled: 2000 };
     }),
   };
