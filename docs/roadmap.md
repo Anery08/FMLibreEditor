@@ -102,6 +102,8 @@ before trusting them.
   release from here on is checked on both Game Pass and Steam.
 - [x] The Game Pass update 0.9.2409.0 (November 2026), whose in-game date moved away from the arrays (see the
   [notes on it](recon/fm27-gamepass-0.9.2409.md)).
+- [x] The same update on Steam, build 26340721 (27.0.0): its own profile, as on Game Pass (see the
+  [notes on it](recon/fm27-steam-26340721.md)).
 - [x] macOS, the Steam build (see the [macOS notes](recon/fm27-steam-macos.md)):
   - memory access through a task port that the game hands over: a small bridge library,
     which the game loads as it does Steam's overlay, through a launcher that a Steam launch
