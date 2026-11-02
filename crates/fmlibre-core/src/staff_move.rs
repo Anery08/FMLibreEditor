@@ -246,7 +246,11 @@ impl Session {
             }
         }
         if lists.is_empty() {
-            return Err(MoveError::NotInDepartment);
+            // A manager or a director is in none of them: his job, not the lists, is why he stays.
+            return Err(match department_of(job) {
+                Some(_) => MoveError::NotInDepartment,
+                None => MoveError::UnusualJob { job },
+            });
         }
         self.check_unheld(club, object, object + s.identity(), object + s.person_block)?;
         Ok(Holder { object, contract, record, club, club_uid, job, lists })

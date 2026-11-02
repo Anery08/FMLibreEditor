@@ -65,6 +65,9 @@ const STAFF_DEPARTMENTS: Partial<Record<string, string>> = {
   scouting: "gözlemci",
 };
 
+/** The name of a job code a failure gives, as `jobs` below has it. */
+const jobName = (code: string | undefined) => (tr.jobs as Partial<Record<number, string>>)[Number(code)] ?? code;
+
 const errors: ErrorTexts = {
   "edit.unknownField": (p) => `Burada “${p.field}” adında düzenlenebilir bir alan yok.`,
   "edit.outOfRange": (p) => `${field(p.field)} için ${p.value} geçersiz: ${p.min} ile ${p.max} arasında olmalı.`,
@@ -119,7 +122,7 @@ const errors: ErrorTexts = {
   "staff.notListed": () => "Kulübün personel listeleri onu olması gereken yerde tutmuyor.",
   "staff.noRoom": (p) =>
     `Kulübün ${STAFF_DEPARTMENTS[p.department] ?? p.department} listesinde bir kişiye daha yer yok (şu an ${p.staff}) ve düzenleyici listeyi büyütemez.`,
-  "staff.job": (p) => `Görev ${p.job}, düzenleyicinin verip aldığı görevlerden değil.`,
+  "staff.job": (p) => `Düzenleyici, görevi ${jobName(p.job)} olan personeli henüz taşıyamıyor ve bu görevi veremiyor.`,
   "squad.noTeam": () => `Kulübün böyle bir takımı yok ya da takım doğrulanamadı; ${reload}.`,
   "captain.notInTeam": () => "Oyuncu bu takımda oynamıyor; kaptan ancak takımın kendi oyuncularından seçilebilir.",
   "captain.unchanged": () => "Oyuncu bu görevi zaten üstleniyor.",

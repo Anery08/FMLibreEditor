@@ -35,6 +35,7 @@ use crate::edit::{EditError, Entity, Field, Kind, Target};
 use crate::players::PlayerSummary;
 use crate::profile::HeapLayout;
 use crate::session::Session;
+use crate::staff::job_name;
 
 /// The job code of a player's contract.
 const PLAYER_JOB: u8 = 1;
@@ -289,7 +290,10 @@ impl fmt::Display for MoveError {
                 "the club's {department} staff list has no room for another ({staff} now), and the editor cannot \
                  make it bigger"
             ),
-            MoveError::UnusualJob { job } => write!(f, "job {job} is not one the editor gives or takes away"),
+            MoveError::UnusualJob { job } => match job_name(*job) {
+                Some(name) => write!(f, "the editor does not yet move staff whose job is {name}, or give that job"),
+                None => write!(f, "the editor does not yet move staff whose job is {job}, or give that job"),
+            },
             MoveError::NoRetirements => {
                 f.write_str("the editor cannot find the retirements the game has planned in this version of the game")
             }

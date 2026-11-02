@@ -163,6 +163,9 @@ const TRAIT_NAMES_ES: readonly string[] = [
   "Juega el balón con los pies",
 ];
 
+/** The name of a job code a failure gives, as `jobs` below has it. */
+const jobName = (code: string | undefined) => (es.jobs as Partial<Record<number, string>>)[Number(code)] ?? code;
+
 const errors: ErrorTexts = {
   "edit.unknownField": (p) => `Aquí no hay ningún campo editable llamado «${p.field}».`,
   "edit.outOfRange": (p) => `${p.value} no es un valor válido para ${field(p.field)}: admite de ${p.min} a ${p.max}.`,
@@ -213,7 +216,7 @@ const errors: ErrorTexts = {
   "staff.noRoom": (p) =>
     `La lista ${STAFF_DEPARTMENTS[p.department] ?? `de ${p.department}`} del club no tiene sitio para nadie más ` +
     `(ahora ${p.staff}) y el editor no puede ampliarla.`,
-  "staff.job": (p) => `El puesto ${p.job} no es de los que el editor da o quita.`,
+  "staff.job": (p) => `El editor todavía no mueve al personal con el puesto de ${jobName(p.job)} ni da ese puesto.`,
   "squad.noTeam": () => `El club no tiene ese equipo o no supera la comprobación; ${reload}.`,
   "captain.notInTeam": () =>
     "El jugador no juega en este equipo; el capitán solo puede ser uno de los jugadores del propio equipo.",
