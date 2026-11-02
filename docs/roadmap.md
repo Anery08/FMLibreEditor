@@ -100,6 +100,8 @@ before trusting them.
   - player filters and sort saved under a name.
 - [x] The Steam build on Windows (build 26227640), with its own build profile. Every
   release from here on is checked on both Game Pass and Steam.
+- [x] The Game Pass update 0.9.2409.0 (November 2026), whose in-game date moved away from the arrays (see the
+  [notes on it](recon/fm27-gamepass-0.9.2409.md)).
 - [x] macOS, the Steam build (see the [macOS notes](recon/fm27-steam-macos.md)):
   - memory access through a task port that the game hands over: a small bridge library,
     which the game loads as it does Steam's overlay, through a launcher that a Steam launch
