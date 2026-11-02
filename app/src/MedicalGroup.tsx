@@ -5,7 +5,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { EditableValue } from "./EditControls";
 import { healPlayer, liftBans, wholePercent } from "./editing";
 import { describeError, formatDate, formatDateRange, formatNumber, formatPercent } from "./format";
-import { appText, fieldLabel, profileText } from "./labels";
+import { fieldLabel, profileText } from "./labels";
 import { Fact } from "./ProfileParts";
 import type { Ban, Injury, PlayerDetails } from "./types";
 import { EditorContext } from "./useProfileEditing";
@@ -81,7 +81,7 @@ export function MedicalGroup({ details }: { details: PlayerDetails }) {
  * them. Like healing, lifting asks no question: it is logged like any change, and undone from the Changes view.
  */
 function BanList({ uid, bans }: { uid: number; bans: Ban[] }) {
-  const { editable, onEdited } = useContext(EditorContext);
+  const { editable, readOnlyNote, onEdited } = useContext(EditorContext);
   const [lifting, setLifting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const alive = useRef(true);
@@ -127,7 +127,7 @@ function BanList({ uid, bans }: { uid: number; bans: Ban[] }) {
           disabled={!editable}
           aria-disabled={lifting || undefined}
           aria-busy={lifting || undefined}
-          title={editable ? profileText.liftBansTitle : appText.noteReadOnly}
+          title={editable ? profileText.liftBansTitle : readOnlyNote}
           onClick={() => void lift()}
         >
           {profileText.liftBans}
@@ -166,7 +166,7 @@ function injuryDates({ started, backSoonest, backLatest }: Injury): string {
  * state of a heal goes with the list that was healed.
  */
 function InjuryList({ uid, injuries }: { uid: number; injuries: Injury[] }) {
-  const { editable, onEdited } = useContext(EditorContext);
+  const { editable, readOnlyNote, onEdited } = useContext(EditorContext);
   const [healing, setHealing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const alive = useRef(true);
@@ -213,7 +213,7 @@ function InjuryList({ uid, injuries }: { uid: number; injuries: Injury[] }) {
           disabled={!editable}
           aria-disabled={healing || undefined}
           aria-busy={healing || undefined}
-          title={editable ? profileText.healTitle : appText.noteReadOnly}
+          title={editable ? profileText.healTitle : readOnlyNote}
           onClick={() => void heal()}
         >
           {profileText.heal}

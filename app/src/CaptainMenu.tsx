@@ -2,10 +2,11 @@
 // table scrolls in a box of its own, which would cut a menu off at its edge, so the menu is drawn over the window, at
 // the place of its button, instead.
 
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { appText, squadText as text } from "./labels";
+import { squadText as text } from "./labels";
 import type { CaptainRole } from "./types";
+import { EditorContext } from "./useProfileEditing";
 
 /** The room the menu keeps between itself and its button, and between itself and the edge of the window. */
 const GAP = 4;
@@ -31,6 +32,7 @@ interface CaptainMenuProps {
 
 /** The button of a row and, once it is pressed, its menu. */
 export function CaptainMenu({ name, holds, editable, busy, onPick }: CaptainMenuProps) {
+  const { readOnlyNote } = useContext(EditorContext);
   const [anchor, setAnchor] = useState<Anchor | null>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -133,7 +135,7 @@ export function CaptainMenu({ name, holds, editable, busy, onPick }: CaptainMenu
         // While a change is under way the button is only dimmed (aria-disabled): a disabled button loses focus.
         aria-disabled={busy || undefined}
         disabled={!editable}
-        title={editable ? text.menuTitle : appText.noteReadOnly}
+        title={editable ? text.menuTitle : readOnlyNote}
         onClick={() => {
           if (open) {
             setAnchor(null);

@@ -385,6 +385,14 @@ dd,
   white-space: nowrap;
 }
 
+/* When the date could not be read: a quieter line, with the reason on hover. */
+.game-date.missing {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.7;
+  cursor: help;
+}
+
 .masthead button {
   flex: none;
   border-color: rgb(246 247 249 / 0.4);

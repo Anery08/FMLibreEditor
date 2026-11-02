@@ -1,0 +1,24 @@
+# FM27 27.0.0 on Steam for macOS (app 4530370, build 26340721), the release that followed the Launch Preview: the
+# arm64 half of the universal game_plugin, which Apple silicon Macs run natively. Its arrays, the in-game date and the
+# retirement manager sit at the Launch Preview's RVAs (steam-26227640-macos-arm64.toml).
+name = "FM27 Steam build 26340721 (27.0.0, macOS, Apple silicon)"
+edition = 27
+storefront = "steam"
+
+# The in-game date, a variable of its own: 16 November 2026 on a save whose screens read 16/11/2026, then 17 November
+# once the game had moved on a day.
+current_date = 0x56B1DB8
+
+# The static pointer to the retirement manager (RETIREMENT_MANAGER): read on that save, with Cristiano Ronaldo and Karim
+# Benzema among the planned retirements.
+retirement_manager = 0x56A82A8
+
+# game_plugin as mapped in memory: its LC_UUID identifies the build and the architecture.
+[plugin]
+uuid = "F4540355-2186-39CB-9119-C706A6A35346"
+
+# RVAs in game_plugin of the (begin, end) pointer pairs of the entity arrays, as calibrate found them by scanning.
+[arrays]
+players = 0x56D2E18
+staff = 0x56D2E60
+clubs = 0x56D2FD0

@@ -7,7 +7,7 @@ import { useContext, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { addTie, changeTie, homegrownRules, listNations, removeTie } from "./editing";
 import { describeError } from "./format";
-import { appText, tieText as text } from "./labels";
+import { tieText as text } from "./labels";
 import { ClubLogo, NationFlag, PICTURE_SIZE, WithPicture } from "./Picture";
 import { Fact } from "./ProfileParts";
 import type { Nation, PlayerDetails, Tie, TieKind } from "./types";
@@ -46,7 +46,7 @@ function TieLine({ tie, rule = true }: { tie: Tie; rule?: boolean }) {
 
 /** The group in the profile, and the button that opens the dialog while the game can be written to. */
 export function TiesGroup({ details }: { details: PlayerDetails }) {
-  const { editable } = useContext(EditorContext);
+  const { editable, readOnlyNote } = useContext(EditorContext);
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
@@ -89,7 +89,7 @@ export function TiesGroup({ details }: { details: PlayerDetails }) {
           className="heal-toggle"
           aria-haspopup="dialog"
           disabled={!editable}
-          title={editable ? text.changeTitle : appText.noteReadOnly}
+          title={editable ? text.changeTitle : readOnlyNote}
           onClick={() => setOpen(true)}
         >
           {text.change}

@@ -169,6 +169,9 @@ const checkName = (key: string | undefined) => {
   return name.charAt(0).toUpperCase() + name.slice(1);
 };
 
+/** The name of a job code a failure gives, as `jobs` below has it. */
+const jobName = (code: string | undefined) => (es.jobs as Partial<Record<number, string>>)[Number(code)] ?? code;
+
 const errors: ErrorTexts = {
   "guard.unknownBuild": () =>
     "FMLibreEditor no se ha probado con esta versión del juego, así que no escribe en ella. «Editar de todos modos», " +
@@ -225,7 +228,7 @@ const errors: ErrorTexts = {
   "staff.noRoom": (p) =>
     `La lista ${STAFF_DEPARTMENTS[p.department] ?? `de ${p.department}`} del club no tiene sitio para nadie más ` +
     `(ahora ${p.staff}) y el editor no puede ampliarla.`,
-  "staff.job": (p) => `El puesto ${p.job} no es de los que el editor da o quita.`,
+  "staff.job": (p) => `El editor todavía no mueve al personal con el puesto de ${jobName(p.job)} ni da ese puesto.`,
   "squad.noTeam": () => `El club no tiene ese equipo o no supera la comprobación; ${reload}.`,
   "captain.notInTeam": () =>
     "El jugador no juega en este equipo; el capitán solo puede ser uno de los jugadores del propio equipo.",
@@ -880,6 +883,10 @@ export const es: Strings = {
 
     notConnected: "Sin conexión",
     previewTag: "vista previa en el navegador · datos de ejemplo",
+    noDate: "Sin fecha del juego",
+    noDateTitle:
+      "FMLibreEditor no pudo leer la fecha del juego en esta versión del juego, así que no se muestran las edades y " +
+      "los filtros de edad no encuentran a nadie. Busca actualizaciones.",
     reload: "Recargar datos",
     refresh: "Actualizar",
     detecting: "Buscando Football Manager…",

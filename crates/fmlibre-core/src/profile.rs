@@ -638,6 +638,8 @@ const BUILDS: &[&str] = &[
     include_str!("../../../profiles/fm27/steam-26340721.toml"),
     include_str!("../../../profiles/fm27/steam-26227640-macos-x86_64.toml"),
     include_str!("../../../profiles/fm27/steam-26227640-macos-arm64.toml"),
+    include_str!("../../../profiles/fm27/steam-26340721-macos-x86_64.toml"),
+    include_str!("../../../profiles/fm27/steam-26340721-macos-arm64.toml"),
 ];
 
 /// The built-in object layout for `edition`, if there is one.
@@ -815,6 +817,17 @@ mod tests {
         assert_eq!(profile.arrays.players, 0x56D_2E18);
         assert_eq!(profile.current_date, Some(0x56B_1DB8));
         assert_eq!(profile.retirement_manager, Some(0x56A_82A8));
+
+        // 27.0.0 (Steam build 26340721): new UUIDs for both halves, the Launch Preview's RVAs.
+        let uuid = [0xF4, 0x54, 0x03, 0x55, 0x21, 0x86, 0x39, 0xCB, 0x91, 0x19, 0xC7, 0x06, 0xA6, 0xA3, 0x53, 0x46];
+        let profile = profile_for(PluginFingerprint::MachO { uuid }).expect("27.0.0's arm64 half");
+        assert_eq!(profile.arrays.players, 0x56D_2E18);
+        assert_eq!(profile.current_date, Some(0x56B_1DB8));
+        let uuid = [0x09, 0x81, 0xAB, 0x31, 0xAC, 0x3B, 0x3D, 0x93, 0x94, 0x4F, 0x47, 0xFE, 0x4B, 0x59, 0xCD, 0x9E];
+        let profile = profile_for(PluginFingerprint::MachO { uuid }).expect("27.0.0's Intel half");
+        assert_eq!(profile.arrays.players, 0x5C8_91C8);
+        assert_eq!(profile.current_date, Some(0x5C6_9700));
+
         // On Windows the Launch Preview's date sits with the arrays.
         let fingerprint = PluginFingerprint::Pe { size_of_image: 0x19E6_9000, link_timestamp: 0x6ADF_B11C };
         assert_eq!(profile_for(fingerprint).and_then(|profile| profile.current_date), None);

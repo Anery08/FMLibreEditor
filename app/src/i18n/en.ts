@@ -873,6 +873,11 @@ export const en = {
     notConnected: "Not connected",
     /** Beside the status line in a plain browser, where fixtures stand in for the game. */
     previewTag: "browser preview · sample data",
+    /** In place of the game's date when it could not be read, and the note it shows on hover. */
+    noDate: "No in-game date",
+    noDateTitle:
+      "FMLibreEditor could not read the in-game date in this version of the game, so ages are not shown and age " +
+      "filters find no one. Check for updates.",
     /** The button that reads the game again, once connected. */
     reload: "Reload data",
     /** The button that looks for the game again, while not connected. */
@@ -936,7 +941,6 @@ export const en = {
     noneHint: "Logo and face packs go in the FM27 graphics folder.",
   },
 
-  /** New versions: the notice under the masthead, and the version and Check for updates at the foot of the window. */
   /**
    * The notice under the masthead when the game is a version FMLibreEditor has no profile for, or some of the checks
    * it makes before writing did not pass (`CompatibilityNotice`).
@@ -977,6 +981,7 @@ export const en = {
     clubs: "clubs",
   } satisfies Record<CheckKey, string>,
 
+  /** New versions: the notice under the masthead, and the version and Check for updates at the foot of the window. */
   update: {
     /** The notice's headline, and what a check by hand found. */
     available: (version: string) => `FMLibreEditor ${version} is available`,

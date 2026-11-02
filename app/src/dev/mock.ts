@@ -2035,11 +2035,14 @@ const CHECKS: CheckKey[] = [
 ];
 const FAILING: CheckKey[] = ["gameDate", "attributes", "contracts"];
 
-/** What the checks find in the fixtures: every one passes, but for the failing ones of `?failedchecks`. */
+/**
+ * What the checks find in the fixtures: every one passes, but for the failing ones of `?failedchecks`, and the in-game
+ * date under `?nodate`, as a date that cannot be read never passes.
+ */
 function mockHealth(): Health {
   return {
     results: CHECKS.map((check) => {
-      const passed = !(failedChecks && FAILING.includes(check));
+      const passed = !(failedChecks && FAILING.includes(check)) && !(check === "gameDate" && gameDate === null);
       return { check, passed, fit: passed ? 2000 : 640, sampled: 2000 };
     }),
   };
@@ -2050,6 +2053,8 @@ function mockHealth(): Health {
  * was started without the bridge. The first set-up meets a running Steam, as the real one would; the next one works.
  */
 const macPreview = new URLSearchParams(window.location.search).has("macos");
+/** `?nodate` previews a version of the game whose in-game date the editor cannot read. */
+const gameDate = new URLSearchParams(window.location.search).has("nodate") ? null : GAME_DATE;
 const notSetUp = (): BridgeInfo => ({
   ready: false,
   installed: false,
@@ -2110,7 +2115,7 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         players: players.length,
         staff: staff.length,
         clubs: clubs.length,
-        gameDate: failedChecks ? null : GAME_DATE,
+        gameDate: failedChecks ? null : gameDate,
         loadMs: 480,
         editable: !unknownBuild,
         writable: true,
@@ -2138,7 +2143,7 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         players: players.length,
         staff: staff.length,
         clubs: clubs.length,
-        gameDate: failedChecks ? null : GAME_DATE,
+        gameDate: failedChecks ? null : gameDate,
         health: mockHealth(),
       };
       return reloaded as T;

@@ -71,6 +71,9 @@ const checkName = (key: string | undefined) => {
   return name.charAt(0).toLocaleUpperCase("tr") + name.slice(1);
 };
 
+/** The name of a job code a failure gives, as `jobs` below has it. */
+const jobName = (code: string | undefined) => (tr.jobs as Partial<Record<number, string>>)[Number(code)] ?? code;
+
 const errors: ErrorTexts = {
   "edit.unknownField": (p) => `Burada “${p.field}” adında düzenlenebilir bir alan yok.`,
   "edit.outOfRange": (p) => `${field(p.field)} için ${p.value} geçersiz: ${p.min} ile ${p.max} arasında olmalı.`,
@@ -130,7 +133,7 @@ const errors: ErrorTexts = {
   "staff.notListed": () => "Kulübün personel listeleri onu olması gereken yerde tutmuyor.",
   "staff.noRoom": (p) =>
     `Kulübün ${STAFF_DEPARTMENTS[p.department] ?? p.department} listesinde bir kişiye daha yer yok (şu an ${p.staff}) ve düzenleyici listeyi büyütemez.`,
-  "staff.job": (p) => `Görev ${p.job}, düzenleyicinin verip aldığı görevlerden değil.`,
+  "staff.job": (p) => `Düzenleyici, görevi ${jobName(p.job)} olan personeli henüz taşıyamıyor ve bu görevi veremiyor.`,
   "squad.noTeam": () => `Kulübün böyle bir takımı yok ya da takım doğrulanamadı; ${reload}.`,
   "captain.notInTeam": () => "Oyuncu bu takımda oynamıyor; kaptan ancak takımın kendi oyuncularından seçilebilir.",
   "captain.unchanged": () => "Oyuncu bu görevi zaten üstleniyor.",
@@ -856,6 +859,10 @@ export const tr: Strings = {
 
     notConnected: "Bağlı değil",
     previewTag: "tarayıcı önizlemesi · örnek veriler",
+    noDate: "Oyun içi tarih yok",
+    noDateTitle:
+      "FMLibreEditor oyunun bu sürümünde oyun içi tarihi okuyamadı; bu yüzden yaşlar gösterilmiyor ve yaş " +
+      "filtreleri kimseyi bulmuyor. Güncellemeleri kontrol edin.",
     reload: "Verileri yeniden oku",
     refresh: "Yenile",
     detecting: "Football Manager aranıyor…",

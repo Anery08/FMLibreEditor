@@ -1,0 +1,24 @@
+# FM27 27.0.0 on Steam for macOS (app 4530370, build 26340721): the Intel half of the universal game_plugin, which Intel
+# Macs run, and Apple silicon Macs under Rosetta. Found in the file, not read in a running game: its arm64 half kept every
+# RVA of the Launch Preview, and in this half the code's RIP-relative loads still peak at the Launch Preview's Intel
+# RVAs (steam-26227640-macos-x86_64.toml): 7,730 at the date, 184 and 170 at the players' begin and end, 18 and 18 at the
+# staff's, 105 and 93 at the clubs'.
+name = "FM27 Steam build 26340721 (27.0.0, macOS, Intel)"
+edition = 27
+storefront = "steam"
+
+# The in-game date.
+current_date = 0x5C69700
+
+# The static pointer to the retirement manager, loaded in 61 places; its class is checked before it is used.
+retirement_manager = 0x5C5FEF0
+
+# game_plugin as mapped in memory: its LC_UUID identifies the build and the architecture.
+[plugin]
+uuid = "0981AB31-AC3B-3D93-944F-47FE4B59CD9E"
+
+# RVAs in game_plugin of the (begin, end) pointer pairs of the entity arrays.
+[arrays]
+players = 0x5C891C8
+staff = 0x5C89210
+clubs = 0x5C89380
