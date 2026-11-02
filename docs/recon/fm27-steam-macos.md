@@ -271,3 +271,20 @@ The Intel half was not running, so its static was found in the file:
 
 The x86_64 build profile takes `0x5C5FEF0`; it was not read in a running game. The editor checks the manager's class
 before it uses it, so a wrong static would only hide the feature.
+
+## 27.0.0 (Steam build 26340721)
+
+The release that followed the Launch Preview, on 2 November 2026, gave both halves of `game_plugin` new UUIDs: arm64
+`F4540355-…`, Intel `0981AB31-…`. With no profile for them the app found the arrays by scanning but read no date, so
+it showed no ages.
+
+- **arm64:** `calibrate --scan` found the arrays at the Launch Preview's RVAs. The date variable was still at
+  `0x56B1DB8`: 16 November 2026 on a save whose screens read 16/11/2026, then 17 November once the game moved on a
+  day. The retirement manager's static, `0x56A82A8`, listed the planned retirements (Cristiano Ronaldo and Karim
+  Benzema among them).
+- **Intel:** not run; checked in the file. Its code's RIP-relative loads still peak at the Launch Preview's RVAs:
+  7,730 at the date `0x5C69700`, 184 and 170 at the players' begin and end, 18 and 18 at the staff's, 105 and 93 at
+  the clubs', 61 at the retirement manager's static. The arm64 half loads the same variables 6,977, 123, 18, 104 and
+  50 times.
+
+The new profiles take the Launch Preview's RVAs with the new UUIDs.
