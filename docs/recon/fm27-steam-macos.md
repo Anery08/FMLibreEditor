@@ -288,3 +288,10 @@ it showed no ages.
   50 times.
 
 The new profiles take the Launch Preview's RVAs with the new UUIDs.
+
+With the arm64 profile, on a save dated 15 November 2026, the checks the editor makes before it writes
+(`fmlibre-probe health`) all passed, in 62 ms. Their gaps were close to Game Pass's:
+- **Players:** goalkeeping 43, finishing 36, tackling 35.
+- **Staff:** goalkeeping 45, physiotherapy 49, judging potential 32.
+- **Contracts:** 1,790 of 1,790 pointed back at their players, and 727 were signed after the player joined.
+- **Date:** none of the 3,580 contract dates came after it; the latest came 4 days before it.

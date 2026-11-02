@@ -56,7 +56,8 @@ For a build without one, the editor still finds the arrays by scanning, and then
 Each check was tried against a layout broken on purpose (a field group moved by a byte or a pointer's width), and each
 such layout failed its check. After an update, `fmlibre-probe health` shows what the checks find, and `calibrate`
 where the arrays are. A new build profile takes their RVAs and the date's, which `find` locates as in the
-[Game Pass 0.9.2409.0 notes](recon/fm27-gamepass-0.9.2409.md).
+[Game Pass 0.9.2409.0 notes](recon/fm27-gamepass-0.9.2409.md), or on macOS as in the
+[notes on 27.0.0 there](recon/fm27-steam-macos.md#2700-steam-build-26340721).
 
 ### On macOS
 

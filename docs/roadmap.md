@@ -103,7 +103,8 @@ before trusting them.
 - [x] The Game Pass update 0.9.2409.0 (November 2026), whose in-game date moved away from the arrays (see the
   [notes on it](recon/fm27-gamepass-0.9.2409.md)).
 - [x] The same update on Steam, build 26340721 (27.0.0): its own profile, as on Game Pass (see the
-  [notes on it](recon/fm27-steam-26340721.md)).
+  [notes on it](recon/fm27-steam-26340721.md)). On macOS, new profiles for both halves of the game, whose data stayed
+  where the Launch Preview kept it (see the [macOS notes](recon/fm27-steam-macos.md#2700-steam-build-26340721)).
 - [x] Safeguards for the next update (see [After an update of the game](DEVELOPING.md#after-an-update-of-the-game)):
   - a version of the game without a build profile is read-only until Edit anyway, with a notice that says so;
   - checks of the layout against the running game before anything is written: what does not check out stays
