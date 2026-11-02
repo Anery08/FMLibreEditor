@@ -549,7 +549,8 @@ pub struct BuildProfile {
     pub plugin: PluginFingerprint,
     pub arrays: ArrayRvas,
     /// RVA in the game plugin of the in-game date, where it is not next to the arrays at
-    /// [`ClusterLayout::current_date`]: on macOS it is a variable of its own.
+    /// [`ClusterLayout::current_date`]: on macOS, and on Windows from Game Pass 0.9.2409.0 on, it is a variable of
+    /// its own.
     pub current_date: Option<u64>,
     /// RVA in the game plugin of the static pointer to the retirement manager ([`RetirementLayout`]). It is not at
     /// the same distance from the arrays in every build: 0xED60 before the players pair on Game Pass, 0xDAC0 on
@@ -632,6 +633,7 @@ const LAYOUTS: &[&str] = &[include_str!("../../../profiles/fm27/layout-macos.tom
 
 const BUILDS: &[&str] = &[
     include_str!("../../../profiles/fm27/gamepass-0.9.2355.0.toml"),
+    include_str!("../../../profiles/fm27/gamepass-0.9.2409.0.toml"),
     include_str!("../../../profiles/fm27/steam-26227640.toml"),
     include_str!("../../../profiles/fm27/steam-26227640-macos-x86_64.toml"),
     include_str!("../../../profiles/fm27/steam-26227640-macos-arm64.toml"),
@@ -766,6 +768,18 @@ mod tests {
         // The static pointer to the retirement manager, 0xED60 before the players pair on this build.
         assert_eq!(profile.retirement_manager, Some(0x567_3060));
 
+        // The Game Pass update of November 2026: everything 0x2000 further, and the in-game date apart from the arrays.
+        let fingerprint = PluginFingerprint::Pe { size_of_image: 0x175D_A000, link_timestamp: 0x6AE5_63A1 };
+        let profile = profile_for(fingerprint).expect("Game Pass 0.9.2409.0 profile");
+        assert_eq!(profile.storefront, Storefront::GamePass);
+        assert_eq!(profile.package_version.as_deref(), Some("0.9.2409.0"));
+        assert_eq!(
+            (profile.arrays.players, profile.arrays.staff, profile.arrays.clubs),
+            (0x568_3DC0, 0x568_3E08, 0x568_3F78)
+        );
+        assert_eq!(profile.current_date, Some(0x562_57C8));
+        assert_eq!(profile.retirement_manager, Some(profile.arrays.players - 0xED60));
+
         // The same version on Steam, packaged differently: another fingerprint and other RVAs, the manager's static
         // 0xDAC0 before the players pair.
         let fingerprint = PluginFingerprint::Pe { size_of_image: 0x19E6_9000, link_timestamp: 0x6ADF_B11C };
@@ -789,7 +803,7 @@ mod tests {
         assert_eq!(profile.arrays.players, 0x56D_2E18);
         assert_eq!(profile.current_date, Some(0x56B_1DB8));
         assert_eq!(profile.retirement_manager, Some(0x56A_82A8));
-        // On Windows the date sits with the arrays.
+        // On Windows the Launch Preview's date sits with the arrays.
         let fingerprint = PluginFingerprint::Pe { size_of_image: 0x19E6_9000, link_timestamp: 0x6ADF_B11C };
         assert_eq!(profile_for(fingerprint).and_then(|profile| profile.current_date), None);
     }
