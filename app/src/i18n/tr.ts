@@ -65,6 +65,12 @@ const STAFF_DEPARTMENTS: Partial<Record<string, string>> = {
   scouting: "gözlemci",
 };
 
+/** What a check is about, from the key a failure gives, with a capital. */
+const checkName = (key: string | undefined) => {
+  const name = (tr.checks as Partial<Record<string, string>>)[key ?? ""] ?? key ?? "";
+  return name.charAt(0).toLocaleUpperCase("tr") + name.slice(1);
+};
+
 /** The name of a job code a failure gives, as `jobs` below has it. */
 const jobName = (code: string | undefined) => (tr.jobs as Partial<Record<number, string>>)[Number(code)] ?? code;
 
@@ -102,6 +108,11 @@ const errors: ErrorTexts = {
   "heal.notInjured": () => "Oyuncunun iyileştirilecek bir sakatlığı yok.",
   "ban.notBanned": () => "Oyuncunun kaldırılacak bir cezası yok.",
   "retirement.unknown": () => "Düzenleyici, oyunun bu sürümünde planlanan emeklilikleri bulamıyor.",
+  "guard.unknownBuild": () =>
+    "FMLibreEditor oyunun bu sürümüyle denenmedi, bu yüzden ona yazmıyor. Üstteki uyarıdaki “Yine de düzenle” " +
+    "düzenlemeyi açar.",
+  "guard.failed": (p) =>
+    `${checkName(p.check)} oyunun bu sürümünde denetimden geçmedi, bu yüzden FMLibreEditor onları değiştirmiyor.`,
   "retirement.none": () => "Oyun bu oyuncunun emekliliğini planlamamış ve oyuncu zaten oynamaya devam etmek istiyor.",
   "clause.noContract": () => "Oyuncunun sözleşmesi yok.",
   "clause.missing": () => `Sözleşmede bu madde artık yok; ${reload}.`,
@@ -843,6 +854,7 @@ export const tr: Strings = {
 
     noteEditable: "Düzenlemeler yalnızca uyguladığınızda oyuna işlenir. Önce kayıt dosyanızı yedekleyin.",
     noteReadOnly: "Salt okunur: Windows, FMLibreEditor'ın oyuna yazmasına izin vermedi.",
+    noteUnknownBuild: "Salt okunur: oyunun bu sürümü FMLibreEditor için yeni.",
     noteNotConnected: "Siz düzenleyip uygulamadan oyunda hiçbir şey değişmez.",
 
     notConnected: "Bağlı değil",
@@ -907,6 +919,35 @@ export const tr: Strings = {
       `Grafikler: ${format(clubLogos)} kulüp logosu · ${format(flags)} bayrak · ${format(faces)} yüz`,
     none: "Grafik paketi bulunamadı",
     noneHint: "Logo ve yüz paketleri FM27'nin graphics klasörüne kurulur.",
+  },
+
+  compatibility: {
+    unknownBuild: (game) => `FMLibreEditor henüz ${game} ile denenmedi`,
+    unknownBuildText:
+      "Oyun büyük ihtimalle güncellendi. FMLibreEditor oyunun verilerini buldu ve denetledi, ama denenmediği bir sürüme " +
+      "siz izin vermeden yazmaz. Bu sürümü tanıyan yeni bir FMLibreEditor genellikle birkaç gün içinde çıkar.",
+    allowedText: "Düzenleme bu oturum için açık, denetimlerin izin verdiği kadarıyla. Kayıt dosyanızın yedeğini saklayın.",
+    failedTitle: "Oyunun verilerinin bir kısmı denetimden geçmedi",
+    reloadHint: "Kayıt hâlâ yükleniyorduysa “Verileri yeniden oku” yeniden denetler.",
+    noDate: "Oyun içi tarih denetimden geçmedi, bu yüzden yaşlar gösterilmiyor.",
+    failed: (names) => `Salt okunur bırakılanlar: ${names}.`,
+    join: (names) =>
+      names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} ve ${names[names.length - 1]}`,
+    allow: "Yine de düzenle",
+    allowTitle: "Düzenlemeyi FMLibreEditor kapanana ya da yeniden bağlanana kadar açar. Önce kayıt dosyanızı yedekleyin.",
+  },
+
+  checks: {
+    gameDate: "oyun içi tarih",
+    players: "oyuncu bilgileri",
+    positions: "mevkiler",
+    attributes: "nitelikler",
+    personality: "kişilik",
+    liveValues: "enerji, maç keskinliği, yorgunluk ve moral",
+    contracts: "sözleşmeler",
+    teams: "takımlar",
+    staff: "personel",
+    clubs: "kulüpler",
   },
 
   update: {

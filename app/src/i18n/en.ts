@@ -13,6 +13,7 @@
 // language builds its sentences itself.
 
 import type {
+  CheckKey,
   Entity,
   GraphicsCounts,
   MassOperationKind,
@@ -65,6 +66,12 @@ export type ErrorTexts = Partial<Record<string, (params: Readonly<Record<string,
 /** The name of the field a failure names. */
 const field = (key: string | undefined) => fieldName(en, key ?? "");
 
+/** What a check is about, from the key a failure gives, with a capital: "Contracts". */
+const checkName = (key: string | undefined) => {
+  const name = (en.checks as Partial<Record<string, string>>)[key ?? ""] ?? key ?? "";
+  return name.charAt(0).toUpperCase() + name.slice(1);
+};
+
 /** The commands' own English is kept where it names no field. */
 const errors: ErrorTexts = {
   "edit.unknownField": (p) => `There is no editable field “${p.field}” here.`,
@@ -79,6 +86,11 @@ const errors: ErrorTexts = {
   "edit.notApplied": (p) => `${field(p.field)}: wrote ${p.wrote} but read back ${p.read}.`,
   "edit.conflict": (p) => `${field(p.field)} is now ${p.found}, not ${p.expected}: the game has changed it since.`,
   "move.outOfRange": (p) => `${p.value} is not a valid ${field(p.field)}: it takes ${p.min} to ${p.max}.`,
+  "guard.unknownBuild": () =>
+    "FMLibreEditor has not been checked with this version of the game, so it does not write to it. Edit anyway, in " +
+    "the notice at the top, turns editing on.",
+  "guard.failed": (p) =>
+    `${checkName(p.check)} did not check out in this version of the game, so FMLibreEditor leaves them unchanged.`,
   "memory.noBridge": () =>
     "macOS does not let FMLibreEditor into the game: the game was started without the FMLibreEditor bridge. Set " +
     "the bridge up, then start the game again from Steam.",
@@ -853,6 +865,8 @@ export const en = {
     noteEditable: "Edits reach the game only when you apply them. Back up your save first.",
     /** Connected, but Windows did not allow writing. */
     noteReadOnly: "Read-only: Windows did not let FMLibreEditor write to the game.",
+    /** Read-only because the game is a version FMLibreEditor was not checked with (see `compatibility`). */
+    noteUnknownBuild: "Read-only: this version of the game is new to FMLibreEditor.",
     noteNotConnected: "Nothing in the game changes until you edit and apply.",
 
     // The status line and the busy texts beside it
@@ -928,6 +942,46 @@ export const en = {
   },
 
   /** New versions: the notice under the masthead, and the version and Check for updates at the foot of the window. */
+  /**
+   * The notice under the masthead when the game is a version FMLibreEditor has no profile for, or some of the checks
+   * it makes before writing did not pass (`CompatibilityNotice`).
+   */
+  compatibility: {
+    /** The headline for a version without a profile; `game` as the status line names it. */
+    unknownBuild: (game: string) => `FMLibreEditor has not been checked with ${game} yet`,
+    unknownBuildText:
+      "The game has probably been updated. FMLibreEditor found the game's data and checked it, but it does not " +
+      "write to a version it was not tested with until you allow it. A new FMLibreEditor usually follows within days.",
+    /** Once Edit anyway was pressed. */
+    allowedText: "Editing is on for this session, as far as the checks allow. Keep a backup of your save.",
+    /** The headline when checks did not pass on a version the editor knows, and what may help. */
+    failedTitle: "Some of the game's data did not check out",
+    reloadHint: "If a save was still loading, Reload data checks again.",
+    /** The in-game date did not check out: shown apart, as it leaves nothing read-only. */
+    noDate: "The in-game date did not check out, so no ages are shown.",
+    /** The other checks that did not pass, their names joined (see `checks`). */
+    failed: (names: string) => `Left read-only: ${names}.`,
+    /** Joins the names of the checks that did not pass. */
+    join: (names: string[]) =>
+      names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`,
+    allow: "Edit anyway",
+    allowTitle: "Turn editing on until FMLibreEditor is closed or connects again. Back up your save first.",
+  },
+
+  /** What each check is about (`CheckKey`), as the notice lists the ones that did not pass and the errors name them. */
+  checks: {
+    gameDate: "the in-game date",
+    players: "players' details",
+    positions: "positions",
+    attributes: "attributes",
+    personality: "personality",
+    liveValues: "energy, match sharpness, jadedness and morale",
+    contracts: "contracts",
+    teams: "teams",
+    staff: "staff",
+    clubs: "clubs",
+  } satisfies Record<CheckKey, string>,
+
   update: {
     /** The notice's headline, and what a check by hand found. */
     available: (version: string) => `FMLibreEditor ${version} is available`,

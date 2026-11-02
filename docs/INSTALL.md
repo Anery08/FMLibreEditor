@@ -55,6 +55,12 @@ check, the app asks GitHub for the latest release; it sends nothing else.
   again.
 - **Windows: it opened read-only:** open it again; if that does not help, right-click it and
   choose **Run as administrator**.
+- **After an update of FM27, it says it has not been checked with this version of the game:**
+  look for a newer FMLibreEditor with **Check for updates**; one usually follows within days.
+  Until then it only reads the game. **Edit anyway** turns editing on for that session, as far
+  as its checks allow: back up your save first.
+- **It says some of the game's data did not check out:** if a save was still loading, press
+  **Reload data**. Otherwise what the notice lists stays read-only until a newer version.
 - **Your antivirus flags it:** tools that read another program's memory are sometimes
   flagged by mistake. FMLibreEditor is open source; you can allow it in your antivirus.
 - **macOS: it cannot get into the game:** quit FM27 and start it again from Steam.

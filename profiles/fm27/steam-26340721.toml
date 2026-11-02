@@ -1,0 +1,25 @@
+# FM27 27.0.0 on Steam (app 4530370, build 26340721), the update of November 2026. Its game_plugin.dll was linked
+# 526 seconds after the one of Game Pass 0.9.2409.0, and moved alike: the arrays and the retirement manager's static
+# 0x2000 further than in build 26227640, the in-game date to a variable of its own. The object layout is unchanged.
+name = "FM27 Steam build 26340721 (27.0.0)"
+edition = 27
+storefront = "steam"
+
+# The in-game date: 2 November 2026 on the Steam test save, as the game's own "2nd November 2026" says. The date with
+# the arrays (ClusterLayout::current_date) reads 1 January 1900, unset, as on Game Pass.
+current_date = 0x56AF378
+
+# The static pointer to the retirement manager (RETIREMENT_MANAGER): the only pointer to the one object of that
+# class, 0xDAC0 before the players pair as in build 26227640.
+retirement_manager = 0x56F7D10
+
+# game_plugin.dll as mapped in memory; these two values identify the build.
+[plugin]
+size_of_image = 0x1821C000
+link_timestamp = 0x6AE565AF
+
+# RVAs in game_plugin.dll of the (begin, end) pointer pairs of the entity arrays.
+[arrays]
+players = 0x57057D0
+staff = 0x5705818
+clubs = 0x5705988

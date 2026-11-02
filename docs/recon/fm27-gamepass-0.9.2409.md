@@ -73,8 +73,9 @@ started in the running game. Clause and tie lists are the same, so no contract h
 Hakimi had no room for another tie. The editor refuses those additions, as it should. On 0.9.2355.0 the game had been
 running since the new game was started, and 384 contracts had room.
 
-The allocator's size classes are unchanged: lists of 19 to 64 pointers sit in the blocks
-`layout.toml` names. So moves, which use the room in the block past a list's capacity, still work.
+The allocator's size classes are unchanged. The 1,429 lists of 19 to 64 pointers sit in the blocks `layout.toml`
+names, and the rest of each block is zero. So moves, which use the room in the block past a list's capacity, still
+work.
 
 ## The app
 

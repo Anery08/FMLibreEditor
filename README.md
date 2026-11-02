@@ -30,6 +30,8 @@ How to install and use it: [docs/INSTALL.md](docs/INSTALL.md).
   set captains, for one player or a whole team.
 - Transfer, swap or release players, and move staff between clubs.
 - Mass edit many at once, with a preview; undo any change.
+- Checks how it reads the game before it writes, and stays read-only on a version of FM27 it
+  has not been checked with yet.
 - English, Turkish and Spanish; logos, flags and faces from your graphics packs.
 
 The game shows a change once you press **Continue** in FM.

@@ -158,8 +158,9 @@ unhappiness = 0x30
 [cluster]
 # Current in-game date: u16 day of year (flags above bit 8) + u16 year. Confirmed
 # by the game's UI strings ("Cts 18 Tem", "18 Temmuz 2026") in the test save.
-# Game Pass 0.9.2409.0 leaves it unset (1 January 1900) with a save loaded: its
-# build profile names the date's own variable (`current_date`), which wins.
+# The November 2026 update (Game Pass 0.9.2409.0, Steam build 26340721) leaves it
+# unset (1 January 1900) with a save loaded: their build profiles name the date's
+# own variable (`current_date`), which wins.
 current_date = 0x848
 
 # Non-player staff. Offsets from fm-editor's FM27 notes (Steam), checked on the Game

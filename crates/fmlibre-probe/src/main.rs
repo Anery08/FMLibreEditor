@@ -74,6 +74,8 @@ enum BridgeAction {
 enum Command {
     /// Show the process, storefront, modules and the layout of the game plugin (default).
     Info,
+    /// Run the checks the editor makes before it writes, and show what each found.
+    Health,
     /// Identify the build and locate the player, staff and club arrays.
     Calibrate {
         /// Ignore the build profile and find the arrays by scanning, as for an unknown build.
@@ -760,80 +762,87 @@ fn run(cli: Cli) -> Result<()> {
     );
     let process = attach(cli.pid, elevated, writes)?;
     let json = cli.json.as_deref();
+    // The probe is how a new build gets its profile: its write commands work on a build without one, as far as the
+    // checks allow.
+    let connect = |process: Process, source: ArraySource| -> Result<Session, SessionError> {
+        let session = Session::connect(process, source)?;
+        if writes && !session.known_build() {
+            eprintln!("note: no build profile for this build; writing where the checks pass (see `health`)");
+            session.allow_unknown_build();
+        }
+        Ok(session)
+    };
 
     match cli.command.unwrap_or(Command::Info) {
         Command::Info => {
             let (game, modules) = inspect(&process)?;
             info(&process, &game, &modules, elevated, json)
         }
+        Command::Health => health(&connect(process, ArraySource::ProfileFirst)?),
         Command::Calibrate { scan } => {
             let source = if scan { ArraySource::ScanOnly } else { ArraySource::ProfileFirst };
-            calibrate(&Session::connect(process, source)?)
+            calibrate(&connect(process, source)?)
         }
-        Command::Player { uid } => player(&Session::connect(process, ArraySource::ProfileFirst)?, uid),
-        Command::Staff { text, limit } => {
-            staff(&Session::connect(process, ArraySource::ProfileFirst)?, text.as_deref(), limit)
-        }
-        Command::StaffMember { uid } => staff_member(&Session::connect(process, ArraySource::ProfileFirst)?, uid),
-        Command::Clubs { text, limit } => {
-            clubs(&Session::connect(process, ArraySource::ProfileFirst)?, text.as_deref(), limit)
-        }
-        Command::Club { uid } => club(&Session::connect(process, ArraySource::ProfileFirst)?, uid),
+        Command::Player { uid } => player(&connect(process, ArraySource::ProfileFirst)?, uid),
+        Command::Staff { text, limit } => staff(&connect(process, ArraySource::ProfileFirst)?, text.as_deref(), limit),
+        Command::StaffMember { uid } => staff_member(&connect(process, ArraySource::ProfileFirst)?, uid),
+        Command::Clubs { text, limit } => clubs(&connect(process, ArraySource::ProfileFirst)?, text.as_deref(), limit),
+        Command::Club { uid } => club(&connect(process, ArraySource::ProfileFirst)?, uid),
         Command::Players { text, limit, filter } => {
-            players(&Session::connect(process, ArraySource::ProfileFirst)?, text.as_deref(), limit, &filter)
+            players(&connect(process, ArraySource::ProfileFirst)?, text.as_deref(), limit, &filter)
         }
         Command::Fields { entity, stats } => {
-            fields(&Session::connect(process, ArraySource::ProfileFirst)?, entity.into(), stats)
+            fields(&connect(process, ArraySource::ProfileFirst)?, entity.into(), stats)
         }
         Command::Get { entity, uid, fields } => {
-            get(&Session::connect(process, ArraySource::ProfileFirst)?, entity.into(), uid, &fields)
+            get(&connect(process, ArraySource::ProfileFirst)?, entity.into(), uid, &fields)
         }
         Command::Set { entity, uid, field, value, shown, restore, hold } => {
-            let session = Session::connect(process, ArraySource::ProfileFirst)?;
+            let session = connect(process, ArraySource::ProfileFirst)?;
             set(&session, entity.into(), uid, &field, &value, shown, restore.then_some(hold))
         }
         Command::Move { uid, club, wage, expires, fee, restore, hold } => {
             let expires = expires.as_deref().map(parse_iso_date).transpose()?.map(FmDate::to_number);
             let terms = MoveTerms { wage, expires };
-            let session = Session::connect(process, ArraySource::ProfileFirst)?;
+            let session = connect(process, ArraySource::ProfileFirst)?;
             move_player(&session, uid, club, terms, fee, restore, hold)
         }
         Command::Release { uid, restore, hold } => {
-            release_player(&Session::connect(process, ArraySource::ProfileFirst)?, uid, restore, hold)
+            release_player(&connect(process, ArraySource::ProfileFirst)?, uid, restore, hold)
         }
         Command::StaffMove { id, club, restore } => {
-            staff_change(&Session::connect(process, ArraySource::ProfileFirst)?, id, StaffAction::Move(club), restore)
+            staff_change(&connect(process, ArraySource::ProfileFirst)?, id, StaffAction::Move(club), restore)
         }
         Command::StaffJob { id, job, restore } => {
-            staff_change(&Session::connect(process, ArraySource::ProfileFirst)?, id, StaffAction::Job(job), restore)
+            staff_change(&connect(process, ArraySource::ProfileFirst)?, id, StaffAction::Job(job), restore)
         }
         Command::Heal { uid, heal, restore, hold } => {
             let restore_after = restore.then_some(hold);
-            heal_player(&Session::connect(process, ArraySource::ProfileFirst)?, uid, heal, restore_after)
+            heal_player(&connect(process, ArraySource::ProfileFirst)?, uid, heal, restore_after)
         }
         Command::Bans { uid, lift, restore, hold } => {
             let restore_after = restore.then_some(hold);
-            ban_list(&Session::connect(process, ArraySource::ProfileFirst)?, uid, lift, restore_after)
+            ban_list(&connect(process, ArraySource::ProfileFirst)?, uid, lift, restore_after)
         }
         Command::Retirements { uid, keep, restore, hold } => {
             let restore_after = restore.then_some(hold);
-            retirements(&Session::connect(process, ArraySource::ProfileFirst)?, uid, keep, restore_after)
+            retirements(&connect(process, ArraySource::ProfileFirst)?, uid, keep, restore_after)
         }
         Command::Ties { uid } => {
-            let session = Session::connect(process, ArraySource::ProfileFirst)?;
+            let session = connect(process, ArraySource::ProfileFirst)?;
             tie_change(&session, uid, None, RestoreArgs { restore: false, hold: 0 })
         }
         Command::TieSet { uid, index, nation, club, rule, restore } => {
-            let session = Session::connect(process, ArraySource::ProfileFirst)?;
+            let session = connect(process, ArraySource::ProfileFirst)?;
             let target = nation.map(TieUid::Nation).or(club.map(TieUid::Club));
             tie_change(&session, uid, Some(TieAction::Set { index, target, rule }), restore)
         }
         Command::TieRemove { uid, index, restore } => {
-            let session = Session::connect(process, ArraySource::ProfileFirst)?;
+            let session = connect(process, ArraySource::ProfileFirst)?;
             tie_change(&session, uid, Some(TieAction::Remove { index }), restore)
         }
         Command::TieAdd { uid, tie, target, rule, restore } => {
-            let session = Session::connect(process, ArraySource::ProfileFirst)?;
+            let session = connect(process, ArraySource::ProfileFirst)?;
             let (tie, target) = match tie {
                 TieArg::Nationality => (Tie::Nationality, TieUid::Nation(target)),
                 TieArg::Nation => (Tie::TrainedInNation, TieUid::Nation(target)),
@@ -842,12 +851,12 @@ fn run(cli: Cli) -> Result<()> {
             tie_change(&session, uid, Some(TieAction::Add { tie, target, rule }), restore)
         }
         Command::Swap { uid, other, restore } => {
-            swap_players(&Session::connect(process, ArraySource::ProfileFirst)?, uid, other, restore)
+            swap_players(&connect(process, ArraySource::ProfileFirst)?, uid, other, restore)
         }
-        Command::Teams { club } => teams(&Session::connect(process, ArraySource::ProfileFirst)?, club),
+        Command::Teams { club } => teams(&connect(process, ArraySource::ProfileFirst)?, club),
         Command::Captain { club, uid, vice, team, restore, hold } => {
             let role = if vice { CaptainRole::ViceCaptain } else { CaptainRole::Captain };
-            let session = Session::connect(process, ArraySource::ProfileFirst)?;
+            let session = connect(process, ArraySource::ProfileFirst)?;
             captain(&session, club, team, role, uid, restore.then_some(hold))
         }
         Command::Graphics { .. } => unreachable!("handled before attaching"),
@@ -880,17 +889,17 @@ fn run(cli: Cli) -> Result<()> {
             let modules = list_modules(&process).context("listing modules")?;
             refs(&process, &modules, resolve(&addr, &modules)?, parse_hex(&span)?, max)
         }
-        Command::Squads => squads(&Session::connect(process, ArraySource::ProfileFirst)?),
+        Command::Squads => squads(&connect(process, ArraySource::ProfileFirst)?),
         Command::Related { clubs, players, depth, span, tolerance, linear } => {
-            let session = Session::connect(process, ArraySource::ProfileFirst)?;
+            let session = connect(process, ArraySource::ProfileFirst)?;
             let roots = related_roots(&session, &clubs, &players)?;
             related(&session, &roots, depth, parse_hex(&span)?, tolerance, linear)
         }
         Command::TeamAverage { clubs, tolerance } => {
-            team_average(&Session::connect(process, ArraySource::ProfileFirst)?, &clubs, tolerance)
+            team_average(&connect(process, ArraySource::ProfileFirst)?, &clubs, tolerance)
         }
         Command::Nearby { clubs, players, to_club, window, tolerance, per_kind, bare, by_uid } => {
-            let session = Session::connect(process, ArraySource::ProfileFirst)?;
+            let session = connect(process, ArraySource::ProfileFirst)?;
             let of_players = !players.is_empty();
             let seen = if of_players { players } else { clubs };
             let targets = if by_uid {
@@ -901,12 +910,12 @@ fn run(cli: Cli) -> Result<()> {
             let options = NearbyOptions { by_uid, window: parse_hex(&window)?, tolerance, per_kind, bare };
             nearby(&session, &seen, &targets, &options)
         }
-        Command::Injuries { club } => injuries(&Session::connect(process, ArraySource::ProfileFirst)?, club),
+        Command::Injuries { club } => injuries(&connect(process, ArraySource::ProfileFirst)?, club),
         Command::Stats { min, max, club, player } => {
-            stats(&Session::connect(process, ArraySource::ProfileFirst)?, min, max, club, player)
+            stats(&connect(process, ArraySource::ProfileFirst)?, min, max, club, player)
         }
         Command::Histogram { offset, kind, contract, club, top } => {
-            let session = Session::connect(process, ArraySource::ProfileFirst)?;
+            let session = connect(process, ArraySource::ProfileFirst)?;
             histogram(&session, parse_hex(&offset)?, kind, contract, club.as_deref(), top)
         }
         Command::Types { text, max } => {
@@ -918,20 +927,20 @@ fn run(cli: Cli) -> Result<()> {
             let holds = holds.map(|bytes| parse_bytes(&bytes)).transpose()?;
             instances(&process, &modules, &class, max, holds.as_deref(), parse_hex(&span)?)
         }
-        Command::Clauses { uid } => clauses(&Session::connect(process, ArraySource::ProfileFirst)?, uid),
+        Command::Clauses { uid } => clauses(&connect(process, ArraySource::ProfileFirst)?, uid),
         Command::ClauseSet { uid, index, amount, condition, restore } => {
-            let session = Session::connect(process, ArraySource::ProfileFirst)?;
+            let session = connect(process, ArraySource::ProfileFirst)?;
             clause_change(&session, uid, ClauseAction::Set { index, amount, condition }, restore)
         }
         Command::ClauseRemove { uid, index, restore } => {
-            let session = Session::connect(process, ArraySource::ProfileFirst)?;
+            let session = connect(process, ArraySource::ProfileFirst)?;
             clause_change(&session, uid, ClauseAction::Remove { index }, restore)
         }
         Command::ClauseAdd { uid, amount, restore } => {
-            let session = Session::connect(process, ArraySource::ProfileFirst)?;
+            let session = connect(process, ArraySource::ProfileFirst)?;
             clause_change(&session, uid, ClauseAction::Add { amount }, restore)
         }
-        Command::Concerns { uid } => concerns(&Session::connect(process, ArraySource::ProfileFirst)?, uid),
+        Command::Concerns { uid } => concerns(&connect(process, ArraySource::ProfileFirst)?, uid),
         Command::Region { addr } => {
             let modules = list_modules(&process).context("listing modules")?;
             let addr = resolve(&addr, &modules)?;
@@ -960,7 +969,7 @@ fn run(cli: Cli) -> Result<()> {
         }
         Command::Lists { addr, len } => {
             let modules = list_modules(&process).context("listing modules")?;
-            let session = Session::connect(process, ArraySource::ProfileFirst)?;
+            let session = connect(process, ArraySource::ProfileFirst)?;
             lists(&session, &modules, resolve(&addr, &modules)?, parse_hex(&len)?)
         }
     }
@@ -2154,6 +2163,24 @@ fn inspect(process: &Process) -> Result<(GameInfo, Vec<Module>)> {
 
 // ---------------------------------------------------------------------------
 // calibrate / players
+
+fn health(session: &Session) -> Result<()> {
+    println!("{GAME_PLUGIN} build: {}", session.fingerprint);
+    match &session.profile {
+        Some(profile) => println!("Build profile: {}", profile.name),
+        None => println!("Build profile: none for this build: the editor does not write to it unless allowed"),
+    }
+    let started = Instant::now();
+    let health = session.recheck();
+    println!("Checks ({:.0?}):", started.elapsed());
+    for result in &health.results {
+        let verdict = if result.passed { "pass" } else { "FAIL" };
+        let note = if result.note.is_empty() { String::new() } else { format!("; {}", result.note) };
+        println!("  {verdict}  {:<12} {:>5} of {:>5} fit{note}", result.check.key(), result.fit, result.sampled);
+    }
+    println!("In-game date: {}", iso_date(session.game_date()));
+    Ok(())
+}
 
 fn calibrate(session: &Session) -> Result<()> {
     println!("{GAME_PLUGIN} build: {}", session.fingerprint);

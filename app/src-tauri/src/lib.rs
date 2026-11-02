@@ -8,7 +8,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use fmlibre_core::{
     ArraySource, CaptainRole, CaptainSet, Change, Clause, ClauseSet, ClubDetails, ClubFilter, ClubIndex, ClubMove,
     Coded, EditError, Entity, EntityArrays, FeePlan, Field, FmDate, GAME_EXE, GAME_PLUGIN, GameInfo, GraphicsCounts,
-    GraphicsIndex, HOMEGROWN_RULES, Healed, Kind, Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation,
+    GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind, Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation,
     Operation, Paid, Picture, Planned, PlayerDetails, PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary,
     RelationSet, RetirementSet, STAFF_JOBS, SearchIndex, Session, SessionError, Skipped, StaffChange, StaffDetails,
     StaffFilter, StaffIndex, StaffPlan, Target, Tie, TieTarget, find_game, nations, sort_players,
@@ -54,6 +54,9 @@ impl Connection {
     /// Reads every list. A reload keeps the change log; a mass edit previewed before is dropped,
     /// since its people may have moved.
     fn load(session: Session, log: Vec<LoggedChange>, frozen: BTreeMap<u32, i64>) -> Result<Self, Failure> {
+        // The game may have loaded a save or moved on since the checks last ran; the date the lists' ages are worked
+        // out from is one of them.
+        session.recheck();
         let players = PlayerIndex::new(session.players()?);
         let staff = session.staff()?;
         let human_clubs = staff.iter().filter(|member| member.is_human).filter_map(|member| member.club_uid).collect();
@@ -74,7 +77,10 @@ impl Connection {
             clubs: self.clubs.len(),
             game_date: self.session.game_date(),
             load_ms,
-            editable: self.session.process.can_write(),
+            editable: self.session.process.can_write() && self.session.writes_allowed(),
+            writable: self.session.process.can_write(),
+            known_build: self.session.known_build(),
+            health: Health::clone(&self.session.health()),
         }
     }
 
@@ -1054,8 +1060,15 @@ struct ConnectionInfo {
     clubs: usize,
     game_date: Option<FmDate>,
     load_ms: u128,
-    /// Whether Windows let the app open the game for writing, which editing needs.
+    /// Whether edits can be written: the system let the app open the game for writing, and the build is one the
+    /// editor knows or editing it was allowed.
     editable: bool,
+    /// Whether the system let the app open the game for writing.
+    writable: bool,
+    /// Whether the editor has a profile for this build of the game: one it was checked with.
+    known_build: bool,
+    /// What the checks the editor makes before it writes found on this game.
+    health: Health,
 }
 
 #[derive(Serialize)]
@@ -1065,6 +1078,8 @@ struct ReloadInfo {
     staff: usize,
     clubs: usize,
     game_date: Option<FmDate>,
+    /// The checks, run again with the game as it is now.
+    health: Health,
 }
 
 /// One page of search results.
@@ -1198,6 +1213,16 @@ fn current_connection(state: State<'_, AppState>) -> Result<Option<ConnectionInf
     Ok(guard.as_ref().map(|connection| connection.info(0)))
 }
 
+/// Lets the editor write to a build of the game it has no profile for, as far as its checks allow, for as long as
+/// the app stays connected.
+#[tauri::command]
+fn allow_editing(state: State<'_, AppState>) -> Result<ConnectionInfo, Failure> {
+    let guard = state.0.lock()?;
+    let connection = guard.as_ref().ok_or_else(not_connected)?;
+    connection.session.allow_unknown_build();
+    Ok(connection.info(0))
+}
+
 /// Reads everything again, e.g. after the game has moved on. Drops the connection when that fails.
 #[tauri::command]
 async fn reload(state: State<'_, AppState>) -> Result<ReloadInfo, Failure> {
@@ -1211,6 +1236,7 @@ async fn reload(state: State<'_, AppState>) -> Result<ReloadInfo, Failure> {
         staff: connection.staff.len(),
         clubs: connection.clubs.len(),
         game_date: connection.session.game_date(),
+        health: Health::clone(&connection.session.health()),
     };
     *state.0.lock()? = Some(connection);
     Ok(info)
@@ -1338,13 +1364,19 @@ fn edit_fields(state: State<'_, AppState>, entity: Entity) -> Result<Vec<Field>,
 
 /// The value of every field of one player, member of staff or club that can be edited
 /// now, as stored, read now. Fields without their record (no contract, a club without
-/// full finances) and dates the game has not set are left out.
+/// full finances), dates the game has not set and fields whose check did not pass are
+/// left out.
 #[tauri::command]
 fn read_values(state: State<'_, AppState>, entity: Entity, uid: u32) -> Result<BTreeMap<String, i64>, Failure> {
     let guard = state.0.lock()?;
     let connection = guard.as_ref().ok_or_else(not_connected)?;
     let (target, _) = connection.target(entity, uid)?;
-    let fields = connection.session.fields(entity);
+    let fields: Vec<Field> = connection
+        .session
+        .fields(entity)
+        .into_iter()
+        .filter(|field| connection.session.field_lock(field).is_none())
+        .collect();
     let values = connection.session.read_fields(&target, &fields)?;
     Ok(fields
         .into_iter()
@@ -1750,6 +1782,12 @@ fn team_action(state: State<'_, AppState>, club: u32, team: usize, action: TeamA
         .find(|found| found.index == team)
         .ok_or(MoveError::NoTeam { index: team })?
         .players;
+    // Healing and lifting bans change the players' records: refused once, not once for every player.
+    if matches!(action, TeamAction::Heal | TeamAction::LiftBans)
+        && let Some(lock) = connection.session.structure_lock()
+    {
+        return Err(MoveError::Locked(lock).into());
+    }
     let batch = connection.fresh_id();
     let values: &[(&str, i64)] = match action {
         TeamAction::Heal => {
@@ -1969,6 +2007,7 @@ pub fn run() {
             detect_game,
             connect,
             current_connection,
+            allow_editing,
             reload,
             search_players,
             search_staff,

@@ -3,6 +3,7 @@ import { call, inTauri } from "./api";
 import { BridgeSetup } from "./BridgeSetup";
 import { ChangesView, useChangeLog } from "./ChangesView";
 import { ClubBrowser } from "./ClubBrowser";
+import { CompatibilityNotice } from "./CompatibilityNotice";
 import { forgetFieldTables } from "./fieldTables";
 import { describeError, describeGame, formatDate } from "./format";
 import { GraphicsStatus } from "./GraphicsStatus";
@@ -141,9 +142,25 @@ function App() {
     void reloadLog();
   }, [reloadLog]);
 
+  // A version of the game the editor has no profile for is read-only until editing it is allowed.
+  const allowEditing = async () => {
+    setError(null);
+    try {
+      setConnection(await call<ConnectionInfo>("allow_editing"));
+    } catch (e) {
+      setError(describeError(e));
+    }
+  };
+
   const editable = connection?.editable ?? false;
   // The note on applying edits, the colophon's first: whole in its hover too, should a window ever be too narrow for it.
-  const note = connection ? (editable ? appText.noteEditable : appText.noteReadOnly) : appText.noteNotConnected;
+  const note = !connection
+    ? appText.noteNotConnected
+    : editable
+      ? appText.noteEditable
+      : connection.writable
+        ? appText.noteUnknownBuild
+        : appText.noteReadOnly;
   const editor = useMemo(() => ({ editable, onEdited: edited }), [editable, edited]);
 
   // With edits pending in the open profile, leaving for another view asks first.
@@ -196,6 +213,17 @@ function App() {
 
       <div className="main">
         {update.notice && <UpdateNotice release={update.notice} current={update.current} onLater={update.later} />}
+        {connection && (
+          <CompatibilityNotice
+            connection={connection}
+            busy={busy !== null}
+            onAllow={allowEditing}
+            onCheckUpdates={() => {
+              setAskedUpdate(true);
+              update.check();
+            }}
+          />
+        )}
         {error && <div className="banner">{error}</div>}
 
         {connection ? (
