@@ -870,6 +870,10 @@ export const es: Strings = {
 
     notConnected: "Sin conexión",
     previewTag: "vista previa en el navegador · datos de ejemplo",
+    noDate: "Sin fecha del juego",
+    noDateTitle:
+      "FMLibreEditor no pudo leer la fecha del juego en esta versión del juego, así que no se muestran las edades y " +
+      "los filtros de edad no encuentran a nadie. Busca actualizaciones.",
     reload: "Recargar datos",
     refresh: "Actualizar",
     detecting: "Buscando Football Manager…",

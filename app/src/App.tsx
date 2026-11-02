@@ -173,7 +173,14 @@ function App() {
         </nav>
         <div className="masthead-side">
           {busy && <span className="busy">{busy}</span>}
-          {connection?.gameDate && <span className="game-date">{formatDate(connection.gameDate)}</span>}
+          {connection &&
+            (connection.gameDate ? (
+              <span className="game-date">{formatDate(connection.gameDate)}</span>
+            ) : (
+              <span className="game-date missing" title={appText.noDateTitle}>
+                {appText.noDate}
+              </span>
+            ))}
           {connection ? (
             <button onClick={reload} disabled={busy !== null}>
               {appText.reload}

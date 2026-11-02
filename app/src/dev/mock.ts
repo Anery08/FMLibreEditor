@@ -2018,6 +2018,8 @@ let mockConnection: ConnectionInfo | null = null;
  * was started without the bridge. The first set-up meets a running Steam, as the real one would; the next one works.
  */
 const macPreview = new URLSearchParams(window.location.search).has("macos");
+/** `?nodate` previews a version of the game whose in-game date the editor cannot read. */
+const gameDate = new URLSearchParams(window.location.search).has("nodate") ? null : GAME_DATE;
 const notSetUp = (): BridgeInfo => ({
   ready: false,
   installed: false,
@@ -2078,7 +2080,7 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         players: players.length,
         staff: staff.length,
         clubs: clubs.length,
-        gameDate: GAME_DATE,
+        gameDate,
         loadMs: 480,
         editable: true,
       };
@@ -2092,7 +2094,7 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       // Like the real command after a window reload; here a reload starts the fixtures afresh, so it is null then.
       return (mockConnection && { ...mockConnection, loadMs: 0 }) as T;
     case "reload": {
-      const reloaded: ReloadInfo = { players: players.length, staff: staff.length, clubs: clubs.length, gameDate: GAME_DATE };
+      const reloaded: ReloadInfo = { players: players.length, staff: staff.length, clubs: clubs.length, gameDate };
       return reloaded as T;
     }
     case "search_players": {

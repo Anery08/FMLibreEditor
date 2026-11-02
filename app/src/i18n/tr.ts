@@ -847,6 +847,10 @@ export const tr: Strings = {
 
     notConnected: "Bağlı değil",
     previewTag: "tarayıcı önizlemesi · örnek veriler",
+    noDate: "Oyun içi tarih yok",
+    noDateTitle:
+      "FMLibreEditor oyunun bu sürümünde oyun içi tarihi okuyamadı; bu yüzden yaşlar gösterilmiyor ve yaş " +
+      "filtreleri kimseyi bulmuyor. Güncellemeleri kontrol edin.",
     reload: "Verileri yeniden oku",
     refresh: "Yenile",
     detecting: "Football Manager aranıyor…",
