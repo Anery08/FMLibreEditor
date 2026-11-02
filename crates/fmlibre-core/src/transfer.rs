@@ -32,6 +32,7 @@ use crate::clubs::ClubSummary;
 use crate::coded::Coded;
 use crate::date::FmDate;
 use crate::edit::{EditError, Entity, Field, Kind, Target};
+use crate::health::Lock;
 use crate::players::PlayerSummary;
 use crate::profile::HeapLayout;
 use crate::session::Session;
@@ -228,6 +229,8 @@ pub enum MoveError {
     SameClause,
     /// The contract's list of clauses has no room for another.
     ClausesFull,
+    /// The editor does not make this change to this game: see [`Lock`].
+    Locked(Lock),
     Memory(fmlibre_mem::Error),
 }
 
@@ -307,6 +310,7 @@ impl fmt::Display for MoveError {
             MoveError::ClausesFull => f.write_str(
                 "the contract's list of clauses has no room for another, and the editor cannot make it bigger",
             ),
+            MoveError::Locked(lock) => write!(f, "nothing was changed: {lock}"),
             MoveError::Memory(err) => write!(f, "{err}"),
         }
     }
@@ -353,6 +357,7 @@ impl Coded for MoveError {
             MoveError::NotInClause { .. } => "clause.notInClause",
             MoveError::SameClause => "clause.same",
             MoveError::ClausesFull => "clause.noRoom",
+            MoveError::Locked(lock) => lock.code(),
             MoveError::Memory(err) => err.code(),
         }
     }
@@ -378,6 +383,7 @@ impl Coded for MoveError {
             MoveError::NoRelation { index } | MoveError::NoClause { index } => vec![("index", index.to_string())],
             MoveError::NotInClause { field } => vec![("field", (*field).to_owned())],
             MoveError::UnknownRule { rule } => vec![("rule", rule.to_string())],
+            MoveError::Locked(lock) => lock.params(),
             MoveError::Memory(err) => err.params(),
             _ => Vec::new(),
         }
@@ -758,8 +764,17 @@ impl Session {
     }
 
     /// Writes `patches` in order, each over the bytes it expects, after checking them all;
-    /// when one fails, the ones before it are put back.
+    /// when one fails, the ones before it are put back. Refused while the checks a change to
+    /// the game's lists and records needs have not passed (see [`Session::structure_lock`]).
     pub(crate) fn apply_patches(&self, patches: &[Patch]) -> Result<(), MoveError> {
+        if let Some(lock) = self.structure_lock() {
+            return Err(MoveError::Locked(lock));
+        }
+        self.write_patches(patches)
+    }
+
+    /// [`Session::apply_patches`] without the checks, for what an undo puts back.
+    pub(crate) fn write_patches(&self, patches: &[Patch]) -> Result<(), MoveError> {
         for patch in patches {
             self.expect(patch.address, &patch.before)?;
         }

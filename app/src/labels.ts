@@ -126,6 +126,12 @@ export const graphicsText = strings.graphics;
 /** New versions: the notice under the masthead and Check for updates at the foot of the window. */
 export const updateText = strings.update;
 
+/** A version of the game the editor was not checked with, or whose data did not check out: the notice about it. */
+export const compatibilityText = strings.compatibility;
+
+/** What each of the checks the editor makes before it writes is about, as the notice and the errors name them. */
+export const CHECK_NAMES = strings.checks;
+
 /** Editing a person or a club: the Edit button, the inputs, and the footer under the profile. */
 export const editText = strings.edit;
 

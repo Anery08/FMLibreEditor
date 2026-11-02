@@ -18,11 +18,13 @@ import type {
   ClubFilter,
   ClubPage,
   ClubSummary,
+  CheckKey,
   ConnectionInfo,
   Detection,
   Failure,
   FmDate,
   GameInfo,
+  Health,
   Ban,
   Injury,
   Tie,
@@ -66,8 +68,8 @@ const game: GameInfo = {
   exePath: "D:\\Games\\Football Manager 27\\Content\\fm.exe",
   storefront: "gamePass",
   edition: 27,
-  packageFullName: "SportsInteractive.FootballManager27_0.9.2355.0_x64__5w3tn6tb6stnm",
-  packageVersion: "0.9.2355.0",
+  packageFullName: "SportsInteractive.FootballManager27_0.9.2409.0_x64__5w3tn6tb6stnm",
+  packageVersion: "0.9.2409.0",
   steamBuild: null,
 };
 
@@ -2014,6 +2016,36 @@ const frozenMoney = new Set<number>();
 let mockConnection: ConnectionInfo | null = null;
 
 /**
+ * `?unknownbuild` in the address previews a version of the game the editor has no profile for: read-only until Edit
+ * anyway. `?failedchecks` previews checks that did not pass: the attributes, the contracts and the in-game date.
+ */
+const unknownBuild = new URLSearchParams(window.location.search).has("unknownbuild");
+const failedChecks = new URLSearchParams(window.location.search).has("failedchecks");
+const CHECKS: CheckKey[] = [
+  "gameDate",
+  "players",
+  "positions",
+  "attributes",
+  "personality",
+  "liveValues",
+  "contracts",
+  "teams",
+  "staff",
+  "clubs",
+];
+const FAILING: CheckKey[] = ["gameDate", "attributes", "contracts"];
+
+/** What the checks find in the fixtures: every one passes, but for the failing ones of `?failedchecks`. */
+function mockHealth(): Health {
+  return {
+    results: CHECKS.map((check) => {
+      const passed = !(failedChecks && FAILING.includes(check));
+      return { check, passed, fit: passed ? 2000 : 640, sampled: 2000 };
+    }),
+  };
+}
+
+/**
  * `?macos` in the address previews the connect panel on macOS: the bridge is not set up, Steam is running, and the game
  * was started without the bridge. The first set-up meets a running Steam, as the real one would; the next one works.
  */
@@ -2068,7 +2100,7 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
     case "connect": {
       const info: ConnectionInfo = {
         game,
-        profile: "FM27 0.9.2355.0 (Game Pass, Launch Preview)",
+        profile: unknownBuild ? null : "FM27 0.9.2409.0 (Game Pass)",
         arrays: {
           players: { pairRva: 0x5681dc0, count: players.length, confidence: 1 },
           staff: { pairRva: 0x5681e08, count: 120, confidence: 1 },
@@ -2078,9 +2110,12 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         players: players.length,
         staff: staff.length,
         clubs: clubs.length,
-        gameDate: GAME_DATE,
+        gameDate: failedChecks ? null : GAME_DATE,
         loadMs: 480,
-        editable: true,
+        editable: !unknownBuild,
+        writable: true,
+        knownBuild: !unknownBuild,
+        health: mockHealth(),
       };
       mockConnection = info;
       return info as T;
@@ -2088,11 +2123,24 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
     case "graphics_info":
       // A plain browser has no graphics packs: every picture falls back.
       return { root: null, ready: true, counts: { clubLogos: 0, faces: 0, flags: 0, competitionLogos: 0 } } as T;
+    case "allow_editing": {
+      if (!mockConnection) {
+        throw failure("app.notConnected", "Not connected to the game");
+      }
+      mockConnection = { ...mockConnection, editable: mockConnection.writable };
+      return mockConnection as T;
+    }
     case "current_connection":
       // Like the real command after a window reload; here a reload starts the fixtures afresh, so it is null then.
       return (mockConnection && { ...mockConnection, loadMs: 0 }) as T;
     case "reload": {
-      const reloaded: ReloadInfo = { players: players.length, staff: staff.length, clubs: clubs.length, gameDate: GAME_DATE };
+      const reloaded: ReloadInfo = {
+        players: players.length,
+        staff: staff.length,
+        clubs: clubs.length,
+        gameDate: failedChecks ? null : GAME_DATE,
+        health: mockHealth(),
+      };
       return reloaded as T;
     }
     case "search_players": {

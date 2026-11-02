@@ -97,6 +97,10 @@ impl Session {
     ) -> Result<Plan, EditError> {
         for (field, operation) in operations {
             operation.check(field)?;
+            // A field the editor would not write is refused once, not once for every target.
+            if let Some(lock) = self.field_lock(field) {
+                return Err(EditError::Locked { field: field.key.clone(), lock });
+            }
         }
         let fields: Vec<Field> = operations.iter().map(|(field, _)| field.clone()).collect();
         let mut plan = Plan::default();
