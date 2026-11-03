@@ -2450,32 +2450,67 @@ select.edit-input {
   font-weight: 600;
 }
 
-/* Current and potential ability side by side, not as two rows across the whole panel; so are a player's nationality,
-   birth date and height, and the values of his Medical group. */
-.edit-ability .stats,
-.edit-personal .stats,
+/* The values of a player's Medical group side by side, not as rows across the whole panel. */
 .medical-values {
   display: flex;
   flex-wrap: wrap;
   gap: 0 28px;
 }
 
-.edit-ability .stat,
-.edit-personal .stat,
 .medical-values .stat {
   flex: none;
   gap: 12px;
 }
 
-/* The position ratings: as many cells to a row as fit. */
-.edit-grid {
+/* The position ratings under the pitch: as many cells to a row as fit, each value with the colour of its band. */
+.position-ratings {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(6.4rem, 1fr));
   gap: 0 16px;
 }
 
-.edit-grid .stat dt {
+.position-ratings .stat dt {
   color: var(--text);
+}
+
+.position-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+/* In the header, the inputs take the place of the values they change: the abilities stay big, and the nationality,
+   the birth date and the height sit in their lines. */
+.profile-abilities .edit-input {
+  font-size: 22px;
+  font-stretch: 82%;
+  font-weight: 850;
+  line-height: 1.1;
+}
+
+.profile-meta .edit-input,
+.profile-vitals .edit-input {
+  padding-block: 1px;
+  font-size: 13px;
+}
+
+/* The list of nations is as wide as its longest name; in the header it keeps to the line it is on. */
+.profile-meta select.edit-input {
+  max-width: 9rem;
+}
+
+.edit-with-unit {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+/* An input in a line of small print or under the abilities wants a little air around it. */
+.profile.editing .profile-meta,
+.profile.editing .profile-vitals {
+  line-height: 2;
 }
 
 /* The bar under the body of a profile: what Apply said, the list of changes and the footer with the buttons. */

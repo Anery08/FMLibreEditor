@@ -1,3 +1,4 @@
+import { EditableValue } from "./EditControls";
 import { POSITION_LABELS, profileText, type PositionKey } from "./labels";
 
 /** Rating bands, best first. `range` is what the legend prints. */
@@ -96,5 +97,35 @@ export function PositionPitch({ ratings }: { ratings: Record<string, number> }) 
         ))}
       </ul>
     </>
+  );
+}
+
+/**
+ * Every position's rating, in the order of the pitch, with the colour of its band; while the player is edited, each is
+ * an input where it is shown. The sweeper is left out: the game no longer plays one.
+ */
+export function PositionRatings({ ratings }: { ratings: Record<string, number> }) {
+  return (
+    <section className="profile-group">
+      <h3>{profileText.positionRatings}</h3>
+      <dl className="stats position-ratings">
+        {PITCH_ORDER.filter((key) => key !== "sw").map((key) => {
+          const value = ratings[key] ?? 0;
+          const tier = tierOf(value);
+          const label = POSITION_LABELS[key];
+          return (
+            <div className="stat" key={key} title={profileText.positionTooltip(label, value, profileText.positionTiers[tier])}>
+              <dt>{label}</dt>
+              <dd className="position-rating">
+                <EditableValue field={`position.${key}`}>
+                  <span className={`swatch pos-${tier}`} aria-hidden="true" />
+                  {value}
+                </EditableValue>
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+    </section>
   );
 }

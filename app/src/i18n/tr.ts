@@ -508,6 +508,7 @@ export const tr: Strings = {
     freeAgent: "Serbest",
     born: "Doğum",
     height: (cm) => `${cm} cm`,
+    heightUnit: "cm",
     uid: "UID",
     currentAbility: "Mevcut yetenek",
     currentAbilityShort: "MY",
@@ -530,6 +531,7 @@ export const tr: Strings = {
     // Positions
     positions: "Pozisyonlar",
     positionsSummary: (best) => `Pozisyon puanları: ${best}`,
+    positionRatings: "Pozisyon puanları",
     positionTiers: {
       natural: "Doğal",
       accomplished: "Usta",
@@ -1002,9 +1004,6 @@ export const tr: Strings = {
     edit: "Düzenle",
     editTitle: "Bu profilin değerlerini oyunda değiştir",
     startFailed: (reason) => `Düzenleme başlatılamadı: ${reason}`,
-    ability: "Yetenek",
-    personalDetails: "Kişisel bilgiler",
-    positionRatings: "Pozisyon puanları",
     positionRating: (position) => `${position} puanı`,
     was: (value) => `önceki: ${value}`,
     invalid: (min, max) => `${min} ile ${max} arasında bir tam sayı girin`,

@@ -1,23 +1,23 @@
-// What editing draws: the inputs, the Edit button, the bar under a profile, and the groups only editing has.
+// What editing draws: the inputs, which take the place of the values they change, the Edit button, and the bar under a
+// profile.
 
 import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from "react";
 import { valueText, type Pending } from "./editDraft";
 import { isoFromNumber, isStoredFiner } from "./editing";
 import { currencySymbol } from "./format";
-import { changesText, choiceLabel, editText, fieldLabel, POSITION_LABELS, valueChange } from "./labels";
-import { PITCH_ORDER } from "./PositionPitch";
-import type { Entity } from "./types";
+import { changesText, choiceLabel, editText, fieldLabel, valueChange } from "./labels";
 import { useEditableField, useEditSession, type ProfileEditing, type Report } from "./useProfileEditing";
 
 /**
  * The input of an editable field, showing the value as the game shows it and taking the values it takes: a number
  * input, with the sign of the chosen currency before it for an amount of money and the percent sign after it for a percentage, or a
  * date input (`YYYY-MM-DD`, with the calendar of the browser) for a date. A field that holds a code from a list is a
- * select of its choices, and a yes-or-no a checkbox with the name of the field. A number that may be left empty says
- * "none" while it is. A changed input is outlined in the accent colour and says what it was; one that cannot be
- * applied is outlined as an error. Nothing while the profile is not being edited.
+ * select of its choices, and a yes-or-no a checkbox with the name of the field, or with Yes or No `inFact`, where the
+ * label beside it names the field. A number that may be left empty says "none" while it is. A changed input is
+ * outlined in the accent colour and says what it was; one that cannot be applied is outlined as an error. Nothing while
+ * the profile is not being edited.
  */
-export function EditInput({ field }: { field: string }) {
+export function EditInput({ field, inFact = false }: { field: string; inFact?: boolean }) {
   const session = useEditSession();
   const input = session?.input(field);
   if (!session || !input) {
@@ -32,7 +32,7 @@ export function EditInput({ field }: { field: string }) {
   const common = { "aria-invalid": status === "invalid" || undefined, "data-field": field };
 
   // A yes-or-no is a checkbox in a pill, like the tag that shows it while the profile is read: the pill carries the
-  // outline and the name of the field.
+  // outline and the name of the field, or in a fact its value, as the fact says it while the profile is read.
   if (spec.kind === "flag") {
     return (
       <label className={`edit-flag${outline}`} title={title || undefined}>
@@ -40,10 +40,11 @@ export function EditInput({ field }: { field: string }) {
           type="checkbox"
           checked={text === "1"}
           disabled={session.busy}
+          aria-label={inFact ? label : undefined}
           {...common}
           onChange={(e) => session.type(field, e.currentTarget.checked ? "1" : "0")}
         />
-        {label}
+        {inFact ? (text === "1" ? editText.yes : editText.no) : label}
       </label>
     );
   }
@@ -121,10 +122,13 @@ export function EditInput({ field }: { field: string }) {
   return control;
 }
 
-/** `children` while the profile is read, the input of `field` while it is edited. */
-export function EditableValue({ field, children }: { field: string; children: ReactNode }) {
+/**
+ * `children` while the profile is read, the input of `field` in their place while it is edited. `inFact`: the value of
+ * a fact, whose label names the field (see `EditInput`).
+ */
+export function EditableValue({ field, inFact, children }: { field: string; inFact?: boolean; children: ReactNode }) {
   const editing = useEditableField(field);
-  return editing ? <EditInput field={field} /> : children;
+  return editing ? <EditInput field={field} inFact={inFact} /> : children;
 }
 
 /** The Edit button in the header of a profile. It stays while editing, pressed, and then ends the editing like Done. */
@@ -285,79 +289,3 @@ function ReviewList({ id, changes }: { id: string; changes: Pending[] }) {
   );
 }
 
-/** Current and potential ability as inputs, above the attributes; there only while the person is being edited. */
-export function AbilityEditGroup({ entity }: { entity: Entity }) {
-  const editing = useEditableField("current_ability");
-  if (!editing) {
-    return null;
-  }
-  return (
-    <section className="profile-group edit-ability">
-      <h3>{editText.ability}</h3>
-      <dl className="stats">
-        {["current_ability", "potential_ability"].map((field) => (
-          <div className="stat" key={field}>
-            <dt>{fieldLabel(entity, field)}</dt>
-            <dd className="edit-cell">
-              <EditInput field={field} />
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </section>
-  );
-}
-
-/** What a player's header says about him that can be edited, in its order. */
-const PERSONAL_FIELDS = ["nation", "date_of_birth", "height"];
-
-/**
- * The nationality, birth date and height of a player, which his header shows, as inputs at the top, where they are
- * looked for first; there only while he is being edited.
- */
-export function PersonalEditGroup() {
-  const session = useEditSession();
-  const keys = session ? PERSONAL_FIELDS.filter((key) => session.has(key)) : [];
-  if (!session || keys.length === 0) {
-    return null;
-  }
-  return (
-    <section className="profile-group edit-personal">
-      <h3>{editText.personalDetails}</h3>
-      <dl className="stats">
-        {keys.map((key) => (
-          <div className="stat" key={key}>
-            <dt>{fieldLabel(session.entity, key)}</dt>
-            <dd className="edit-cell">
-              <EditInput field={key} />
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </section>
-  );
-}
-
-/** The position ratings as a grid of inputs, in the order of the pitch; there only while a player is being edited. */
-export function PositionEditGroup() {
-  const session = useEditSession();
-  const keys = session ? PITCH_ORDER.filter((key) => session.has(`position.${key}`)) : [];
-  if (!session || keys.length === 0) {
-    return null;
-  }
-  return (
-    <section className="profile-group">
-      <h3>{editText.positionRatings}</h3>
-      <dl className="stats edit-grid">
-        {keys.map((key) => (
-          <div className="stat" key={key} title={fieldLabel(session.entity, `position.${key}`)}>
-            <dt>{POSITION_LABELS[key]}</dt>
-            <dd className="edit-cell">
-              <EditInput field={`position.${key}`} />
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </section>
-  );
-}

@@ -448,6 +448,7 @@ A page of the yearbook that opens beside the row.
 ### Edit Mode and the Highlighter
 Every change waits in highlighter until it is applied.
 - **Entering:** the Edit toggle turns from ink-filled to pressed (raised fill, ink text, inset ink ring) and a 4px highlighter rule appears under the profile head.
+- **In place:** every value that can be edited is shown while the profile is read, and Edit turns it into an input where it is: the abilities under the close button (inputs at 22px), the nationality, birth date and height in the head's lines, the position ratings in their group under the pitch, the transfer and loan lists as Yes or No in the contract. No group appears only while editing; the traits are the one exception, a checkbox for each of the 64 where the profile lists only the player's own.
 - **Inputs:** right-aligned tabular inputs sized to their largest value (`--digits`), field background, frame outline, no spin buttons. A changed value fills with highlighter and an ink edge; an invalid one turns brick-soft with a doubled brick edge; while writing, inputs dim to 60%. Yes-or-no fields are checkboxes in a tag-like frame.
 - **Footer:** a 2px ink rule, the change count led by a highlighter swatch, then Review, Discard, Apply (ink-filled) and Done. The review list opens above it on a highlighter ground; the Apply report sits on the raised tone, problems in brick.
 - The same highlighter marks changed values in the move dialog's contract fields.

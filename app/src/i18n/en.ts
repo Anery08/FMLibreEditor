@@ -450,6 +450,8 @@ export const en = {
     freeAgent: "Free agent",
     born: "Born",
     height: (cm: number) => `${cm} cm`,
+    /** After the input of the height, while the player is edited. */
+    heightUnit: "cm",
     uid: "UID",
     currentAbility: "Current ability",
     currentAbilityShort: "CA",
@@ -474,6 +476,8 @@ export const en = {
     // Positions
     positions: "Positions",
     positionsSummary: (best: string) => `Position ratings: ${best}`,
+    /** The group of every position's rating, under the pitch. */
+    positionRatings: "Position ratings",
     positionTiers: {
       natural: "Natural",
       accomplished: "Accomplished",
@@ -1051,12 +1055,6 @@ export const en = {
     editTitle: "Change this profile's values in the game",
     /** Why editing did not start: the field table or the values could not be read. */
     startFailed: (reason: string) => `Could not start editing: ${reason}`,
-    /** The group of current and potential ability, above the attributes. */
-    ability: "Ability",
-    /** The group of a player's nationality, birth date and height, which the header shows, beside it. */
-    personalDetails: "Personal details",
-    /** The grid of inputs under the pitch. */
-    positionRatings: "Position ratings",
     /** The name of a position's field, e.g. "ST rating"; `position` is its entry in `positions`. */
     positionRating: (position: string) => `${position} rating`,
     /** Hover text of a changed input: the value it started from, as shown. */
