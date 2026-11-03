@@ -171,6 +171,9 @@ const errors: ErrorTexts = {
   "app.noChange": (p) => `${p.id} numaralı bir değişiklik yok.`,
   "app.alreadyUndone": () => "Bu değişiklik zaten geri alındı.",
   "export.failed": (p) => `Dosya yazılamadı: ${p.reason}`,
+  "export.notAllowed": (p) =>
+    `FMLibreEditor ${p.folder} klasörüne yazamıyor. macOS, Belgeler klasörünü kullanıp kullanamayacağını sorduysa ` +
+    "Sistem Ayarları › Gizlilik ve Güvenlik › Dosyalar ve Klasörler'den izin verin, sonra yeniden dışa aktarın.",
   "export.noFolder": () => "Dışa aktarılacak bir klasör yok.",
   "export.notExported": () => "Bu, FMLibreEditor'ün dışa aktardığı bir dosya değil.",
   "export.openFailed": (p) => `Açılamadı: ${p.reason}`,

@@ -1,7 +1,8 @@
 # Builds the Windows installer, the portable zip and the macOS app.
 # - A version tag (v0.1.0) runs the checks, builds, and opens a draft GitHub release with the
-#   three files and latest.json; a maintainer reviews the draft and publishes it. Once it is
-#   published, installed Windows copies find it through latest.json and update themselves.
+#   three files, the macOS app's update and latest.json; a maintainer reviews the draft and
+#   publishes it. Once it is published, installed Windows copies and macOS apps find it through
+#   latest.json and update themselves.
 # - A pull request that changes how releases are built, or a run started by hand, builds the
 #   same files and keeps them as workflow artifacts only.
 # Pull requests are otherwise checked locally before they are opened, which spares the Windows
@@ -218,11 +219,23 @@ jobs:
           xcrun stapler staple "$app"
           spctl --assess --type execute --verbose=2 "$app"
 
+      # The zip is for people to download. The .tar.gz is what installed apps update from: the same
+      # app (notarized, when it is signed), without macOS's extended attributes, signed like the
+      # Windows installer with the key whose public half is in tauri.conf.json
+      # (TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD), the version in the
+      # signature.
       - name: Package the app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           mkdir -p out
-          ditto -c -k --sequesterRsrc --keepParent \
-            target/universal-apple-darwin/release/bundle/macos/FMLibreEditor.app out/FMLibreEditor-macOS.zip
+          bundle=target/universal-apple-darwin/release/bundle/macos
+          ditto -c -k --sequesterRsrc --keepParent "$bundle/FMLibreEditor.app" out/FMLibreEditor-macOS.zip
+          COPYFILE_DISABLE=1 tar -czf out/FMLibreEditor-macOS.app.tar.gz --no-xattrs --no-mac-metadata --no-acls \
+            -C "$bundle" FMLibreEditor.app
+          version=$(node -p "require('./app/src-tauri/tauri.conf.json').version")
+          (cd app && npx tauri signer sign --app-version "$version" ../out/FMLibreEditor-macOS.app.tar.gz)
           ls -l out
 
       - uses: actions/upload-artifact@v4
@@ -243,8 +256,9 @@ jobs:
           path: out
           merge-multiple: true
 
-      # What installed copies read to update themselves (the endpoint in tauri.conf.json): the version, and the
-      # installer with its signature. Only Windows for now; macOS copies open the release's page.
+      # What installed copies read to update themselves (the endpoint in tauri.conf.json): the version, and for each
+      # system the file to install with its signature. The macOS app is universal: Apple silicon and Intel Macs (or
+      # Rosetta) get the same one.
       - name: Write latest.json
         env:
           TAG: ${{ github.ref_name }}
@@ -253,15 +267,24 @@ jobs:
           node -e '
             const fs = require("fs");
             const { TAG, REPO } = process.env;
-            const windows = {
-              signature: fs.readFileSync("out/FMLibreEditor-Setup.exe.sig", "utf8").trim(),
-              url: `https://github.com/${REPO}/releases/download/${TAG}/FMLibreEditor-Setup.exe`,
-            };
+            const file = (name) => ({
+              signature: fs.readFileSync(`out/${name}.sig`, "utf8").trim(),
+              url: `https://github.com/${REPO}/releases/download/${TAG}/${name}`,
+            });
+            const windows = file("FMLibreEditor-Setup.exe");
+            const mac = file("FMLibreEditor-macOS.app.tar.gz");
             const latest = {
               version: TAG.replace(/^v/, ""),
               notes: `https://github.com/${REPO}/releases/tag/${TAG}`,
               pub_date: new Date().toISOString(),
-              platforms: { "windows-x86_64-nsis": windows, "windows-x86_64": windows },
+              platforms: {
+                "windows-x86_64-nsis": windows,
+                "windows-x86_64": windows,
+                "darwin-aarch64-app": mac,
+                "darwin-aarch64": mac,
+                "darwin-x86_64-app": mac,
+                "darwin-x86_64": mac,
+              },
             };
             fs.writeFileSync("out/latest.json", JSON.stringify(latest, null, 2) + "\n");
           '
@@ -272,6 +295,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "${{ github.ref_name }}"
-          out/FMLibreEditor-Setup.exe out/FMLibreEditor-portable.zip out/FMLibreEditor-macOS.zip out/latest.json
+          out/FMLibreEditor-Setup.exe out/FMLibreEditor-portable.zip out/FMLibreEditor-macOS.zip
+          out/FMLibreEditor-macOS.app.tar.gz out/latest.json
           --draft --title "FMLibreEditor ${{ github.ref_name }}"
           --notes-file docs/release-notes.md

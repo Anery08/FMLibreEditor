@@ -1,7 +1,8 @@
 // Whether a newer FMLibreEditor is out, and installing it. The app asks GitHub for the latest published release when it
 // starts, and again when the Check for updates button at the foot of the window is pressed. A copy the Windows installer
-// put in place updates itself: it downloads the new installer, checks its signature and runs it (`installUpdate`). Any
-// other copy (portable, macOS) opens the release's page, where the installer, the portable zip and the macOS app are.
+// put in place, and the macOS app, update themselves: they download the new version, check its signature and install it
+// (`installUpdate`). Any other copy (portable, or a macOS app run where it was downloaded) opens the release's page,
+// where the installer, the portable zip and the macOS app are.
 
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -141,7 +142,10 @@ export function openRelease(release: Release): void {
   }
 }
 
-/** Whether this copy can update itself (see `can_self_update`): an installed Windows copy, never the browser preview. */
+/**
+ * Whether this copy can update itself (see `can_self_update`): an installed Windows copy or the macOS app, never the
+ * browser preview.
+ */
 const canSelfUpdate = (): Promise<boolean> => (inTauri ? call<boolean>("can_self_update") : Promise.resolve(false));
 
 /** How far installing an update has got. */
@@ -155,9 +159,11 @@ export type InstallProgress =
 export class NothingToInstall extends Error {}
 
 /**
- * Downloads the latest release's installer, checks it against the signing key the app was built with, and runs it: the
- * app closes, and the installer opens the new version once it is in place. What the release offers is read from its
- * `latest.json`; `onProgress` hears how far it has got. Throws `NothingToInstall`, or why a step failed.
+ * Downloads the latest release, checks it against the signing key the app was built with, and installs it. On Windows
+ * the installer runs: the app closes, and the installer opens the new version once it is in place. On macOS the new app
+ * takes the place of this one (macOS asks for an administrator's password where the user may not change it), and then
+ * the app starts again as the new version. What the release offers is read from its `latest.json`; `onProgress` hears
+ * how far it has got. Throws `NothingToInstall`, or why a step failed.
  */
 export async function installUpdate(onProgress: (progress: InstallProgress) => void): Promise<void> {
   onProgress({ phase: "preparing" });
@@ -182,6 +188,8 @@ export async function installUpdate(onProgress: (progress: InstallProgress) => v
         break;
     }
   });
+  // Only macOS gets here: on Windows the app has closed for the installer.
+  await call("restart_app");
 }
 
 /**

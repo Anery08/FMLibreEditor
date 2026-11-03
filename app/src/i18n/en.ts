@@ -88,6 +88,9 @@ const errors: ErrorTexts = {
   "edit.conflict": (p) => `${field(p.field)} is now ${p.found}, not ${p.expected}: the game has changed it since.`,
   "move.outOfRange": (p) => `${p.value} is not a valid ${field(p.field)}: it takes ${p.min} to ${p.max}.`,
   "export.failed": (p) => `Could not write the file: ${p.reason}`,
+  "export.notAllowed": (p) =>
+    `FMLibreEditor may not write to ${p.folder}. If macOS asked whether it may use your Documents folder, allow it ` +
+    "in System Settings › Privacy & Security › Files & Folders, then export again.",
   "export.openFailed": (p) => `Could not open it: ${p.reason}`,
   "guard.unknownBuild": () =>
     "FMLibreEditor has not been checked with this version of the game, so it does not write to it. Edit anyway, in " +

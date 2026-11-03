@@ -161,7 +161,7 @@ pub fn status(places: &Places) -> BridgeStatus {
         })
         .collect();
     BridgeStatus {
-        installed: places.bridge.is_file() && places.launcher.is_file(),
+        installed: installed(places),
         launch_option: launch_option(&places.launcher),
         accounts,
         steam_running: steam_running(),
@@ -203,6 +203,37 @@ pub fn set_up(places: &Places, from: &Path) -> Result<BridgeStatus, SetupError> 
         write_new(&config, changed.as_bytes(), false)?;
     }
     Ok(status(places))
+}
+
+/// Puts the bridge library and its launcher from the folder `from` in place of the installed
+/// ones that differ, so that after an update of the app the game loads the bridge that came
+/// with it the next time it starts. Only once the bridge is installed; the launch options are
+/// left as they are. Returns whether a file was replaced.
+pub fn refresh(places: &Places, from: &Path) -> Result<bool, SetupError> {
+    if !installed(places) {
+        return Ok(false);
+    }
+    let read = |name| {
+        let path = from.join(name);
+        std::fs::read(&path).map_err(|_| SetupError::NoLibrary(path))
+    };
+    // Both are read first: one of them alone is never replaced.
+    let files = [(read(BRIDGE_FILE)?, &places.bridge, false), (read(LAUNCHER_FILE)?, &places.launcher, true)];
+    let mut replaced = false;
+    for (bytes, place, program) in files {
+        if std::fs::read(place).is_ok_and(|now| now == bytes) {
+            continue;
+        }
+        // As in `set_up`: a game still running keeps the library it loaded.
+        write_new(place, &bytes, program)?;
+        replaced = true;
+    }
+    Ok(replaced)
+}
+
+/// Whether the bridge library and its launcher are in place.
+fn installed(places: &Places) -> bool {
+    places.bridge.is_file() && places.launcher.is_file()
 }
 
 /// Takes the launcher out of FM27's launch options, and removes the files once no launch
@@ -643,6 +674,38 @@ mod tests {
             let empty_block = "\"apps\"\n\t\t\t\t{\n\t\t\t\t\t\"4530370\"\n\t\t\t\t\t{\n\t\t\t\t\t}\n";
             assert_eq!(text, config_text.replacen("\"apps\"\n\t\t\t\t{\n", empty_block, 1));
         }
+        std::fs::remove_dir_all(&home).expect("clean up");
+    }
+
+    #[test]
+    fn an_update_of_the_app_refreshes_the_installed_bridge() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let home = std::env::temp_dir().join(format!("fmlibre-refresh-test-{}", std::process::id()));
+        let places = Places::of(&home);
+        let bundle = home.join("bundle");
+        std::fs::create_dir_all(&bundle).expect("bundle folder");
+        std::fs::write(bundle.join(BRIDGE_FILE), b"new bridge").expect("library");
+
+        // Not set up: nothing is installed.
+        assert!(!refresh(&places, &bundle).expect("refresh"));
+        assert!(!places.bridge.exists() && !places.launcher.exists());
+
+        let folder = places.bridge.parent().expect("folder");
+        std::fs::create_dir_all(folder).expect("install folder");
+        std::fs::write(&places.bridge, b"old bridge").expect("old library");
+        std::fs::write(&places.launcher, b"old launcher").expect("old launcher");
+        assert!(matches!(refresh(&places, &bundle), Err(SetupError::NoLibrary(path)) if path.ends_with(LAUNCHER_FILE)));
+        assert_eq!(std::fs::read(&places.bridge).expect("library"), b"old bridge");
+
+        std::fs::write(bundle.join(LAUNCHER_FILE), b"new launcher").expect("launcher");
+        assert!(refresh(&places, &bundle).expect("refresh"));
+        assert_eq!(std::fs::read(&places.bridge).expect("library"), b"new bridge");
+        assert_eq!(std::fs::read(&places.launcher).expect("launcher"), b"new launcher");
+        let mode = std::fs::metadata(&places.launcher).expect("launcher").permissions().mode();
+        assert_eq!(mode & 0o777, 0o755);
+        // Once they are the app's, nothing is written.
+        assert!(!refresh(&places, &bundle).expect("refresh again"));
         std::fs::remove_dir_all(&home).expect("clean up");
     }
 }

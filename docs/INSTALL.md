@@ -40,9 +40,10 @@ The game shows a change after you press **Continue** in FM. The **Changes** view
 you did, and **Undo** puts the old value back.
 
 **Export**, above the player list, writes the players the list shows (with its search, filters
-and order) to a CSV or JSON file in `Documents\FMLibreEditor\Exports`, named after the in-game
-date. Pick **CSV, semicolon-separated** if Excel puts every value in one column, as it does
-where decimals are written with a comma. Exporting only reads the game.
+and order) to a CSV or JSON file in `Documents\FMLibreEditor\Exports`
+(`Documents/FMLibreEditor/Exports` on macOS), named after the in-game date. Pick **CSV,
+semicolon-separated** if Excel puts every value in one column, as it does where decimals are
+written with a comma. Exporting only reads the game.
 
 **Freeze attributes** (in a player's profile) and **Freeze money** (in a club's) hold what
 the game would take away while FMLibreEditor is open and connected. The app remembers them
@@ -62,8 +63,12 @@ for the latest release; it sends nothing else.
   To remove the app, go to Settings › Apps.
 - **Windows, portable:** **Download** opens the release's page; put the new
   `FMLibreEditor.exe` in place of the old one.
-- **macOS:** put the new app in Applications in place of the old one. To remove it, quit
-  Steam, click **Remove the bridge**, then move the app to the Bin.
+- **macOS:** **Update** downloads the new app, checks that it was signed with FMLibreEditor's
+  key, and puts it in place of the old one: the app closes and opens again with the new
+  version. macOS may ask for your password if your account cannot change the Applications
+  folder. (Versions up to 0.4.1 have no Update: download the next one by hand and put it in
+  Applications in place of the old one.) To remove it, quit Steam, click **Remove the
+  bridge**, then move the app to the Bin.
 
 ## If something goes wrong
 

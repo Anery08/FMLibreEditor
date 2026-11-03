@@ -37,7 +37,7 @@ How to install and use it: [docs/INSTALL.md](docs/INSTALL.md).
 - Checks how it reads the game before it writes, and stays read-only on a version of FM27 it
   has not been checked with yet.
 - English, Turkish and Spanish; logos, flags and faces from your graphics packs.
-- Updates itself on Windows: one click downloads and installs a new version.
+- Updates itself on Windows and macOS: one click downloads and installs a new version.
 
 The game shows a change once you press **Continue** in FM.
 

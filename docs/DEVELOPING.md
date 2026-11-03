@@ -168,31 +168,44 @@ macOS); `FMLIBRE_EXPORTS` names another folder. The columns and the JSON keys ar
    on GitHub's Windows and macOS machines:
    - `FMLibreEditor-Setup.exe`, a per-user NSIS installer in English, Turkish and Spanish;
    - `FMLibreEditor-portable.zip`;
-   - `FMLibreEditor-macOS.zip`, the universal app with the bridge and its launcher.
+   - `FMLibreEditor-macOS.zip`, the universal app with the bridge and its launcher;
+   - `FMLibreEditor-macOS.app.tar.gz`, the same app, which installed macOS apps update from.
 
-   It opens a **draft** release with the three files, `latest.json` and
+   It opens a **draft** release with these files, `latest.json` and
    `docs/release-notes.md` as its text.
 4. **Write what is new in the draft and publish it.** From then on, installed Windows copies
-   of a version with the updater (any after 0.4.1) offer **Update** in their notice.
+   and macOS apps of a version with the updater (any after 0.4.1) offer **Update** in their
+   notice.
 
 The download links in the README point at the latest published release. People outside the
 repository can use them once it is public.
 
 #### Updates from inside the app
 
-A copy the Windows installer put in place updates itself with Tauri's updater plugin: it
-reads `latest.json` from the latest published release (the endpoint in
-`app/src-tauri/tauri.conf.json`), downloads the installer it names, checks the installer's
-signature against the public key in the same file, and runs it in passive mode; the app
-closes and the installer opens the new version. Portable copies and macOS open the release's
-page instead (`can_self_update`).
+A copy the Windows installer put in place, and the macOS app, update themselves with Tauri's
+updater plugin: it reads `latest.json` from the latest published release (the endpoint in
+`app/src-tauri/tauri.conf.json`), downloads the file it names for the system, and checks its
+signature against the public key in the same file.
 
-The workflow signs the installer with the private key in the repository's secrets
-`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and writes
-`latest.json` from the signature. The maintainer keeps a copy of the key and its password
-outside the repository: a release signed with another key is refused by every installed
-copy, which would then have to be updated by hand once. The macOS build makes no updater
-files (`tauri.bridge.conf.json`), and a local `npm run release` needs no key.
+- **Windows:** the installer runs in passive mode; the app closes and the installer opens
+  the new version.
+- **macOS:** the app in `FMLibreEditor-macOS.app.tar.gz` takes the place of the running
+  one's bundle (macOS asks for an administrator's password where the user may not change
+  it), and the app starts again (`restart_app`). At startup an app run from its bundle puts
+  its bridge and launcher in place of the installed ones where they differ
+  (`bridge_setup::refresh`), so the game loads the new bridge the next time it starts.
+
+Portable copies, a macOS app that macOS runs from where it was downloaded (App
+Translocation) and development builds open the release's page instead (`can_self_update`).
+
+The workflow signs the installer and the macOS archive with the private key in the
+repository's secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`,
+and writes `latest.json` from the signatures. The maintainer keeps a copy of the key and its
+password outside the repository: a release signed with another key is refused by every
+installed copy, which would then have to be updated by hand once. The macOS archive is made
+after the app is notarized, so its build makes no updater files itself
+(`tauri.bridge.conf.json`); a local `npm run release` or `npm run release:mac` needs no
+key.
 
 ## Using the probe
 
