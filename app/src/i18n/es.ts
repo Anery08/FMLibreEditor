@@ -521,6 +521,7 @@ export const es: Strings = {
     freeAgent: "Agente libre",
     born: "Nacimiento:",
     height: (cm) => `${cm} cm`,
+    heightUnit: "cm",
     uid: "UID",
     currentAbility: "Habilidad actual",
     currentAbilityShort: "HA",
@@ -543,6 +544,7 @@ export const es: Strings = {
     // Posiciones
     positions: "Posiciones",
     positionsSummary: (best) => `Valoraciones por posición: ${best}`,
+    positionRatings: "Valoraciones por posición",
     positionTiers: {
       natural: "Natural",
       accomplished: "Hábil",
@@ -1040,9 +1042,6 @@ export const es: Strings = {
     edit: "Editar",
     editTitle: "Cambiar los valores de este perfil en el juego",
     startFailed: (reason) => `No se ha podido empezar a editar: ${reason}`,
-    ability: "Habilidad",
-    personalDetails: "Datos personales",
-    positionRatings: "Valoraciones por posición",
     positionRating: (position) => `Valoración de ${position}`,
     was: (value) => `antes: ${value}`,
     invalid: (min, max) => `Introduce un número entero de ${min} a ${max}`,

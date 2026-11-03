@@ -60,9 +60,12 @@ interface ProfileFrameProps {
   badge?: ReactNode;
   /** The line under the names; a profile with nothing to say there leaves it out. */
   meta?: ReactNode;
-  /** The small print under that, e.g. the birth date: its parts, set apart by dots, each kept on one line. */
-  vitals: ReadonlyArray<string | false | null | undefined>;
-  /** The abilities of a person, under the close button. */
+  /**
+   * The small print under that, e.g. the birth date: its parts, set apart by dots, each kept on one line. A part may
+   * hold an input, which takes the place of its value while the profile is edited.
+   */
+  vitals: ReadonlyArray<ReactNode>;
+  /** The abilities of a person, under the close button; inputs where they are while the person is edited. */
   currentAbility?: number;
   potentialAbility?: number;
   /** Under the close button instead of the abilities, e.g. the reputation of a club. */
@@ -155,9 +158,13 @@ export function ProfileFrame(props: ProfileFrameProps) {
               (currentAbility !== undefined && potentialAbility !== undefined && (
                 <div className="profile-abilities">
                   <abbr title={profileText.currentAbility}>{profileText.currentAbilityShort}</abbr>
-                  <Ability value={currentAbility} />
+                  <EditableValue field="current_ability">
+                    <Ability value={currentAbility} />
+                  </EditableValue>
                   <abbr title={profileText.potentialAbility}>{profileText.potentialAbilityShort}</abbr>
-                  <Ability value={potentialAbility} />
+                  <EditableValue field="potential_ability">
+                    <Ability value={potentialAbility} />
+                  </EditableValue>
                 </div>
               ))}
           </div>
@@ -185,13 +192,16 @@ export function ProfileFrame(props: ProfileFrameProps) {
   );
 }
 
-/** "Born 26 Mar 1982 (age 44)"; nothing when the birth date is unknown. */
-export function bornText(person: { dateOfBirth: FmDate | null; age: number | null }): string | null {
-  if (!person.dateOfBirth) {
-    return null;
-  }
-  const age = person.age === null ? "" : ` (${profileText.age(person.age)})`;
-  return `${profileText.born} ${formatDate(person.dateOfBirth)}${age}`;
+/**
+ * "Born 26 Mar 1982 (age 44)", for a person whose birth date is known; the date is an input while it can be edited.
+ */
+export function Born({ dateOfBirth, age }: { dateOfBirth: FmDate; age: number | null }) {
+  return (
+    <>
+      {profileText.born} <EditableValue field="date_of_birth">{formatDate(dateOfBirth)}</EditableValue>
+      {age !== null && ` (${profileText.age(age)})`}
+    </>
+  );
 }
 
 export interface RatingRow {

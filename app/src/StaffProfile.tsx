@@ -1,13 +1,13 @@
 import { Fragment, useContext, useEffect, useId, useState, type ReactNode } from "react";
-import { AbilityEditGroup, EditInput } from "./EditControls";
+import { EditableValue } from "./EditControls";
 import { changeStaffJob, staffJobs } from "./editing";
 import { describeError } from "./format";
-import { fieldLabel, jobLabel, profileText, STAFF_ATTRIBUTE_LABELS, type StaffAttributeKey } from "./labels";
+import { jobLabel, profileText, STAFF_ATTRIBUTE_LABELS, type StaffAttributeKey } from "./labels";
 import { MoveButton } from "./MoveDialog";
 import { ClubLogo, NationFlag, PersonFace, PICTURE_SIZE, WithPicture } from "./Picture";
 import {
   attributeRow,
-  bornText,
+  Born,
   ContractDates,
   Fact,
   personalityRows,
@@ -19,7 +19,7 @@ import {
   type RatingRow,
 } from "./ProfileParts";
 import type { StaffContract, StaffDetails, StaffSummary } from "./types";
-import { EditorContext, useEditableField, useProfileEditing } from "./useProfileEditing";
+import { EditorContext, useProfileEditing } from "./useProfileEditing";
 
 // Attributes in the order FM lists them, by group.
 const COACHING: StaffAttributeKey[] = [
@@ -93,7 +93,7 @@ export function StaffProfile({ member, version, onClose }: StaffProfileProps) {
   const editing = useProfileEditing("staff", member.uid);
   const details = loaded?.details;
   const info: StaffSummary = details ?? member;
-  const vitals = [bornText(info), `${profileText.id} ${info.uid}`];
+  const vitals = [info.dateOfBirth && <Born dateOfBirth={info.dateOfBirth} age={info.age} />, `${profileText.id} ${info.uid}`];
 
   return (
     <ProfileFrame
@@ -104,10 +104,13 @@ export function StaffProfile({ member, version, onClose }: StaffProfileProps) {
       meta={dotted([
         info.job !== null && jobLabel(info.job),
         employerLine(info),
+        // An input where it is shown while the member of staff is edited, like the abilities.
         info.nation && (
-          <WithPicture inline picture={<NationFlag uid={info.nationUid} />}>
-            {info.nation}
-          </WithPicture>
+          <EditableValue field="nation">
+            <WithPicture inline picture={<NationFlag uid={info.nationUid} />}>
+              {info.nation}
+            </WithPicture>
+          </EditableValue>
         ),
       ])}
       vitals={vitals}
@@ -139,8 +142,6 @@ export function StaffProfile({ member, version, onClose }: StaffProfileProps) {
 function StaffBody({ details, canChangeJob }: { details: StaffDetails; canChangeJob: boolean }) {
   return (
     <>
-      <AbilityEditGroup entity="staff" />
-
       <div className="profile-pair">
         <div className="profile-columns">
           <RatingGroup title={profileText.coaching} rows={attributeRows(details, COACHING)} />
@@ -154,7 +155,6 @@ function StaffBody({ details, canChangeJob }: { details: StaffDetails; canChange
         <div className="profile-split">
           <RatingGroup title={profileText.personality} rows={personalityRows(details.personality)} />
           <div className="profile-stack">
-            <NationEditGroup />
             {details.contract && (
               <ContractGroup uid={details.uid} contract={details.contract} canChangeJob={canChangeJob} />
             )}
@@ -174,19 +174,6 @@ function attributeRows(details: StaffDetails, keys: StaffAttributeKey[]): Rating
     attributeRow(key, STAFF_ATTRIBUTE_LABELS[key], details.attributes[key], {
       scale: STORED_AS_SHOWN.has(key) ? 20 : 100,
     }),
-  );
-}
-
-/** While the member of staff is edited: the nationality, which the header shows. */
-function NationEditGroup() {
-  if (!useEditableField("nation")) {
-    return null;
-  }
-  return (
-    <section className="profile-group">
-      <h3>{fieldLabel("staff", "nation")}</h3>
-      <EditInput field="nation" />
-    </section>
   );
 }
 
