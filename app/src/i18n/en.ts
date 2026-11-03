@@ -1025,6 +1025,15 @@ export const en = {
     youHave: (version: string) => `You have ${version}.`,
     /** Opens the release's page in the browser. */
     download: "Download",
+    /** Downloads the new version's installer and runs it, where the app can update itself (see `can_self_update`). */
+    install: "Update",
+    installTitle: "Download and install the new version; FMLibreEditor closes and opens again with it",
+    preparing: "Preparing…",
+    /** `percent` is null while the size of the download is not known. */
+    downloading: (percent: number | null) => (percent === null ? "Downloading…" : `Downloading… ${percent}%`),
+    installing: "Installing: FMLibreEditor closes and opens again with the new version.",
+    installFailed: (reason: string) => `Could not update: ${reason}. Download it from its page instead.`,
+    notInstallable: "This version cannot be installed from here. Download it from its page instead.",
     /** Hides the notice until the app starts again. */
     later: "Later",
     check: "Check for updates",

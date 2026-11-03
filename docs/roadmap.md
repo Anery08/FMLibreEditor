@@ -192,6 +192,9 @@ changes many at once, and undo.
     abilities, positions and position ratings, attributes on the 1–20 scale, personality, reputation, caps, contract
     and clauses, money in pounds, the in-game date on every row. Only reads; the whole Steam save (37,971 players)
     takes under a second. The probe writes the same with `players --export FILE`. Staff and clubs could follow.
+  - [x] Updates from inside the app: an installed Windows copy downloads the new installer, checks its signature
+    (Tauri's updater, the key in the repository's secrets) and runs it, then opens again; the release workflow
+    signs the installer and writes `latest.json`. Portable copies and macOS keep the Download link.
   - Checked on the Mac Steam build and on the Windows Steam and Game Pass builds: the filters on a real save,
     and each new field written, read back and restored. Next: freezing money through a game day.
 - Transfers, which users asked for next:

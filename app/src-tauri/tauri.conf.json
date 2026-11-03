@@ -27,6 +27,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "publisher": "FMLibreEditor contributors",
     "copyright": "Copyright (C) 2026 FMLibreEditor contributors. GPL-3.0-or-later.",
     "category": "Utility",
@@ -45,5 +46,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRGQ0MyMEY1QkQzQzZCMTgKUldRWWF6eTk5U0RNVHhYVEZxZU1JanA5RnMvVytFREZya3UxMVRzUHJhZDdUSFVKVG14VWhpYzcK",
+      "endpoints": ["https://github.com/tozmoz/FMLibreEditor/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

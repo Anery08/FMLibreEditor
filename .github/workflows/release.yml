@@ -1,6 +1,7 @@
 # Builds the Windows installer, the portable zip and the macOS app.
 # - A version tag (v0.1.0) runs the checks, builds, and opens a draft GitHub release with the
-#   three files; a maintainer reviews the draft and publishes it.
+#   three files and latest.json; a maintainer reviews the draft and publishes it. Once it is
+#   published, installed Windows copies find it through latest.json and update themselves.
 # - A pull request that changes how releases are built, or a run started by hand, builds the
 #   same files and keeps them as workflow artifacts only.
 # Pull requests are otherwise checked locally before they are opened, which spares the Windows
@@ -64,8 +65,14 @@ jobs:
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
 
+      # The installer is signed with the key whose public half is in tauri.conf.json, so that installed copies accept
+      # it as an update; the signature lands beside it (.sig). The key and its password are the repository's secrets
+      # TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD; without them the build stops.
       - name: Build the installer
         working-directory: app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build --bundles nsis
 
       - name: Package the installer and the portable zip
@@ -74,6 +81,7 @@ jobs:
           New-Item -ItemType Directory -Force out | Out-Null
           $setup = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
           Copy-Item $setup.FullName out/FMLibreEditor-Setup.exe
+          Copy-Item "$($setup.FullName).sig" out/FMLibreEditor-Setup.exe.sig
           New-Item -ItemType Directory -Force portable/FMLibreEditor | Out-Null
           Copy-Item target/release/FMLibreEditor.exe portable/FMLibreEditor/
           Copy-Item docs/portable-readme.txt portable/FMLibreEditor/README.txt
@@ -235,11 +243,35 @@ jobs:
           path: out
           merge-multiple: true
 
+      # What installed copies read to update themselves (the endpoint in tauri.conf.json): the version, and the
+      # installer with its signature. Only Windows for now; macOS copies open the release's page.
+      - name: Write latest.json
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const { TAG, REPO } = process.env;
+            const windows = {
+              signature: fs.readFileSync("out/FMLibreEditor-Setup.exe.sig", "utf8").trim(),
+              url: `https://github.com/${REPO}/releases/download/${TAG}/FMLibreEditor-Setup.exe`,
+            };
+            const latest = {
+              version: TAG.replace(/^v/, ""),
+              notes: `https://github.com/${REPO}/releases/tag/${TAG}`,
+              pub_date: new Date().toISOString(),
+              platforms: { "windows-x86_64-nsis": windows, "windows-x86_64": windows },
+            };
+            fs.writeFileSync("out/latest.json", JSON.stringify(latest, null, 2) + "\n");
+          '
+          cat out/latest.json
+
       - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "${{ github.ref_name }}"
-          out/FMLibreEditor-Setup.exe out/FMLibreEditor-portable.zip out/FMLibreEditor-macOS.zip
+          out/FMLibreEditor-Setup.exe out/FMLibreEditor-portable.zip out/FMLibreEditor-macOS.zip out/latest.json
           --draft --title "FMLibreEditor ${{ github.ref_name }}"
           --notes-file docs/release-notes.md

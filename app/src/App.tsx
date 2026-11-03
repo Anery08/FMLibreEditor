@@ -220,7 +220,14 @@ function App() {
       </header>
 
       <div className="main">
-        {update.notice && <UpdateNotice release={update.notice} current={update.current} onLater={update.later} />}
+        {update.notice && (
+          <UpdateNotice
+            release={update.notice}
+            current={update.current}
+            selfUpdate={update.selfUpdate}
+            onLater={update.later}
+          />
+        )}
         {connection && (
           <CompatibilityNotice
             connection={connection}

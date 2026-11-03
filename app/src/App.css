@@ -635,9 +635,20 @@ dd,
   background: var(--accent-faint);
 }
 
-.update-current {
+.update-current,
+.update-progress,
+.update-error {
   margin-left: 8px;
   color: var(--muted);
+}
+
+.update-progress {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.update-error {
+  color: var(--danger);
 }
 
 /* A version of the game the editor was not checked with, or data that did not check out: like the update notice, in
