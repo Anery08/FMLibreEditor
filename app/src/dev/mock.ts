@@ -43,6 +43,7 @@ import type {
   StaffSummary,
   EditField,
   Entity,
+  ExportReport,
   FieldEdit,
   FieldValues,
   LoggedChange,
@@ -2257,6 +2258,21 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
     }
     case "frozen_players":
       return [...frozenAttributes] as T;
+    case "export_players": {
+      // Nothing is written in a browser: the report names the file a real export would have.
+      const selected = selectTargets("player", String(args?.query ?? ""), {
+        playerFilter: (args?.filter ?? {}) as PlayerFilter,
+      });
+      const folder = "C:\\Users\\you\\Documents\\FMLibreEditor\\Exports";
+      const two = (n: number) => String(n).padStart(2, "0");
+      const stem = gameDate ? `players-${gameDate.year}-${two(gameDate.month)}-${two(gameDate.day)}` : "players";
+      const file = `${stem}.${args?.format === "json" ? "json" : "csv"}`;
+      const report: ExportReport = { path: `${folder}\\${file}`, file, folder, players: selected.length, skipped: 0 };
+      return report as T;
+    }
+    case "open_export":
+    case "show_export":
+      return null as T;
     case "max_attributes": {
       const uid = Number(args?.uid);
       const player = players.find((p) => p.uid === uid);

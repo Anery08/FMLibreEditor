@@ -15,6 +15,7 @@
 import type {
   CheckKey,
   Entity,
+  ExportFormat,
   GraphicsCounts,
   MassOperationKind,
   MassPreview,
@@ -86,6 +87,8 @@ const errors: ErrorTexts = {
   "edit.notApplied": (p) => `${field(p.field)}: wrote ${p.wrote} but read back ${p.read}.`,
   "edit.conflict": (p) => `${field(p.field)} is now ${p.found}, not ${p.expected}: the game has changed it since.`,
   "move.outOfRange": (p) => `${p.value} is not a valid ${field(p.field)}: it takes ${p.min} to ${p.max}.`,
+  "export.failed": (p) => `Could not write the file: ${p.reason}`,
+  "export.openFailed": (p) => `Could not open it: ${p.reason}`,
   "guard.unknownBuild": () =>
     "FMLibreEditor has not been checked with this version of the game, so it does not write to it. Edit anyway, in " +
     "the notice at the top, turns editing on.",
@@ -1165,6 +1168,46 @@ export const en = {
     next: "Next",
     /** Between the buttons: the rows on show and how many there are, e.g. "101–200 of 450". */
     range: (first: number, last: number, total: number) => `${format(first)}–${format(last)} of ${format(total)}`,
+  },
+
+  /** Exporting players to a file: the button in the toolbar of the player list and the dialog it opens. */
+  export: {
+    button: "Export",
+    buttonTitle: "Write the players the list shows to a CSV or JSON file, for a spreadsheet or a script",
+    title: "Export players",
+    /** What the export covers: everything the list's search and filters select, in its order. */
+    scope: (count: number) =>
+      count === 0
+        ? "No player matches the search and the filters."
+        : `${entityCount.player(count)}: what the list's search and filters select, in its order.`,
+    formatLabel: "Format",
+    formats: {
+      csv: "CSV, comma-separated",
+      csvSemicolon: "CSV, semicolon-separated",
+      json: "JSON",
+    } satisfies Record<ExportFormat, string>,
+    formatHints: {
+      csv: "For most spreadsheets and scripts",
+      csvSemicolon: "For Excel where decimals are written with a comma: in Turkish, Spanish or German, say",
+      json: "For scripts: the positions, attributes and personality as objects of their own",
+    } satisfies Record<ExportFormat, string>,
+    contents:
+      "Each player's abilities, positions and position ratings, attributes on the 1–20 scale (the hidden ones too), " +
+      "personality, reputation, caps, and contract with its clauses, with the in-game date. Money is in pounds, as " +
+      "the game keeps it. Nothing in the game changes.",
+    export: "Export",
+    exporting: "Exporting…",
+    /** After the export: what was written, and where. */
+    done: (count: number, file: string) => `Exported ${entityCount.player(count)} to ${file}`,
+    folder: (folder: string) => `in ${folder}`,
+    skipped: (count: number) =>
+      `${entityCount.player(count)} changed in the game while ${count === 1 ? "he was" : "they were"} read, and ` +
+      `${count === 1 ? "was" : "were"} left out.`,
+    open: "Open",
+    openTitle: "Open the file in the app your system opens it with",
+    show: "Show in folder",
+    showTitle: "Show the file in its folder",
+    close: "Close",
   },
 
   /** Mass editing: the button in the toolbar of a list and the dialog it opens. */

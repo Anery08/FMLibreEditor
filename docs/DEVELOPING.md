@@ -151,6 +151,10 @@ The app remembers what was frozen in each save in `frozen.json` in its data fold
 apart by the storefront and the UIDs of its human managers. To test without touching that
 file, set `FMLIBRE_DATA` to another folder before starting the app.
 
+Exports go to `Documents\FMLibreEditor\Exports` (`~/Documents/FMLibreEditor/Exports` on
+macOS); `FMLIBRE_EXPORTS` names another folder. The columns and the JSON keys are in
+`crates/fmlibre-core/src/export.rs`.
+
 ### Releasing
 
 1. **Bump the version** in three places:
@@ -182,6 +186,7 @@ fmlibre-probe calibrate                              # identify the build and lo
 fmlibre-probe health                                 # the checks the editor makes before it writes, and what each found
 fmlibre-probe players "arda guler"                   # search players (accents ignored), best first
 fmlibre-probe players --position st --max-age 20 --min-pa 170 --sort pa   # wonderkid strikers
+fmlibre-probe players --max-age 21 --export young.csv   # every match to a file, as the app's Export writes it (.json: JSON; --semicolon)
 fmlibre-probe player 7458500                         # everything read for one player
 fmlibre-probe staff arteta                           # search staff; staff-member <id> for details
 fmlibre-probe clubs tottenham                        # search clubs; club <uid> for details

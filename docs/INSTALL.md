@@ -39,6 +39,11 @@ extract it and run **FMLibreEditor.exe**.
 The game shows a change after you press **Continue** in FM. The **Changes** view lists what
 you did, and **Undo** puts the old value back.
 
+**Export**, above the player list, writes the players the list shows (with its search, filters
+and order) to a CSV or JSON file in `Documents\FMLibreEditor\Exports`, named after the in-game
+date. Pick **CSV, semicolon-separated** if Excel puts every value in one column, as it does
+where decimals are written with a comma. Exporting only reads the game.
+
 **Freeze attributes** (in a player's profile) and **Freeze money** (in a club's) hold what
 the game would take away while FMLibreEditor is open and connected. The app remembers them
 for that save: when you connect to it again, after a restart, they are frozen again and a
