@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Ability } from "./Ability";
 import { ComparisonTray } from "./Comparison";
+import { ExportButton } from "./ExportDialog";
 import { formatDate } from "./format";
 import { playerListText, positionLabel, profileText } from "./labels";
 import { ListBrowser } from "./ListBrowser";
@@ -76,7 +77,12 @@ export function PlayerBrowser({ version, active }: { version: number; active: bo
           }
         />
       }
-      toolbarActions={(list) => <MassEditButton entity="player" filters={{ playerFilter: filter }} list={list} />}
+      toolbarActions={(list) => (
+        <>
+          <ExportButton list={list} filter={filter} order={order} />
+          <MassEditButton entity="player" filters={{ playerFilter: filter }} list={list} />
+        </>
+      )}
       footer={<ComparisonTray comparison={comparison} />}
       tableClass="player-grid"
       header={

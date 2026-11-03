@@ -141,6 +141,9 @@ export const changesText = strings.changes;
 /** Mass editing: the button in the toolbar of a list and the dialog it opens. */
 export const massEditText = strings.massEdit;
 
+/** Exporting players to a file: the button and the dialog. */
+export const exportText = strings.export;
+
 /** Comparing players: the button in a profile, the tray under the player list and the dialog. */
 export const comparisonText = strings.comparison;
 

@@ -103,6 +103,22 @@ export interface ReloadInfo {
 }
 
 /**
+ * How an export writes the players (`ExportFormat` in export.rs): CSV with commas or with semicolons (what Excel takes
+ * where decimals are written with a comma), or JSON.
+ */
+export type ExportFormat = "csv" | "csvSemicolon" | "json";
+
+/** What an export wrote, and where: the file, its name and its folder. */
+export interface ExportReport {
+  path: string;
+  file: string;
+  folder: string;
+  players: number;
+  /** Players whose objects changed while they were read: left out. */
+  skipped: number;
+}
+
+/**
  * What connecting froze again of what the app remembers as frozen in this save: the players' attributes and the
  * clubs' money, by name, and how many it left for later, still remembered (FMLibreEditor cannot write to this version
  * of the game yet, or a check did not pass).

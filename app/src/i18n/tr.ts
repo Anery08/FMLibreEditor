@@ -170,6 +170,10 @@ const errors: ErrorTexts = {
   "app.dataChanged": () => `Bu veriler oyunda değişti; ${reload}.`,
   "app.noChange": (p) => `${p.id} numaralı bir değişiklik yok.`,
   "app.alreadyUndone": () => "Bu değişiklik zaten geri alındı.",
+  "export.failed": (p) => `Dosya yazılamadı: ${p.reason}`,
+  "export.noFolder": () => "Dışa aktarılacak bir klasör yok.",
+  "export.notExported": () => "Bu, FMLibreEditor'ün dışa aktardığı bir dosya değil.",
+  "export.openFailed": (p) => `Açılamadı: ${p.reason}`,
   "mass.noOperations": () => "Değiştirilecek en az bir alan seçin.",
   "mass.tooMany": (p) =>
     `${p.count} sonuç var. Toplu düzenleme için aramayı ya da filtreleri en fazla ${p.limit} sonuca daraltın.`,
@@ -1072,6 +1076,41 @@ export const tr: Strings = {
     previous: "Önceki",
     next: "Sonraki",
     range: (first, last, total) => `${format(first)}–${format(last)} / ${format(total)}`,
+  },
+
+  export: {
+    button: "Dışa aktar",
+    buttonTitle: "Listedeki oyuncuları bir tablo programı ya da betik için CSV veya JSON dosyasına yaz",
+    title: "Oyuncuları dışa aktar",
+    scope: (count) =>
+      count === 0
+        ? "Arama ve filtrelere uyan oyuncu yok."
+        : `${format(count)} oyuncu: listenin arama ve filtrelerinin seçtikleri, listedeki sırayla.`,
+    formatLabel: "Biçim",
+    formats: {
+      csv: "CSV, virgülle ayrılmış",
+      csvSemicolon: "CSV, noktalı virgülle ayrılmış",
+      json: "JSON",
+    },
+    formatHints: {
+      csv: "Çoğu tablo programı ve betik için",
+      csvSemicolon: "Ondalıkları virgülle yazan Excel için: Türkçe, İspanyolca ya da Almanca Excel gibi",
+      json: "Betikler için: pozisyonlar, özellikler ve kişilik ayrı nesneler olarak",
+    },
+    contents:
+      "Her oyuncunun yetenekleri, pozisyonları ve pozisyon puanları, 1–20 ölçeğinde özellikleri (gizliler dahil), " +
+      "kişiliği, itibarı, milli maçları, sözleşmesi ve maddeleri; oyun tarihiyle birlikte. Paralar oyunun tuttuğu " +
+      "gibi sterlin. Oyunda hiçbir şey değişmez.",
+    export: "Dışa aktar",
+    exporting: "Dışa aktarılıyor…",
+    done: (count, file) => `${format(count)} oyuncu ${file} dosyasına aktarıldı`,
+    folder: (folder) => `Klasör: ${folder}`,
+    skipped: (count) => `${format(count)} oyuncu okunurken oyunda değişti ve dışarıda bırakıldı.`,
+    open: "Aç",
+    openTitle: "Dosyayı sisteminizin onu açtığı uygulamada aç",
+    show: "Klasörde göster",
+    showTitle: "Dosyayı klasöründe göster",
+    close: "Kapat",
   },
 
   massEdit: {

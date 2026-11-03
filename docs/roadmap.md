@@ -186,6 +186,12 @@ changes many at once, and undo.
     build with a profile and where the checks pass: after an update of the game the freezes wait, remembered, and
     nothing is written. Players gone from the game are forgotten. A reload after the game loaded another save stops
     holding the old save's freezes and picks up the new one's.
+  - [x] Export the player list ([#71](https://github.com/tozmoz/FMLibreEditor/issues/71)): what its search, filters
+    and order select, to CSV (commas, or semicolons for Excel where decimals take a comma; UTF-8 with a byte order
+    mark) or JSON, in `Documents\FMLibreEditor\Exports`, named after the in-game date. A row or object per player:
+    abilities, positions and position ratings, attributes on the 1–20 scale, personality, reputation, caps, contract
+    and clauses, money in pounds, the in-game date on every row. Only reads; the whole Steam save (37,971 players)
+    takes under a second. The probe writes the same with `players --export FILE`. Staff and clubs could follow.
   - Checked on the Mac Steam build and on the Windows Steam and Game Pass builds: the filters on a real save,
     and each new field written, read back and restored. Next: freezing money through a game day.
 - Transfers, which users asked for next:

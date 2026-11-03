@@ -90,6 +90,16 @@ impl GameInfo {
 
         Ok(Self { pid: process.pid(), exe_path, storefront, edition, package_full_name, package_version, steam_build })
     }
+
+    /// The game and its build as the editor names them: "FM27 Game Pass 0.9.2409.0", "FM27 Steam build 26340721".
+    pub fn name(&self) -> String {
+        let edition = self.edition.map_or_else(|| "FM".to_owned(), |edition| format!("FM{edition}"));
+        match (&self.package_version, &self.steam_build) {
+            (Some(version), _) => format!("{edition} Game Pass {version}"),
+            (None, Some(build)) => format!("{edition} Steam build {build}"),
+            (None, None) => format!("{edition} ({})", self.storefront.label()),
+        }
+    }
 }
 
 /// The build id Steam records for the install that `exe_path` is in: one of the

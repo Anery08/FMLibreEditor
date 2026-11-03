@@ -7,11 +7,12 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use fmlibre_core::{
     ArraySource, CaptainRole, CaptainSet, Change, Clause, ClauseSet, ClubDetails, ClubFilter, ClubIndex, ClubMove,
-    Coded, EditError, Entity, EntityArrays, FeePlan, Field, FmDate, GAME_EXE, GAME_PLUGIN, GameInfo, GraphicsCounts,
-    GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind, Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation,
-    Operation, Paid, Picture, Planned, PlayerDetails, PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary,
-    RelationSet, RetirementSet, STAFF_JOBS, SearchIndex, Session, SessionError, Skipped, StaffChange, StaffDetails,
-    StaffFilter, StaffIndex, StaffPlan, Target, Tie, TieTarget, find_game, nations, sort_players,
+    Coded, EditError, Entity, EntityArrays, ExportFormat, ExportHeader, FeePlan, Field, FmDate, GAME_EXE, GAME_PLUGIN,
+    GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind, Lifted, Listed, Loan, MoveError,
+    MovePlan, MoveTerms, Nation, Operation, Paid, Picture, Planned, PlayerDetails, PlayerFilter, PlayerIndex,
+    PlayerOrder, PlayerSummary, RelationSet, RetirementSet, STAFF_JOBS, SearchIndex, Session, SessionError, Skipped,
+    StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffPlan, Target, Tie, TieTarget, find_game, nations,
+    sort_players,
 };
 use fmlibre_mem::{Process, find_processes, is_current_process_elevated, list_modules};
 use serde::{Deserialize, Serialize};
@@ -28,6 +29,10 @@ const DATA_FOLDER: &str = "FMLIBRE_DATA";
 
 /// The file in that folder that remembers what was frozen in each save (see `Remembered`).
 const FROZEN_FILE: &str = "frozen.json";
+
+/// The environment variable that names the folder exports are written to, instead of `FMLibreEditor\Exports` in the
+/// documents folder.
+const EXPORTS_FOLDER: &str = "FMLIBRE_EXPORTS";
 
 /// The connected game, the people read from it and the changes written this session.
 struct Connection {
@@ -124,6 +129,22 @@ impl Remembered {
 
 /// Where the app remembers what was frozen in each save; none when it has no data folder.
 struct FrozenFile(Option<PathBuf>);
+
+/// The folder exports are written to; none when there is no documents folder.
+struct ExportsFolder(Option<PathBuf>);
+
+/// What an export wrote, and where.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportReport {
+    /// The file, and its name and folder apart.
+    path: PathBuf,
+    file: String,
+    folder: PathBuf,
+    players: usize,
+    /// Players whose objects changed while they were read: left out.
+    skipped: usize,
+}
 
 /// What connecting froze again of what was frozen in the save before (see `Connection::restore_frozen`).
 #[derive(Clone, Default, Serialize)]
@@ -1564,6 +1585,91 @@ fn search_clubs(
     Ok(page(&connection.clubs, &query, limit, |c| filter.matches(c), |_| {}))
 }
 
+/// Writes the players `query` and `filter` select, in `order`, to a new file in the exports folder as `format`: what
+/// their profiles hold, with the in-game date in the file and in its name ("players-2027-01-02.csv"; a second export
+/// that day "players-2027-01-02-2.csv"). Only reads memory.
+#[tauri::command]
+async fn export_players(
+    app: tauri::AppHandle,
+    query: String,
+    filter: Option<PlayerFilter>,
+    order: Option<PlayerOrder>,
+    format: ExportFormat,
+) -> Result<ExportReport, Failure> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<ExportReport, Failure> {
+        let failed = |err: std::io::Error| Failure::new("export.failed", err.to_string()).with("reason", err);
+        let folder = app.state::<ExportsFolder>().0.clone();
+        let folder = folder.ok_or_else(|| Failure::new("export.noFolder", "There is no folder to export to."))?;
+        let state = app.state::<AppState>();
+        let guard = state.0.lock()?;
+        let connection = guard.as_ref().ok_or_else(not_connected)?;
+        let filter = filter.unwrap_or_default();
+        let mut hits = connection.players.search(&query);
+        hits.retain(|player| filter.matches(player));
+        if let Some(order) = order {
+            sort_players(&mut hits, order);
+        }
+        let header = ExportHeader {
+            writer: format!("FMLibreEditor {}", app.package_info().version),
+            game: connection.session.game.name(),
+            game_date: connection.session.game_date(),
+        };
+        std::fs::create_dir_all(&folder).map_err(failed)?;
+        let (path, file) = new_export_file(&folder, header.game_date, format.extension()).map_err(failed)?;
+        let mut out = std::io::BufWriter::new(file);
+        let exported = connection.session.export_players(&hits, format, &header, &mut out).map_err(failed)?;
+        std::io::Write::flush(&mut out).map_err(failed)?;
+        let file = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+        Ok(ExportReport { path, file, folder, players: exported.players, skipped: exported.skipped })
+    })
+    .await?
+}
+
+/// A new file for an export in `folder`, named after the in-game date: the first of "players-2027-01-02.json",
+/// "players-2027-01-02-2.json", ... that is not there yet.
+fn new_export_file(folder: &Path, date: Option<FmDate>, extension: &str) -> std::io::Result<(PathBuf, std::fs::File)> {
+    let stem = date.map_or_else(
+        || "players".to_owned(),
+        |date| format!("players-{:04}-{:02}-{:02}", date.year, date.month, date.day),
+    );
+    for n in 1.. {
+        let name = if n == 1 { format!("{stem}.{extension}") } else { format!("{stem}-{n}.{extension}") };
+        let path = folder.join(name);
+        match std::fs::File::create_new(&path) {
+            Ok(file) => return Ok((path, file)),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists && n < 1000 => continue,
+            Err(err) => return Err(err),
+        }
+    }
+    unreachable!("the loop returns")
+}
+
+/// `path`, when it is a file an export wrote: the only files the app opens or shows.
+fn exported_file(folder: &ExportsFolder, path: &Path) -> Result<PathBuf, Failure> {
+    let inside = folder.0.as_deref().is_some_and(|folder| path.parent() == Some(folder));
+    if inside && path.is_file() {
+        Ok(path.to_owned())
+    } else {
+        Err(Failure::new("export.notExported", "That is not a file FMLibreEditor exported."))
+    }
+}
+
+/// Opens the file `path`, which an export wrote, in the app the system opens such files with (a spreadsheet, say).
+#[tauri::command]
+fn open_export(folder: State<'_, ExportsFolder>, path: PathBuf) -> Result<(), Failure> {
+    let path = exported_file(&folder, &path)?;
+    tauri_plugin_opener::open_path(path, None::<&str>)
+        .map_err(|err| Failure::new("export.openFailed", err.to_string()).with("reason", err))
+}
+
+/// Shows the file `path`, which an export wrote, in its folder: in Explorer, or in Finder on macOS.
+#[tauri::command]
+fn show_export(folder: State<'_, ExportsFolder>, path: PathBuf) -> Result<(), Failure> {
+    let path = exported_file(&folder, &path)?;
+    tauri_plugin_opener::reveal_item_in_dir(path)
+        .map_err(|err| Failure::new("export.openFailed", err.to_string()).with("reason", err))
+}
+
 /// The full profile of the club with `uid`. Only reads memory.
 #[tauri::command]
 fn club_details(state: State<'_, AppState>, uid: u32) -> Result<ClubDetails, Failure> {
@@ -2300,6 +2406,10 @@ pub fn run() {
             };
             let data = std::env::var_os(DATA_FOLDER).map(PathBuf::from).or_else(|| app.path().app_data_dir().ok());
             app.manage(FrozenFile(data.map(|folder| folder.join(FROZEN_FILE))));
+            let exports = std::env::var_os(EXPORTS_FOLDER)
+                .map(PathBuf::from)
+                .or_else(|| app.path().document_dir().ok().map(|folder| folder.join("FMLibreEditor").join("Exports")));
+            app.manage(ExportsFolder(exports));
             // Frozen money and attributes: every little while, what the game took from them is put back.
             let handle = app.handle().clone();
             std::thread::spawn(move || {
@@ -2336,6 +2446,9 @@ pub fn run() {
             search_players,
             search_staff,
             search_clubs,
+            export_players,
+            open_export,
+            show_export,
             player_details,
             staff_details,
             club_details,

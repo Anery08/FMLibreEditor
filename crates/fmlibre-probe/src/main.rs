@@ -12,11 +12,11 @@ use std::time::Instant;
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use fmlibre_core::{
-    ATTRIBUTE_GROUPS, ArrayCandidate, ArraySource, AttributeBound, CaptainRole, ClubIndex, Entity, Field, FmDate,
-    GAME_EXE, GAME_PLUGIN, GameInfo, GraphicsIndex, Kind, Loan, MoveTerms, PERSONALITY, POSITIONS, Picture,
-    PlayerFilter, PlayerIndex, PlayerOrder, PlayerSort, STAFF_ATTRIBUTE_GROUPS, SUPPORTER_MIX, SUPPORTER_TRAITS, Scale,
-    ScanOptions, Session, SessionError, StaffIndex, Target, Tie, TieTarget, find_game, job_name, nations,
-    scan_object_arrays, sort_players,
+    ATTRIBUTE_GROUPS, ArrayCandidate, ArraySource, AttributeBound, CaptainRole, ClubIndex, Entity, ExportFormat,
+    ExportHeader, Field, FmDate, GAME_EXE, GAME_PLUGIN, GameInfo, GraphicsIndex, Kind, Loan, MoveTerms, PERSONALITY,
+    POSITIONS, Picture, PlayerFilter, PlayerIndex, PlayerOrder, PlayerSort, STAFF_ATTRIBUTE_GROUPS, SUPPORTER_MIX,
+    SUPPORTER_TRAITS, Scale, ScanOptions, Session, SessionError, StaffIndex, Target, Tie, TieTarget, find_game,
+    job_name, nations, scan_object_arrays, sort_players,
 };
 #[cfg(target_os = "macos")]
 use fmlibre_mem::MachImage;
@@ -122,6 +122,13 @@ enum Command {
         limit: usize,
         #[command(flatten)]
         filter: PlayerFilterArgs,
+        /// Also write every matching player, not only the ones printed, to this file: what their profiles hold, as
+        /// CSV, or as JSON for a name ending in .json.
+        #[arg(long, value_name = "FILE")]
+        export: Option<PathBuf>,
+        /// In the CSV file, semicolons between the values instead of commas, as Excel takes them in many languages.
+        #[arg(long, requires = "export")]
+        semicolon: bool,
     },
     /// List the fields the editor can change, or with --stats check them against every object.
     Fields {
@@ -788,8 +795,19 @@ fn run(cli: Cli) -> Result<()> {
         Command::StaffMember { uid } => staff_member(&connect(process, ArraySource::ProfileFirst)?, uid),
         Command::Clubs { text, limit } => clubs(&connect(process, ArraySource::ProfileFirst)?, text.as_deref(), limit),
         Command::Club { uid } => club(&connect(process, ArraySource::ProfileFirst)?, uid),
-        Command::Players { text, limit, filter } => {
-            players(&connect(process, ArraySource::ProfileFirst)?, text.as_deref(), limit, &filter)
+        Command::Players { text, limit, filter, export, semicolon } => {
+            let session = connect(process, ArraySource::ProfileFirst)?;
+            let format = export.as_deref().map(|path| {
+                if path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("json")) {
+                    ExportFormat::Json
+                } else if semicolon {
+                    ExportFormat::CsvSemicolon
+                } else {
+                    ExportFormat::Csv
+                }
+            });
+            let export = export.as_deref().zip(format);
+            players(&session, text.as_deref(), limit, &filter, export)
         }
         Command::Fields { entity, stats } => {
             fields(&connect(process, ArraySource::ProfileFirst)?, entity.into(), stats)
@@ -2206,7 +2224,13 @@ fn calibrate(session: &Session) -> Result<()> {
     Ok(())
 }
 
-fn players(session: &Session, text: Option<&str>, limit: usize, args: &PlayerFilterArgs) -> Result<()> {
+fn players(
+    session: &Session,
+    text: Option<&str>,
+    limit: usize,
+    args: &PlayerFilterArgs,
+    export: Option<(&Path, ExportFormat)>,
+) -> Result<()> {
     let (filter, order) = args.parse()?;
     let started = Instant::now();
     let index = PlayerIndex::new(session.players()?);
@@ -2215,6 +2239,29 @@ fn players(session: &Session, text: Option<&str>, limit: usize, args: &PlayerFil
     hits.retain(|p| filter.matches(p));
     if let Some(order) = order {
         sort_players(&mut hits, order);
+    }
+    if let Some((path, format)) = export {
+        let header = ExportHeader {
+            writer: format!("fmlibre-probe {}", env!("CARGO_PKG_VERSION")),
+            game: session.game.name(),
+            game_date: session.game_date(),
+        };
+        let started = Instant::now();
+        let file = std::fs::File::create(path).with_context(|| format!("creating {}", path.display()))?;
+        let mut out = std::io::BufWriter::new(file);
+        let exported = session.export_players(&hits, format, &header, &mut out)?;
+        std::io::Write::flush(&mut out)?;
+        println!(
+            "Exported {} players to {} in {:.1} s{}.",
+            exported.players,
+            path.display(),
+            started.elapsed().as_secs_f64(),
+            if exported.skipped > 0 {
+                format!("; {} changed while read, left out", exported.skipped)
+            } else {
+                String::new()
+            }
+        );
     }
     println!(
         "Read {} players in {:.1} s; {} shown of {} matching.",

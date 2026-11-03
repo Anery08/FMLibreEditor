@@ -2659,8 +2659,76 @@ button.danger:hover:not(:disabled) {
 /* Mass edit */
 
 /* The button at the end of a list's toolbar. */
-.toolbar .mass-edit-toggle {
+.toolbar .mass-edit-toggle,
+.toolbar .export-toggle {
   margin-left: auto;
+}
+
+/* Export comes first in the player list's toolbar; Mass edit stays beside it. */
+.toolbar .export-toggle + .mass-edit-toggle {
+  margin-left: 0;
+}
+
+/* The export dialog is narrower than a mass edit's: a choice of three formats, and what a file holds. */
+.modal.export-dialog {
+  width: min(620px, 100%);
+}
+
+.export-formats {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.export-formats legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-weight: 700;
+}
+
+.export-format {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.export-format input {
+  margin: 3px 0 0;
+}
+
+.export-format-name {
+  display: block;
+  font-weight: 650;
+}
+
+.export-format-hint,
+.export-contents,
+.mass-result .export-folder {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.export-format-hint {
+  display: block;
+}
+
+.export-contents {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.mass-result .export-folder {
+  overflow-wrap: anywhere;
+}
+
+/* Open and Show in folder at the start of the foot, Export and Close at its end. */
+.export-foot-gap {
+  flex: 1;
 }
 
 /* A dialog over the whole app: the dimmed backdrop, and the box with a head, a scrolling body and a foot. */

@@ -272,6 +272,10 @@ const errors: ErrorTexts = {
   "app.dataChanged": () => `Estos datos han cambiado en el juego; ${reload}.`,
   "app.noChange": (p) => `No existe el cambio ${p.id}.`,
   "app.alreadyUndone": () => "Este cambio ya se ha deshecho.",
+  "export.failed": (p) => `No se ha podido escribir el archivo: ${p.reason}`,
+  "export.noFolder": () => "No hay ninguna carpeta a la que exportar.",
+  "export.notExported": () => "Ese no es un archivo que haya exportado FMLibreEditor.",
+  "export.openFailed": (p) => `No se ha podido abrir: ${p.reason}`,
   "mass.noOperations": () => "Elige al menos un campo que cambiar.",
   "mass.tooMany": (p) =>
     `Hay ${p.count} resultados. Para una edición masiva, acota la búsqueda o los filtros a ${p.limit} como máximo.`,
@@ -1119,6 +1123,46 @@ export const es: Strings = {
     previous: "Anterior",
     next: "Siguiente",
     range: (first, last, total) => `${format(first)}–${format(last)} de ${format(total)}`,
+  },
+
+  export: {
+    button: "Exportar",
+    buttonTitle:
+      "Escribir los jugadores que muestra la lista en un archivo CSV o JSON, para una hoja de cálculo o un script",
+    title: "Exportar jugadores",
+    scope: (count) =>
+      count === 0
+        ? "Ningún jugador coincide con la búsqueda y los filtros."
+        : `${count === 1 ? "1 jugador" : `${format(count)} jugadores`}: lo que seleccionan la búsqueda y los ` +
+          "filtros de la lista, en su orden.",
+    formatLabel: "Formato",
+    formats: {
+      csv: "CSV, separado por comas",
+      csvSemicolon: "CSV, separado por punto y coma",
+      json: "JSON",
+    },
+    formatHints: {
+      csv: "Para la mayoría de hojas de cálculo y scripts",
+      csvSemicolon: "Para Excel donde los decimales se escriben con coma: en español, turco o alemán, por ejemplo",
+      json: "Para scripts: las posiciones, los atributos y la personalidad como objetos propios",
+    },
+    contents:
+      "De cada jugador: habilidades, posiciones y valoraciones por posición, atributos en la escala de 1 a 20 " +
+      "(también los ocultos), personalidad, reputación, partidos internacionales, y contrato con sus cláusulas, con " +
+      "la fecha del juego. El dinero va en libras, como lo guarda el juego. No cambia nada en el juego.",
+    export: "Exportar",
+    exporting: "Exportando…",
+    done: (count, file) =>
+      `${count === 1 ? "1 jugador exportado" : `${format(count)} jugadores exportados`} a ${file}`,
+    folder: (folder) => `en ${folder}`,
+    skipped: (count) =>
+      `${count === 1 ? "1 jugador cambió" : `${format(count)} jugadores cambiaron`} en el juego mientras se ` +
+      "leían, y se dejaron fuera.",
+    open: "Abrir",
+    openTitle: "Abrir el archivo con la aplicación que tu sistema usa para él",
+    show: "Mostrar en la carpeta",
+    showTitle: "Mostrar el archivo en su carpeta",
+    close: "Cerrar",
   },
 
   massEdit: {

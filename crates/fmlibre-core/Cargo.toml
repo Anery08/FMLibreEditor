@@ -11,5 +11,6 @@ authors.workspace = true
 fmlibre-mem.workspace = true
 memchr = "2.8.3"
 serde.workspace = true
+serde_json.workspace = true
 toml = "1.1.8"
 unicode-normalization = "0.1.26"
