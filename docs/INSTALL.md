@@ -52,11 +52,16 @@ can write to the new version.
 
 ## Updating and removing
 
-When a new version is out, FMLibreEditor says so at the top of its window when it starts;
-**Download** opens its page. **Check for updates**, at the foot of the window, asks again. To
-check, the app asks GitHub for the latest release; it sends nothing else.
+When a new version is out, FMLibreEditor says so at the top of its window when it starts.
+**Check for updates**, at the foot of the window, asks again. To check, the app asks GitHub
+for the latest release; it sends nothing else.
 
-- **Windows:** run the new installer over the old one. To remove it, go to Settings › Apps.
+- **Windows, installed with the installer:** **Update** downloads the new installer, checks
+  that it was signed with FMLibreEditor's key, and runs it: the app closes and opens again
+  with the new version. (Versions up to 0.4.1 have no Update: download the next one by hand.)
+  To remove the app, go to Settings › Apps.
+- **Windows, portable:** **Download** opens the release's page; put the new
+  `FMLibreEditor.exe` in place of the old one.
 - **macOS:** put the new app in Applications in place of the old one. To remove it, quit
   Steam, click **Remove the bridge**, then move the app to the Bin.
 

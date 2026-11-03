@@ -1259,6 +1259,18 @@ fn graphics_info(graphics: State<'_, Graphics>) -> GraphicsInfo {
     }
 }
 
+/// Whether this copy of the app can update itself: download a new version's installer, check its signature and run
+/// it. Only a copy the Windows installer put in place, which has its uninstaller beside it; a portable copy, a copy on
+/// macOS (for now) and a development build open the release's page instead.
+#[tauri::command]
+fn can_self_update() -> bool {
+    cfg!(windows)
+        && std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|folder| folder.join("uninstall.exe").is_file()))
+            .unwrap_or(false)
+}
+
 /// Serves `fmgfx` requests such as `/club/728`, `/face/7458500` or `/flag/765` from the
 /// graphics packs; anything unknown or missing is a 404.
 fn picture_response(graphics: &Graphics, path: &str) -> tauri::http::Response<Vec<u8>> {
@@ -2390,6 +2402,8 @@ pub fn run() {
     tauri::Builder::default()
         // Opens the page of a new release in the browser (see app/src/update.ts).
         .plugin(tauri_plugin_opener::init())
+        // Downloads a new version's installer, checks its signature against the key in tauri.conf.json and runs it.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
         .manage(Graphics::default())
         .setup(|app| {
@@ -2490,6 +2504,7 @@ pub fn run() {
             team_action,
             max_attributes,
             graphics_info,
+            can_self_update,
             bridge::bridge_status,
             bridge::set_up_bridge,
             bridge::remove_bridge

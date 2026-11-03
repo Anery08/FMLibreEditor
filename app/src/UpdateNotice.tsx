@@ -1,22 +1,76 @@
+import { useState } from "react";
 import { updateText } from "./labels";
-import { openRelease, type Release, type UpdateState } from "./update";
+import { installUpdate, NothingToInstall, openRelease, type InstallProgress, type Release, type UpdateState } from "./update";
+import { askToLeave } from "./useProfileEditing";
 
 const text = updateText;
 
-/** The notice under the masthead that a newer version is out: its page opens in the browser, or it waits for Later. */
-export function UpdateNotice(props: { release: Release; current: string | null; onLater: (release: Release) => void }) {
-  const { release, current, onLater } = props;
+/** How far installing has got, in the notice's words. */
+function progressText(progress: InstallProgress): string {
+  switch (progress.phase) {
+    case "preparing":
+      return text.preparing;
+    case "downloading":
+      return text.downloading(progress.percent);
+    case "installing":
+      return text.installing;
+  }
+}
+
+interface UpdateNoticeProps {
+  release: Release;
+  current: string | null;
+  /** Whether this copy can update itself: Update then installs the new version, else Download opens its page. */
+  selfUpdate: boolean;
+  onLater: (release: Release) => void;
+}
+
+/**
+ * The notice under the masthead that a newer version is out. Update downloads and installs it, saying how far it has
+ * got, and the app closes and opens again with it; where the app cannot do that, or it failed, Download opens the
+ * release's page in the browser. Later puts the notice aside.
+ */
+export function UpdateNotice({ release, current, selfUpdate, onLater }: UpdateNoticeProps) {
+  const [progress, setProgress] = useState<InstallProgress | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const busy = progress !== null;
+
+  const install = async () => {
+    setError(null);
+    try {
+      await installUpdate(setProgress);
+    } catch (e) {
+      setProgress(null);
+      setError(e instanceof NothingToInstall ? text.notInstallable : text.installFailed(String(e)));
+    }
+  };
+
   return (
     <div className="update-notice" role="status">
       <span>
         <strong>{text.available(release.version)}</strong>
         {current && <span className="update-current">{text.youHave(current)}</span>}
+        {progress && <span className="update-progress">{progressText(progress)}</span>}
+        {error && <span className="update-error">{error}</span>}
       </span>
       <span className="update-actions">
-        <button type="button" className="primary" onClick={() => openRelease(release)}>
-          {text.download}
-        </button>
-        <button type="button" onClick={() => onLater(release)}>
+        {selfUpdate && error === null ? (
+          <button
+            type="button"
+            className="primary"
+            disabled={busy}
+            title={text.installTitle}
+            // Edits pending in the open profile would be lost when the app closes: it asks first.
+            onClick={() => askToLeave(() => void install())}
+          >
+            {text.install}
+          </button>
+        ) : (
+          <button type="button" className="primary" onClick={() => openRelease(release)}>
+            {text.download}
+          </button>
+        )}
+        <button type="button" disabled={busy} onClick={() => onLater(release)}>
           {text.later}
         </button>
       </span>

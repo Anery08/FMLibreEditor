@@ -1,11 +1,13 @@
-// Whether a newer FMLibreEditor is out. The app asks GitHub for the latest published release when it starts, and again
-// when the Check for updates button at the foot of the window is pressed; it never downloads or installs anything
-// itself: the notice opens the release's page, where the installer, the portable zip and the macOS app are.
+// Whether a newer FMLibreEditor is out, and installing it. The app asks GitHub for the latest published release when it
+// starts, and again when the Check for updates button at the foot of the window is pressed. A copy the Windows installer
+// put in place updates itself: it downloads the new installer, checks its signature and runs it (`installUpdate`). Any
+// other copy (portable, macOS) opens the release's page, where the installer, the portable zip and the macOS app are.
 
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { check as checkForInstaller } from "@tauri-apps/plugin-updater";
 import { useCallback, useEffect, useState } from "react";
-import { inTauri } from "./api";
+import { call, inTauri } from "./api";
 
 /** The latest published release (drafts and pre-releases are left out by GitHub). */
 const LATEST_RELEASE = "https://api.github.com/repos/tozmoz/FMLibreEditor/releases/latest";
@@ -139,6 +141,49 @@ export function openRelease(release: Release): void {
   }
 }
 
+/** Whether this copy can update itself (see `can_self_update`): an installed Windows copy, never the browser preview. */
+const canSelfUpdate = (): Promise<boolean> => (inTauri ? call<boolean>("can_self_update") : Promise.resolve(false));
+
+/** How far installing an update has got. */
+export type InstallProgress =
+  | { phase: "preparing" }
+  /** `percent` is null while the size of the download is not known. */
+  | { phase: "downloading"; percent: number | null }
+  | { phase: "installing" };
+
+/** The latest release offers nothing this copy can install: no newer version, or no installer for it. */
+export class NothingToInstall extends Error {}
+
+/**
+ * Downloads the latest release's installer, checks it against the signing key the app was built with, and runs it: the
+ * app closes, and the installer opens the new version once it is in place. What the release offers is read from its
+ * `latest.json`; `onProgress` hears how far it has got. Throws `NothingToInstall`, or why a step failed.
+ */
+export async function installUpdate(onProgress: (progress: InstallProgress) => void): Promise<void> {
+  onProgress({ phase: "preparing" });
+  const update = await checkForInstaller();
+  if (update === null) {
+    throw new NothingToInstall();
+  }
+  let total: number | null = null;
+  let done = 0;
+  await update.downloadAndInstall((event) => {
+    switch (event.event) {
+      case "Started":
+        total = event.data.contentLength ?? null;
+        onProgress({ phase: "downloading", percent: total ? 0 : null });
+        break;
+      case "Progress":
+        done += event.data.chunkLength;
+        onProgress({ phase: "downloading", percent: total ? Math.min(100, Math.floor((done * 100) / total)) : null });
+        break;
+      case "Finished":
+        onProgress({ phase: "installing" });
+        break;
+    }
+  });
+}
+
 /**
  * Whether a newer version is out. It asks once when the app starts (an answer from the last six hours stands in for
  * that), and again whenever `check` is called. `notice` is the release to tell the user about: a newer one, unless its
@@ -148,6 +193,18 @@ export function useUpdateCheck() {
   const [current, setCurrent] = useState<string | null>(null);
   const [state, setState] = useState<UpdateState>({ phase: "checking" });
   const [later, setLater] = useState<string | null>(laterVersion);
+  // Whether the notice offers Update rather than Download.
+  const [selfUpdate, setSelfUpdate] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    canSelfUpdate()
+      .then((can) => !cancelled && setSelfUpdate(can))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const ask = useCallback(async (version: string) => {
     setState({ phase: "checking" });
@@ -203,5 +260,5 @@ export function useUpdateCheck() {
   }, []);
 
   const notice = state.phase === "newer" && state.release.version !== later ? state.release : null;
-  return { current, state, notice, check, later: putAside };
+  return { current, state, notice, selfUpdate, check, later: putAside };
 }
