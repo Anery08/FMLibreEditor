@@ -595,7 +595,8 @@ export const en = {
     /** Freezing his attributes, while the game can be written to, and what that does. */
     freezeAttributes: "Freeze attributes",
     freezeAttributesNote:
-      "While the app is open and connected, his attributes do not get worse: what the game takes is put back, and improvements still count.",
+      "While the app is open and connected, his attributes do not get worse: what the game takes is put back, and " +
+      "improvements still count. The app remembers this for this save, and freezes them again when it connects to it.",
 
     // Staff
     /** Badge on the manager the user controls. */
@@ -811,7 +812,8 @@ export const en = {
     /** Freezing the club's money, while the game can be written to, and what that does. */
     freeze: "Freeze money",
     freezeNote:
-      "While the app is open and connected, the balance does not go down: what the game takes is put back, and income still counts.",
+      "While the app is open and connected, the balance does not go down: what the game takes is put back, and " +
+      "income still counts. The app remembers this for this save, and freezes it again when it connects to it.",
 
     // Stadium
     stadium: "Stadium",
@@ -900,6 +902,23 @@ export const en = {
     detecting: "Looking for Football Manager…",
     connecting: "Reading players, staff and clubs…",
     reloading: "Reloading players, staff and clubs…",
+
+    /** The notice after connecting to a save in which something was frozen before (`FrozenNotice`). */
+    refrozen: {
+      title: "Frozen again from last time",
+      /** When nothing could be frozen again. */
+      waitingTitle: "What was frozen waits for now",
+      /** `names` are the players' names, set apart by commas. */
+      players: (names: string) => `Attributes: ${names}`,
+      clubs: (names: string) => `Money: ${names}`,
+      /** After the first few names. */
+      more: (count: number) => `and ${format(count)} more`,
+      /** What was left for later: an update of the game, say. */
+      waiting: (count: number) =>
+        `${count === 1 ? "1 is" : `${format(count)} are`} remembered but not frozen now: FMLibreEditor cannot write ` +
+        "to this version of the game yet.",
+      dismiss: "Dismiss",
+    },
 
     /** The panel shown while not connected. */
     connect: {

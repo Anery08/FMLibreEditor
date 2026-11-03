@@ -619,8 +619,10 @@ dd,
   color: var(--danger);
 }
 
-/* A newer version is out: the notice under the masthead, its two buttons at the right. */
-.update-notice {
+/* A newer version is out: the notice under the masthead, its two buttons at the right. So is what connecting froze
+   again, with the button that dismisses it. */
+.update-notice,
+.frozen-notice {
   display: flex;
   flex-wrap: wrap;
   align-items: center;

@@ -84,6 +84,8 @@ export interface ConnectionInfo {
   knownBuild: boolean;
   /** What the checks the editor makes before it writes found on this game. */
   health: Health;
+  /** Only from `connect`: what it froze again of what was frozen in this save before, when there was any. */
+  refrozen?: Refrozen;
 }
 
 export interface ReloadInfo {
@@ -93,6 +95,22 @@ export interface ReloadInfo {
   gameDate: FmDate | null;
   /** The checks, run again with the game as it is now. */
   health: Health;
+  /**
+   * Only when the game has loaded another save since: what was frozen in that one before and is frozen again, when
+   * there was any. What was frozen in the save before is not held in this one.
+   */
+  refrozen?: Refrozen;
+}
+
+/**
+ * What connecting froze again of what the app remembers as frozen in this save: the players' attributes and the
+ * clubs' money, by name, and how many it left for later, still remembered (FMLibreEditor cannot write to this version
+ * of the game yet, or a check did not pass).
+ */
+export interface Refrozen {
+  players: string[];
+  clubs: string[];
+  waiting: number;
 }
 
 /**

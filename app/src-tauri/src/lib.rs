@@ -1,7 +1,7 @@
 mod bridge;
 
-use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -22,6 +22,13 @@ use tauri::{Manager, State};
 /// `~/Library/Application Support/Sports Interactive/Football Manager 27/graphics` on macOS.
 const GRAPHICS_FOLDER: &str = "FMLIBRE_GRAPHICS";
 
+/// The environment variable that names the folder the app keeps its own files in, instead of its data folder
+/// (`%APPDATA%\io.github.tozmoz.fmlibreeditor` on Windows): for now, what was frozen in each save.
+const DATA_FOLDER: &str = "FMLIBRE_DATA";
+
+/// The file in that folder that remembers what was frozen in each save (see `Remembered`).
+const FROZEN_FILE: &str = "frozen.json";
+
 /// The connected game, the people read from it and the changes written this session.
 struct Connection {
     session: Session,
@@ -36,6 +43,8 @@ struct Connection {
     /// The next id for a mass-edit preview or batch.
     next_id: u32,
     frozen: Frozen,
+    /// Which save the game has loaded (see `save_of`); none when the lists name no human manager.
+    save: Option<String>,
 }
 
 /// How often the balances of frozen clubs and the attributes of frozen players are looked at.
@@ -74,6 +83,77 @@ impl Frozen {
     }
 }
 
+/// What was frozen in each save, kept in a file so that it is frozen again when the app connects to that save another
+/// time: after the app, the game or the computer was restarted.
+#[derive(Default, Serialize, Deserialize)]
+struct Remembered {
+    /// By save (see `save_of`).
+    saves: BTreeMap<String, RememberedSave>,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+struct RememberedSave {
+    /// The players whose attributes are frozen.
+    players: BTreeSet<u32>,
+    /// The clubs whose money is frozen.
+    clubs: BTreeSet<u32>,
+}
+
+impl RememberedSave {
+    fn is_empty(&self) -> bool {
+        self.players.is_empty() && self.clubs.is_empty()
+    }
+}
+
+impl Remembered {
+    /// What the file at `path` holds: nothing when there is none, or it cannot be read.
+    fn read(path: &Path) -> Self {
+        std::fs::read(path).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default()
+    }
+
+    /// Writes it whole to `path`, through a file beside it, so that a write cut short never leaves half a file.
+    fn write(&self, path: &Path) -> std::io::Result<()> {
+        if let Some(folder) = path.parent() {
+            std::fs::create_dir_all(folder)?;
+        }
+        let part = path.with_extension("json.part");
+        std::fs::write(&part, serde_json::to_vec_pretty(self)?)?;
+        std::fs::rename(&part, path)
+    }
+}
+
+/// Where the app remembers what was frozen in each save; none when it has no data folder.
+struct FrozenFile(Option<PathBuf>);
+
+/// What connecting froze again of what was frozen in the save before (see `Connection::restore_frozen`).
+#[derive(Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Refrozen {
+    /// The players whose attributes are frozen again, by name.
+    players: Vec<String>,
+    /// The clubs whose money is frozen again, by name.
+    clubs: Vec<String>,
+    /// How many are left for later, still remembered: the editor has no profile for this version of the game, or a
+    /// check did not pass.
+    waiting: usize,
+}
+
+impl Refrozen {
+    fn is_empty(&self) -> bool {
+        self.players.is_empty() && self.clubs.is_empty() && self.waiting == 0
+    }
+}
+
+/// What tells one save from another: the storefront, and the managers that human players control in it, whom each
+/// new save makes afresh. None when the lists name no human manager.
+fn save_of(session: &Session, humans: &[u32]) -> Option<String> {
+    if humans.is_empty() {
+        return None;
+    }
+    let managers: Vec<String> = humans.iter().map(u32::to_string).collect();
+    Some(format!("{:?}:{}", session.game.storefront, managers.join("+")))
+}
+
 /// A mass edit that was worked out and shown, waiting to be applied as it was shown.
 struct PendingMass {
     id: u32,
@@ -83,18 +163,101 @@ struct PendingMass {
 
 impl Connection {
     /// Reads every list. A reload keeps the change log; a mass edit previewed before is dropped,
-    /// since its people may have moved.
-    fn load(session: Session, log: Vec<LoggedChange>, frozen: Frozen) -> Result<Self, Failure> {
+    /// since its people may have moved. Nothing is frozen yet.
+    fn load(session: Session, log: Vec<LoggedChange>) -> Result<Self, Failure> {
         // The game may have loaded a save or moved on since the checks last ran; the date the lists' ages are worked
         // out from is one of them.
         session.recheck();
         let players = PlayerIndex::new(session.players()?);
         let staff = session.staff()?;
         let human_clubs = staff.iter().filter(|member| member.is_human).filter_map(|member| member.club_uid).collect();
+        let mut humans: Vec<u32> = staff.iter().filter(|member| member.is_human).map(|member| member.uid).collect();
+        humans.sort_unstable();
+        let save = save_of(&session, &humans);
         let staff = StaffIndex::new(staff);
         let clubs = ClubIndex::new(session.clubs()?);
         let next_id = log.iter().filter_map(|logged| logged.batch).max().unwrap_or(0) + 1;
-        Ok(Self { session, players, staff, clubs, human_clubs, log, mass: None, next_id, frozen })
+        let frozen = Frozen::default();
+        Ok(Self { session, players, staff, clubs, human_clubs, log, mass: None, next_id, frozen, save })
+    }
+
+    /// Freezes again what was frozen in this save before, as the file at `path` remembers it: the attributes of its
+    /// players and the money of its clubs, each held from what it is now. Only on a build the editor has a profile
+    /// for and only where its checks let it write: on any other, after an update of the game say, nothing is frozen,
+    /// and the file keeps them for later. What is no longer in the lists (a player who retired) is forgotten.
+    fn restore_frozen(&mut self, path: Option<&Path>) -> Refrozen {
+        let mut refrozen = Refrozen::default();
+        let (Some(path), Some(save)) = (path, self.save.clone()) else {
+            return refrozen;
+        };
+        let mut remembered = Remembered::read(path);
+        let Some(entry) = remembered.saves.get_mut(&save) else {
+            return refrozen;
+        };
+        let count = entry.players.len() + entry.clubs.len();
+        entry.players.retain(|&uid| self.players.get(uid).is_some());
+        entry.clubs.retain(|&uid| self.clubs.get(uid).is_some());
+        let (players, clubs) = (entry.players.clone(), entry.clubs.clone());
+        if players.len() + clubs.len() < count {
+            remembered.saves.retain(|_, save| !save.is_empty());
+            let _ = remembered.write(path);
+        }
+        let safe = self.session.known_build() && self.session.process.can_write();
+        for uid in players {
+            match safe.then(|| self.freeze_player(uid)) {
+                Some(Ok(())) => refrozen.players.push(self.player_name(uid)),
+                _ => refrozen.waiting += 1,
+            }
+        }
+        for uid in clubs {
+            match safe.then(|| self.freeze_club(uid)) {
+                Some(Ok(())) => refrozen.clubs.push(self.club_name(uid)),
+                _ => refrozen.waiting += 1,
+            }
+        }
+        refrozen
+    }
+
+    /// Changes, with `change`, what the file at `path` remembers as frozen in this save. Without a file or a known
+    /// save nothing is remembered, and a file that cannot be written only means that this is not.
+    fn remember(&self, path: Option<&Path>, change: impl FnOnce(&mut RememberedSave)) {
+        let (Some(path), Some(save)) = (path, &self.save) else {
+            return;
+        };
+        let mut remembered = Remembered::read(path);
+        change(remembered.saves.entry(save.clone()).or_default());
+        remembered.saves.retain(|_, save| !save.is_empty());
+        let _ = remembered.write(path);
+    }
+
+    /// Freezes the attributes of the player `uid` at what they are now (see `hold_attributes`). Refused while the
+    /// attributes may not be written.
+    fn freeze_player(&mut self, uid: u32) -> Result<(), Failure> {
+        let target = self.players.get(uid).ok_or_else(|| not_found(Entity::Player, uid))?.target();
+        let fields = self.attribute_fields();
+        // They share one check: what holds for the first holds for all.
+        if let Some(field) = fields.first()
+            && let Some(lock) = self.session.field_lock(field)
+        {
+            return Err(EditError::Locked { field: field.key.clone(), lock }.into());
+        }
+        let values = self.session.read_fields(&target, &fields)?;
+        let held = fields.into_iter().zip(values).filter_map(|(field, value)| Some((field.key, value?))).collect();
+        self.frozen.attributes.insert(uid, held);
+        Ok(())
+    }
+
+    /// Freezes the money of the club `uid` at its balance now (see `hold_money`). Refused while the balance may not be
+    /// written.
+    fn freeze_club(&mut self, uid: u32) -> Result<(), Failure> {
+        let target = self.clubs.get(uid).ok_or_else(|| not_found(Entity::Club, uid))?.target();
+        let field = self.session.field(Entity::Club, "finance.balance")?;
+        if let Some(lock) = self.session.field_lock(&field) {
+            return Err(EditError::Locked { field: field.key.clone(), lock }.into());
+        }
+        let balance = self.session.read_field(&target, &field)?;
+        self.frozen.money.insert(uid, balance);
+        Ok(())
     }
 
     /// What the window shows about the connection; `load_ms` is how long reading took.
@@ -112,6 +275,7 @@ impl Connection {
             writable: self.session.process.can_write(),
             known_build: self.session.known_build(),
             health: Health::clone(&self.session.health()),
+            refrozen: None,
         }
     }
 
@@ -1152,6 +1316,9 @@ struct ConnectionInfo {
     known_build: bool,
     /// What the checks the editor makes before it writes found on this game.
     health: Health,
+    /// Only from `connect`: what it froze again of what was frozen in this save before, when there was any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    refrozen: Option<Refrozen>,
 }
 
 #[derive(Serialize)]
@@ -1163,6 +1330,10 @@ struct ReloadInfo {
     game_date: Option<FmDate>,
     /// The checks, run again with the game as it is now.
     health: Health,
+    /// Only when the game has loaded another save since: what was frozen in that one before and is frozen again,
+    /// when there was any. What was frozen in the save before is not held in this one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    refrozen: Option<Refrozen>,
 }
 
 /// One page of search results.
@@ -1271,18 +1442,23 @@ fn inspect(pid: u32) -> DetectedGame {
 
 /// Attaches to the running game, locates its data and reads every player, member of
 /// staff and club. Only reads memory; the game is opened for writing too when the system
-/// allows it, so that edits can be applied later.
+/// allows it, so that edits can be applied later, and so that what was frozen in this
+/// save before can be held again (see `Connection::restore_frozen`).
 #[tauri::command]
-async fn connect(state: State<'_, AppState>) -> Result<ConnectionInfo, Failure> {
+async fn connect(state: State<'_, AppState>, file: State<'_, FrozenFile>) -> Result<ConnectionInfo, Failure> {
     let started = Instant::now();
-    let connection = tauri::async_runtime::spawn_blocking(|| -> Result<Connection, Failure> {
+    let path = file.0.clone();
+    let (connection, refrozen) = tauri::async_runtime::spawn_blocking(move || -> Result<_, Failure> {
         let pid = find_game(None)?;
         let process = Process::open_read_write(pid).or_else(|_| Process::open_read(pid))?;
-        Connection::load(Session::connect(process, ArraySource::ProfileFirst)?, Vec::new(), Frozen::default())
+        let mut connection = Connection::load(Session::connect(process, ArraySource::ProfileFirst)?, Vec::new())?;
+        let refrozen = connection.restore_frozen(path.as_deref());
+        Ok((connection, refrozen))
     })
     .await??;
 
-    let info = connection.info(started.elapsed().as_millis());
+    let mut info = connection.info(started.elapsed().as_millis());
+    info.refrozen = (!refrozen.is_empty()).then_some(refrozen);
     *state.0.lock()? = Some(connection);
     Ok(info)
 }
@@ -1306,12 +1482,21 @@ fn allow_editing(state: State<'_, AppState>) -> Result<ConnectionInfo, Failure> 
     Ok(connection.info(0))
 }
 
-/// Reads everything again, e.g. after the game has moved on. Drops the connection when that fails.
+/// Reads everything again, e.g. after the game has moved on. Drops the connection when that fails. What is frozen
+/// stays frozen, unless the game has loaded another save: then what was frozen in that one before is frozen instead.
 #[tauri::command]
-async fn reload(state: State<'_, AppState>) -> Result<ReloadInfo, Failure> {
-    let connection = state.0.lock()?.take().ok_or_else(not_connected)?;
-    let connection = tauri::async_runtime::spawn_blocking(move || {
-        Connection::load(connection.session, connection.log, connection.frozen)
+async fn reload(state: State<'_, AppState>, file: State<'_, FrozenFile>) -> Result<ReloadInfo, Failure> {
+    let old = state.0.lock()?.take().ok_or_else(not_connected)?;
+    let path = file.0.clone();
+    let (connection, refrozen) = tauri::async_runtime::spawn_blocking(move || -> Result<_, Failure> {
+        let (save, frozen) = (old.save, old.frozen);
+        let mut connection = Connection::load(old.session, old.log)?;
+        if connection.save == save {
+            connection.frozen = frozen;
+            return Ok((connection, None));
+        }
+        let refrozen = connection.restore_frozen(path.as_deref());
+        Ok((connection, (!refrozen.is_empty()).then_some(refrozen)))
     })
     .await??;
     let info = ReloadInfo {
@@ -1320,6 +1505,7 @@ async fn reload(state: State<'_, AppState>) -> Result<ReloadInfo, Failure> {
         clubs: connection.clubs.len(),
         game_date: connection.session.game_date(),
         health: Health::clone(&connection.session.health()),
+        refrozen,
     };
     *state.0.lock()? = Some(connection);
     Ok(info)
@@ -1414,19 +1600,29 @@ fn list_nations(state: State<'_, AppState>) -> Result<Vec<Nation>, Failure> {
 }
 
 /// Freezes the money of the club `club`, or unfreezes it: while the app is connected, a frozen club's balance does not
-/// go down. Returns the clubs frozen now.
+/// go down. Refused while the balance may not be written. The app remembers it for this save, and freezes it again
+/// when it connects to the save another time. Returns the clubs frozen now.
 #[tauri::command]
-fn freeze_money(state: State<'_, AppState>, club: u32, frozen: bool) -> Result<Vec<u32>, Failure> {
+fn freeze_money(
+    state: State<'_, AppState>,
+    file: State<'_, FrozenFile>,
+    club: u32,
+    frozen: bool,
+) -> Result<Vec<u32>, Failure> {
     let mut guard = state.0.lock()?;
     let connection = guard.as_mut().ok_or_else(not_connected)?;
     if frozen {
-        let target = connection.clubs.get(club).ok_or_else(|| not_found(Entity::Club, club))?.target();
-        let field = connection.session.field(Entity::Club, "finance.balance")?;
-        let balance = connection.session.read_field(&target, &field)?;
-        connection.frozen.money.insert(club, balance);
+        connection.freeze_club(club)?;
     } else {
         connection.frozen.money.remove(&club);
     }
+    connection.remember(file.0.as_deref(), |save| {
+        if frozen {
+            save.clubs.insert(club);
+        } else {
+            save.clubs.remove(&club);
+        }
+    });
     Ok(connection.frozen.money.keys().copied().collect())
 }
 
@@ -1438,26 +1634,29 @@ fn frozen_clubs(state: State<'_, AppState>) -> Result<Vec<u32>, Failure> {
 }
 
 /// Freezes the attributes of the player `uid`, or unfreezes them: while the app is connected, a frozen player's
-/// attributes do not get worse. Refused while the attributes may not be written. Returns the players frozen now.
+/// attributes do not get worse. Refused while the attributes may not be written. The app remembers it for this save,
+/// and freezes them again when it connects to the save another time. Returns the players frozen now.
 #[tauri::command]
-fn freeze_attributes(state: State<'_, AppState>, uid: u32, frozen: bool) -> Result<Vec<u32>, Failure> {
+fn freeze_attributes(
+    state: State<'_, AppState>,
+    file: State<'_, FrozenFile>,
+    uid: u32,
+    frozen: bool,
+) -> Result<Vec<u32>, Failure> {
     let mut guard = state.0.lock()?;
     let connection = guard.as_mut().ok_or_else(not_connected)?;
     if frozen {
-        let target = connection.players.get(uid).ok_or_else(|| not_found(Entity::Player, uid))?.target();
-        let fields = connection.attribute_fields();
-        // They share one check: what holds for the first holds for all.
-        if let Some(field) = fields.first()
-            && let Some(lock) = connection.session.field_lock(field)
-        {
-            return Err(EditError::Locked { field: field.key.clone(), lock }.into());
-        }
-        let values = connection.session.read_fields(&target, &fields)?;
-        let held = fields.into_iter().zip(values).filter_map(|(field, value)| Some((field.key, value?))).collect();
-        connection.frozen.attributes.insert(uid, held);
+        connection.freeze_player(uid)?;
     } else {
         connection.frozen.attributes.remove(&uid);
     }
+    connection.remember(file.0.as_deref(), |save| {
+        if frozen {
+            save.players.insert(uid);
+        } else {
+            save.players.remove(&uid);
+        }
+    });
     Ok(connection.frozen.attributes.keys().copied().collect())
 }
 
@@ -2099,6 +2298,8 @@ pub fn run() {
                 Some(folder) => Some(PathBuf::from(folder)),
                 None => user_data.ok().map(|folder| GraphicsIndex::default_root(&folder, 27)),
             };
+            let data = std::env::var_os(DATA_FOLDER).map(PathBuf::from).or_else(|| app.path().app_data_dir().ok());
+            app.manage(FrozenFile(data.map(|folder| folder.join(FROZEN_FILE))));
             // Frozen money and attributes: every little while, what the game took from them is put back.
             let handle = app.handle().clone();
             std::thread::spawn(move || {

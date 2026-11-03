@@ -631,7 +631,8 @@ export const tr: Strings = {
     undoMaxTitle: "Eski özelliklerini oyuna geri yaz",
     freezeAttributes: "Özellikleri dondur",
     freezeAttributesNote:
-      "Uygulama açık ve oyuna bağlıyken özellikleri düşmez: oyunun düşürdüğü geri konur, gelişmeler yine sayılır.",
+      "Uygulama açık ve oyuna bağlıyken özellikleri düşmez: oyunun düşürdüğü geri konur, gelişmeler yine sayılır. " +
+      "Uygulama bunu bu kayıt için hatırlar ve kayda yeniden bağlandığında onları yine dondurur.",
 
     // Staff
     you: "Siz",
@@ -810,7 +811,9 @@ export const tr: Strings = {
     perWeek: "haftalık",
     noFinances: "FM, finansı yalnızca oynanan liglerdeki kulüpler için tutar.",
     freeze: "Parayı dondur",
-    freezeNote: "Uygulama açık ve oyuna bağlıyken bakiye düşmez: oyunun düştüğü para geri konur, gelirler yine eklenir.",
+    freezeNote:
+      "Uygulama açık ve oyuna bağlıyken bakiye düşmez: oyunun düştüğü para geri konur, gelirler yine eklenir. " +
+      "Uygulama bunu bu kayıt için hatırlar ve kayda yeniden bağlandığında parayı yine dondurur.",
 
     // Club info
     stadium: "Stadyum",
@@ -879,6 +882,17 @@ export const tr: Strings = {
     detecting: "Football Manager aranıyor…",
     connecting: "Oyuncular, personel ve kulüpler okunuyor…",
     reloading: "Oyuncular, personel ve kulüpler yeniden okunuyor…",
+
+    refrozen: {
+      title: "Geçen seferden yeniden donduruldu",
+      waitingTitle: "Dondurulanlar şimdilik bekliyor",
+      players: (names) => `Özellikler: ${names}`,
+      clubs: (names) => `Para: ${names}`,
+      more: (count) => `ve ${format(count)} tane daha`,
+      waiting: (count) =>
+        `${format(count)} tanesi hatırlanıyor ama şu an dondurulmadı: FMLibreEditor oyunun bu sürümüne henüz yazamıyor.`,
+      dismiss: "Kapat",
+    },
 
     connect: {
       title: "Football Manager 27'ye bağlan",

@@ -6,13 +6,14 @@ import { ClubBrowser } from "./ClubBrowser";
 import { CompatibilityNotice } from "./CompatibilityNotice";
 import { forgetFieldTables } from "./fieldTables";
 import { describeError, describeGame, formatDate } from "./format";
+import { FrozenNotice } from "./FrozenNotice";
 import { GraphicsStatus } from "./GraphicsStatus";
 import { SettingsMenu } from "./SettingsMenu";
 import { appText, changesText, clubListText, playerListText, staffListText } from "./labels";
 import { PlayerBrowser } from "./PlayerBrowser";
 import { restored, useSnapshot } from "./restore";
 import { StaffBrowser } from "./StaffBrowser";
-import type { BridgeInfo, ConnectionInfo, Detection, ReloadInfo } from "./types";
+import type { BridgeInfo, ConnectionInfo, Detection, Refrozen, ReloadInfo } from "./types";
 import { useUpdateCheck } from "./update";
 import { UpdateCheck, UpdateNotice } from "./UpdateNotice";
 import { askToLeave, EditorContext } from "./useProfileEditing";
@@ -57,6 +58,8 @@ function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
+  // What connecting froze again of what was frozen in the save before, until the notice that says so is dismissed.
+  const [refrozen, setRefrozen] = useState<Refrozen | null>(null);
   const [view, setView] = useState<View>(() => restored("view", readView));
   useSnapshot("view", () => view);
   const { log, error: logError, reload: reloadLog, clear: clearLog } = useChangeLog();
@@ -83,19 +86,23 @@ function App() {
 
   const connect = () =>
     run(appText.connecting, async () => {
-      const connected = await call<ConnectionInfo>("connect");
+      const { refrozen: again, ...connected } = await call<ConnectionInfo>("connect");
       // A new connection has an empty change log, and its field tables may differ.
       forgetFieldTables();
       clearLog();
       setConnection(connected);
+      setRefrozen(again ?? null);
       setDataVersion((v) => v + 1);
     });
 
   const reload = () =>
     run(appText.reloading, async () => {
       try {
-        const reloaded = await call<ReloadInfo>("reload");
+        const { refrozen: again, ...reloaded } = await call<ReloadInfo>("reload");
         setConnection((c) => c && { ...c, ...reloaded });
+        if (again) {
+          setRefrozen(again);
+        }
         setDataVersion((v) => v + 1);
       } catch (e) {
         // The Rust side drops the connection when reading fails (e.g. the game was closed).
@@ -225,6 +232,7 @@ function App() {
             }}
           />
         )}
+        {connection && refrozen && <FrozenNotice refrozen={refrozen} onDismiss={() => setRefrozen(null)} />}
         {error && <div className="banner">{error}</div>}
 
         {connection ? (

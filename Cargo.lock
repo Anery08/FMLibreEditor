@@ -1080,6 +1080,7 @@ dependencies = [
  "fmlibre-core",
  "fmlibre-mem",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",

@@ -181,6 +181,11 @@ changes many at once, and undo.
     is put back and what it adds stays (injury proneness and dirtiness the other way round). A value written in the
     editor, or undone, becomes the one held. His nationality, birth date and height are edited at the top of the
     profile, where the header shows them.
+  - [x] What is frozen is remembered per save (`frozen.json` in the app's data folder; a save is its storefront and
+    the UIDs of its human managers) and frozen again on connecting, from the values then, with a notice. Only on a
+    build with a profile and where the checks pass: after an update of the game the freezes wait, remembered, and
+    nothing is written. Players gone from the game are forgotten. A reload after the game loaded another save stops
+    holding the old save's freezes and picks up the new one's.
   - Checked on the Mac Steam build and on the Windows Steam and Game Pass builds: the filters on a real save,
     and each new field written, read back and restored. Next: freezing money through a game day.
 - Transfers, which users asked for next:

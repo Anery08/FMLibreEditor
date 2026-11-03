@@ -145,6 +145,12 @@ The app reads graphics packs from
 If FM keeps its user data somewhere else, set the environment variable `FMLIBRE_GRAPHICS`
 to that graphics folder before starting the app.
 
+The app remembers what was frozen in each save in `frozen.json` in its data folder
+(`%APPDATA%\io.github.tozmoz.fmlibreeditor` on Windows,
+`~/Library/Application Support/io.github.tozmoz.fmlibreeditor` on macOS). A save is told
+apart by the storefront and the UIDs of its human managers. To test without touching that
+file, set `FMLIBRE_DATA` to another folder before starting the app.
+
 ### Releasing
 
 1. **Bump the version** in three places:
