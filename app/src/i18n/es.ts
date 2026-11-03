@@ -641,6 +641,25 @@ export const es: Strings = {
     liftBans: "Levantar",
     liftBansTitle: "Levantar todas las sanciones de este jugador en el juego",
 
+    // Sobre los atributos, mientras se lee el perfil
+    maxAttributes: "Atributos al máximo",
+    maxAttributesTitle:
+      "Poner cada atributo de este jugador en su mejor valor: 20, y 1 para la propensión a lesiones y el juego sucio",
+    maxAttributesDone: (count) =>
+      count === 0
+        ? "Todos sus atributos ya están en su mejor valor"
+        : count === 1
+          ? "1 cambio escrito"
+          : `${format(count)} cambios escritos`,
+    maxAttributesUndone: (count) =>
+      count === 0 ? "No se ha deshecho nada" : count === 1 ? "1 cambio deshecho" : `${format(count)} cambios deshechos`,
+    undoMax: "Deshacer",
+    undoMaxTitle: "Volver a escribir en el juego sus atributos anteriores",
+    freezeAttributes: "Congelar los atributos",
+    freezeAttributesNote:
+      "Mientras la aplicación esté abierta y conectada, sus atributos no empeoran: lo que el juego quita se devuelve, " +
+      "y las mejoras siguen contando.",
+
     // Personal
     you: "Tú",
     youTitle: "El mánager que controlas en esta partida",
@@ -998,6 +1017,7 @@ export const es: Strings = {
     editTitle: "Cambiar los valores de este perfil en el juego",
     startFailed: (reason) => `No se ha podido empezar a editar: ${reason}`,
     ability: "Habilidad",
+    personalDetails: "Datos personales",
     positionRatings: "Valoraciones por posición",
     positionRating: (position) => `Valoración de ${position}`,
     was: (value) => `antes: ${value}`,

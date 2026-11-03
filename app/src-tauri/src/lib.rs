@@ -35,13 +35,44 @@ struct Connection {
     mass: Option<PendingMass>,
     /// The next id for a mass-edit preview or batch.
     next_id: u32,
-    /// The clubs whose money is frozen, with the least their balance may be: what it was when it was frozen, or more
-    /// once the club earned more (see `hold_frozen`).
-    frozen: BTreeMap<u32, i64>,
+    frozen: Frozen,
 }
 
-/// How often the balances of frozen clubs are looked at.
+/// How often the balances of frozen clubs and the attributes of frozen players are looked at.
 const FREEZE_EVERY: Duration = Duration::from_secs(2);
+
+/// The attributes of a player that are at their best at 1, not at 20.
+const LOWER_IS_BETTER: [&str; 2] = ["attribute.injury_proneness", "attribute.dirtiness"];
+
+/// What the app keeps from getting worse while it is connected (see `Connection::hold_frozen`).
+#[derive(Default)]
+struct Frozen {
+    /// The clubs whose money is frozen, with the least their balance may be: what it was when it was frozen, or more
+    /// once the club earned more.
+    money: BTreeMap<u32, i64>,
+    /// The players whose attributes are frozen, with the worst each attribute may be, as stored: what it was when it
+    /// was frozen, or better once he improved. Worse is lower, or higher where lower is better.
+    attributes: BTreeMap<u32, BTreeMap<String, i64>>,
+}
+
+impl Frozen {
+    fn is_empty(&self) -> bool {
+        self.money.is_empty() && self.attributes.is_empty()
+    }
+
+    /// A value the editor just wrote to a frozen field becomes what it is held at, so it is not taken back as if the
+    /// game had changed it.
+    fn note(&mut self, change: &Change, value: i64) {
+        let held = match change.entity {
+            Entity::Club if change.field == "finance.balance" => self.money.get_mut(&change.uid),
+            Entity::Player => self.attributes.get_mut(&change.uid).and_then(|held| held.get_mut(&change.field)),
+            _ => None,
+        };
+        if let Some(held) = held {
+            *held = value;
+        }
+    }
+}
 
 /// A mass edit that was worked out and shown, waiting to be applied as it was shown.
 struct PendingMass {
@@ -53,7 +84,7 @@ struct PendingMass {
 impl Connection {
     /// Reads every list. A reload keeps the change log; a mass edit previewed before is dropped,
     /// since its people may have moved.
-    fn load(session: Session, log: Vec<LoggedChange>, frozen: BTreeMap<u32, i64>) -> Result<Self, Failure> {
+    fn load(session: Session, log: Vec<LoggedChange>, frozen: Frozen) -> Result<Self, Failure> {
         // The game may have loaded a save or moved on since the checks last ran; the date the lists' ages are worked
         // out from is one of them.
         session.recheck();
@@ -603,13 +634,19 @@ impl Connection {
         .ok_or_else(|| not_found(entity, uid))
     }
 
-    /// Keeps the balance of every frozen club from going down: what the game took is put back, and what it earned
-    /// raises the least it may be. These writes are not logged; unfreezing ends them.
+    /// Keeps the balance of every frozen club and the attributes of every frozen player from getting worse: what the
+    /// game took is put back, and what it gave raises what they are held at. These writes are not logged; unfreezing
+    /// ends them.
     fn hold_frozen(&mut self) {
+        self.hold_money();
+        self.hold_attributes();
+    }
+
+    fn hold_money(&mut self) {
         let Ok(field) = self.session.field(Entity::Club, "finance.balance") else {
             return;
         };
-        for (&uid, floor) in self.frozen.iter_mut() {
+        for (&uid, floor) in self.frozen.money.iter_mut() {
             let Some(target) = self.clubs.get(uid).map(|club| club.target()) else {
                 continue;
             };
@@ -624,6 +661,51 @@ impl Connection {
         }
     }
 
+    fn hold_attributes(&mut self) {
+        if self.frozen.attributes.is_empty() {
+            return;
+        }
+        let fields = self.attribute_fields();
+        for (&uid, held) in self.frozen.attributes.iter_mut() {
+            let Some(target) = self.players.get(uid).map(|player| player.target()) else {
+                continue;
+            };
+            let Ok(values) = self.session.read_fields(&target, &fields) else {
+                continue;
+            };
+            for (field, now) in fields.iter().zip(values) {
+                let (Some(now), Some(limit)) = (now, held.get_mut(&field.key)) else {
+                    continue;
+                };
+                let worse = if LOWER_IS_BETTER.contains(&field.key.as_str()) { now > *limit } else { now < *limit };
+                if worse {
+                    // Only while the game still holds what was read: a day it is working out is left to it.
+                    let _ = self.session.write_field_if(&target, field, now, *limit);
+                } else {
+                    *limit = now;
+                }
+            }
+        }
+    }
+
+    /// The attributes of players the editor can change.
+    fn attribute_fields(&self) -> Vec<Field> {
+        let fields = self.session.fields(Entity::Player).into_iter();
+        fields.filter(|field| field.key.starts_with("attribute.")).collect()
+    }
+
+    /// Every attribute of a player at its best: 20, or 1 where lower is better.
+    fn best_attributes(&self) -> Vec<(Field, Operation)> {
+        self.attribute_fields()
+            .into_iter()
+            .map(|field| {
+                let best = if LOWER_IS_BETTER.contains(&field.key.as_str()) { 1 } else { 20 };
+                let value = field.scale.stored(best);
+                (field, Operation::Set { value })
+            })
+            .collect()
+    }
+
     /// The nations of the players and staff in the lists.
     fn nations(&self) -> Vec<Nation> {
         let players = self.players.iter().map(|p| (p.nation_address, p.nation.as_deref(), p.nation_uid));
@@ -633,6 +715,7 @@ impl Connection {
 
     /// Keeps the list rows in step with `value`, just written to the field `change` names.
     fn note_change(&mut self, change: &Change, value: i64) {
+        self.frozen.note(change, value);
         // A new nation: its name and flag, as the rows of its other people have them.
         let nation = (change.field == "nation")
             .then(|| self.nations().into_iter().find(|n| n.address == value as u64))
@@ -1195,7 +1278,7 @@ async fn connect(state: State<'_, AppState>) -> Result<ConnectionInfo, Failure> 
     let connection = tauri::async_runtime::spawn_blocking(|| -> Result<Connection, Failure> {
         let pid = find_game(None)?;
         let process = Process::open_read_write(pid).or_else(|_| Process::open_read(pid))?;
-        Connection::load(Session::connect(process, ArraySource::ProfileFirst)?, Vec::new(), BTreeMap::new())
+        Connection::load(Session::connect(process, ArraySource::ProfileFirst)?, Vec::new(), Frozen::default())
     })
     .await??;
 
@@ -1340,18 +1423,49 @@ fn freeze_money(state: State<'_, AppState>, club: u32, frozen: bool) -> Result<V
         let target = connection.clubs.get(club).ok_or_else(|| not_found(Entity::Club, club))?.target();
         let field = connection.session.field(Entity::Club, "finance.balance")?;
         let balance = connection.session.read_field(&target, &field)?;
-        connection.frozen.insert(club, balance);
+        connection.frozen.money.insert(club, balance);
     } else {
-        connection.frozen.remove(&club);
+        connection.frozen.money.remove(&club);
     }
-    Ok(connection.frozen.keys().copied().collect())
+    Ok(connection.frozen.money.keys().copied().collect())
 }
 
 /// The clubs whose money is frozen.
 #[tauri::command]
 fn frozen_clubs(state: State<'_, AppState>) -> Result<Vec<u32>, Failure> {
     let guard = state.0.lock()?;
-    Ok(guard.as_ref().map(|connection| connection.frozen.keys().copied().collect()).unwrap_or_default())
+    Ok(guard.as_ref().map(|connection| connection.frozen.money.keys().copied().collect()).unwrap_or_default())
+}
+
+/// Freezes the attributes of the player `uid`, or unfreezes them: while the app is connected, a frozen player's
+/// attributes do not get worse. Refused while the attributes may not be written. Returns the players frozen now.
+#[tauri::command]
+fn freeze_attributes(state: State<'_, AppState>, uid: u32, frozen: bool) -> Result<Vec<u32>, Failure> {
+    let mut guard = state.0.lock()?;
+    let connection = guard.as_mut().ok_or_else(not_connected)?;
+    if frozen {
+        let target = connection.players.get(uid).ok_or_else(|| not_found(Entity::Player, uid))?.target();
+        let fields = connection.attribute_fields();
+        // They share one check: what holds for the first holds for all.
+        if let Some(field) = fields.first()
+            && let Some(lock) = connection.session.field_lock(field)
+        {
+            return Err(EditError::Locked { field: field.key.clone(), lock }.into());
+        }
+        let values = connection.session.read_fields(&target, &fields)?;
+        let held = fields.into_iter().zip(values).filter_map(|(field, value)| Some((field.key, value?))).collect();
+        connection.frozen.attributes.insert(uid, held);
+    } else {
+        connection.frozen.attributes.remove(&uid);
+    }
+    Ok(connection.frozen.attributes.keys().copied().collect())
+}
+
+/// The players whose attributes are frozen.
+#[tauri::command]
+fn frozen_players(state: State<'_, AppState>) -> Result<Vec<u32>, Failure> {
+    let guard = state.0.lock()?;
+    Ok(guard.as_ref().map(|connection| connection.frozen.attributes.keys().copied().collect()).unwrap_or_default())
 }
 
 /// The fields of players or of staff that the editor can change.
@@ -1851,19 +1965,7 @@ fn team_action(state: State<'_, AppState>, club: u32, team: usize, action: TeamA
         .map(|player| (player.target(), player.name.clone()))
         .collect();
     let operations = if action == TeamAction::MaxAttributes {
-        // Injury proneness and dirtiness are at their best at 1.
-        const LOWER_IS_BETTER: [&str; 2] = ["attribute.injury_proneness", "attribute.dirtiness"];
-        connection
-            .session
-            .fields(Entity::Player)
-            .into_iter()
-            .filter(|field| field.key.starts_with("attribute."))
-            .map(|field| {
-                let best = if LOWER_IS_BETTER.contains(&field.key.as_str()) { 1 } else { 20 };
-                let value = field.scale.stored(best);
-                (field, Operation::Set { value })
-            })
-            .collect()
+        connection.best_attributes()
     } else {
         values
             .iter()
@@ -1872,6 +1974,27 @@ fn team_action(state: State<'_, AppState>, club: u32, team: usize, action: TeamA
     };
     let plan = connection.session.plan_mass_edit(&targets, &operations)?;
     Ok(connection.write_planned(Entity::Player, plan.planned, batch))
+}
+
+/// Sets every attribute of the player `uid` to its best, as Max attributes does for a team: 20, and 1 for injury
+/// proneness and dirtiness. The changes are logged as one batch, which `undo_batch` undoes.
+#[tauri::command]
+fn max_attributes(state: State<'_, AppState>, uid: u32) -> Result<MassReport, Failure> {
+    let mut guard = state.0.lock()?;
+    let connection = guard.as_mut().ok_or_else(not_connected)?;
+    let player = connection.players.get(uid).ok_or_else(|| not_found(Entity::Player, uid))?;
+    let targets = [(player.target(), player.name.clone())];
+    let plan = connection.session.plan_mass_edit(&targets, &connection.best_attributes())?;
+    let batch = connection.fresh_id();
+    let mut report = connection.write_planned(Entity::Player, plan.planned, batch);
+    // An attribute that could not be read is said, not passed over: it is one player, not a team.
+    report.failed.extend(plan.skipped.into_iter().map(|skipped| MassFailure {
+        uid: skipped.uid,
+        name: skipped.name,
+        field: skipped.field,
+        error: Failure { code: skipped.code, params: skipped.params, message: skipped.reason },
+    }));
+    Ok(report)
 }
 
 /// Works out a mass edit: `operations` applied to every player, member of staff or club
@@ -1976,7 +2099,7 @@ pub fn run() {
                 Some(folder) => Some(PathBuf::from(folder)),
                 None => user_data.ok().map(|folder| GraphicsIndex::default_root(&folder, 27)),
             };
-            // Frozen money: every little while, what the game took from a frozen club's balance is put back.
+            // Frozen money and attributes: every little while, what the game took from them is put back.
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 loop {
@@ -2018,6 +2141,8 @@ pub fn run() {
             list_nations,
             freeze_money,
             frozen_clubs,
+            freeze_attributes,
+            frozen_players,
             edit_fields,
             read_values,
             apply_edits,
@@ -2049,6 +2174,7 @@ pub fn run() {
             club_squads,
             set_captain,
             team_action,
+            max_attributes,
             graphics_info,
             bridge::bridge_status,
             bridge::set_up_bridge,

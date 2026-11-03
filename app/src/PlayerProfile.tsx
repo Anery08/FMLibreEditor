@@ -1,11 +1,12 @@
 import { useContext, useEffect, useState } from "react";
+import { AttributeActions } from "./AttributeActions";
 import { ClauseList } from "./ClauseList";
 import { CompareToggle } from "./Comparison";
-import { AbilityEditGroup, EditableValue, EditInput, PositionEditGroup } from "./EditControls";
+import { AbilityEditGroup, EditableValue, EditInput, PersonalEditGroup, PositionEditGroup } from "./EditControls";
 import { call } from "./api";
 import { keepPlaying } from "./editing";
 import { describeError, formatDate, formatNumber, formatMoney } from "./format";
-import { ATTRIBUTE_LABELS, fieldLabel, profileText, type AttributeKey } from "./labels";
+import { ATTRIBUTE_LABELS, profileText, type AttributeKey } from "./labels";
 import { MedicalGroup } from "./MedicalGroup";
 import { MoveButton } from "./MoveDialog";
 import { ClubLogo, NationFlag, PersonFace, PICTURE_SIZE, WithPicture } from "./Picture";
@@ -111,6 +112,9 @@ function ProfileBody({ details }: { details: PlayerDetails }) {
   return (
     <>
       <AbilityEditGroup entity="player" />
+      <PersonalEditGroup />
+
+      <AttributeActions uid={details.uid} />
 
       <div className="profile-pair">
         <div className="profile-columns">
@@ -315,34 +319,16 @@ function TraitsGroup({ traits }: { traits: number[] }) {
 }
 
 /**
- * International record, reputation and asking price; while the player is edited, the nationality, the birth date and
- * the height, which the header shows, are here too.
+ * International record, reputation and asking price, and the retirement the game plans for the player. His
+ * nationality, birth date and height are edited at the top (see `PersonalEditGroup`).
  */
 function CareerGroup({ details }: { details: PlayerDetails }) {
   const { international, reputation, askingPrice } = details;
-  const editingNation = useEditableField("nation");
-  const editingBirth = useEditableField("date_of_birth");
-  const editingHeight = useEditableField("height");
   return (
     <section className="profile-group">
       <h3>{profileText.career}</h3>
       <div className="profile-split">
         <dl className="stats">
-          {editingNation && (
-            <Fact label={fieldLabel("player", "nation")}>
-              <EditInput field="nation" />
-            </Fact>
-          )}
-          {editingBirth && (
-            <Fact label={fieldLabel("player", "date_of_birth")}>
-              <EditInput field="date_of_birth" />
-            </Fact>
-          )}
-          {editingHeight && (
-            <Fact label={fieldLabel("player", "height")}>
-              <EditInput field="height" />
-            </Fact>
-          )}
           <Fact label={profileText.internationalCaps}>
             <EditableValue field="international.caps">{international.caps}</EditableValue>
           </Fact>

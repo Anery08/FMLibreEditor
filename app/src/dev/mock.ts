@@ -1693,41 +1693,47 @@ function teamAction(clubUid: number, index: number, action: TeamAction): MassRep
     }
     return report;
   }
-  // Max attributes: 20 for each, stored as 100, and 1 (stored as 5) where lower is better, as the real command does.
-  const best = (key: string): [string, number] => [
-    `attribute.${key}`,
-    key === "injury_proneness" || key === "dirtiness" ? 5 : 100,
-  ];
   const values: [string, number][] =
     action === "inspire"
       ? [["morale", 20]]
       : action === "refresh"
         ? [["condition", 10_000], ["match_sharpness", 10_000], ["jadedness", -500]]
-        : ATTRIBUTES.map(best);
+        : ATTRIBUTES.map(bestAttribute);
   for (const player of team.players) {
-    const now = currentValues("player", player.uid);
-    for (const [field, value] of values) {
-      if (now[field] === value) {
-        continue;
-      }
-      writeValue("player", player.uid, field, value);
-      const logged: LoggedChange = {
-        id: changes.length + 1,
-        at: Date.now(),
-        name: player.name,
-        entity: "player",
-        uid: player.uid,
-        field,
-        old: now[field],
-        new: value,
-        undoneAt: null,
-        batch,
-      };
-      changes.push(logged);
-      report.applied++;
-    }
+    setValues(player, values, report);
   }
   return report;
+}
+
+/** An attribute at its best, as Max attributes writes it: 20, stored as 100, and 1 (stored as 5) where lower is better. */
+const bestAttribute = (key: string): [string, number] => [
+  `attribute.${key}`,
+  key === "injury_proneness" || key === "dirtiness" ? 5 : 100,
+];
+
+/** Writes `values` (field, value as stored) to the player, each logged in the batch of `report`, which counts them. */
+function setValues(player: { uid: number; name: string }, values: [string, number][], report: MassReport): void {
+  const now = currentValues("player", player.uid);
+  for (const [field, value] of values) {
+    if (now[field] === value) {
+      continue;
+    }
+    writeValue("player", player.uid, field, value);
+    const logged: LoggedChange = {
+      id: changes.length + 1,
+      at: Date.now(),
+      name: player.name,
+      entity: "player",
+      uid: player.uid,
+      field,
+      old: now[field],
+      new: value,
+      undoneAt: null,
+      batch: report.batch,
+    };
+    changes.push(logged);
+    report.applied++;
+  }
 }
 
 // Mass edits --------------------------------------------------------------------------------------------------------
@@ -2012,6 +2018,9 @@ function matchesStaffFilter(s: StaffSummary, f: StaffFilter): boolean {
 /** The clubs whose money is frozen in this page; the fixtures have no game days for it to hold through. */
 const frozenMoney = new Set<number>();
 
+/** The players whose attributes are frozen in this page, likewise. */
+const frozenAttributes = new Set<number>();
+
 /** The fixture connection, once `connect` has been called in this page. */
 let mockConnection: ConnectionInfo | null = null;
 
@@ -2224,6 +2233,27 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
     }
     case "frozen_clubs":
       return [...frozenMoney] as T;
+    case "freeze_attributes": {
+      const uid = Number(args?.uid);
+      if (args?.frozen) {
+        frozenAttributes.add(uid);
+      } else {
+        frozenAttributes.delete(uid);
+      }
+      return [...frozenAttributes] as T;
+    }
+    case "frozen_players":
+      return [...frozenAttributes] as T;
+    case "max_attributes": {
+      const uid = Number(args?.uid);
+      const player = players.find((p) => p.uid === uid);
+      if (!player) {
+        throw notFound("player", uid);
+      }
+      const report: MassReport = { batch: nextMassId++, applied: 0, failed: [] };
+      setValues(player, ATTRIBUTES.map(bestAttribute), report);
+      return report as T;
+    }
     case "list_nations": {
       const nations: Nation[] = NATIONS.map((name) => ({ address: nationAddress(name), uid: 1000 + NATIONS.indexOf(name), name }));
       return nations.sort((a, b) => a.name.localeCompare(b.name)) as T;

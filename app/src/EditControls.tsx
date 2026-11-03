@@ -308,6 +308,36 @@ export function AbilityEditGroup({ entity }: { entity: Entity }) {
   );
 }
 
+/** What a player's header says about him that can be edited, in its order. */
+const PERSONAL_FIELDS = ["nation", "date_of_birth", "height"];
+
+/**
+ * The nationality, birth date and height of a player, which his header shows, as inputs at the top, where they are
+ * looked for first; there only while he is being edited.
+ */
+export function PersonalEditGroup() {
+  const session = useEditSession();
+  const keys = session ? PERSONAL_FIELDS.filter((key) => session.has(key)) : [];
+  if (!session || keys.length === 0) {
+    return null;
+  }
+  return (
+    <section className="profile-group edit-personal">
+      <h3>{editText.personalDetails}</h3>
+      <dl className="stats">
+        {keys.map((key) => (
+          <div className="stat" key={key}>
+            <dt>{fieldLabel(session.entity, key)}</dt>
+            <dd className="edit-cell">
+              <EditInput field={key} />
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 /** The position ratings as a grid of inputs, in the order of the pitch; there only while a player is being edited. */
 export function PositionEditGroup() {
   const session = useEditSession();

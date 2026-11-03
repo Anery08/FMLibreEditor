@@ -176,6 +176,11 @@ changes many at once, and undo.
     people in its lists.
   - [x] One click in a club's squad tab to max out its players' attributes.
   - [x] Freeze a club's money: while the app runs, its balance does not go down.
+  - [x] The same for one player ([#70](https://github.com/tozmoz/FMLibreEditor/issues/70)): Max attributes in his
+    profile, undone as one batch, and Freeze attributes: while the app runs, what the game takes from an attribute
+    is put back and what it adds stays (injury proneness and dirtiness the other way round). A value written in the
+    editor, or undone, becomes the one held. His nationality, birth date and height are edited at the top of the
+    profile, where the header shows them.
   - Checked on the Mac Steam build and on the Windows Steam and Game Pass builds: the filters on a real save,
     and each new field written, read back and restored. Next: freezing money through a game day.
 - Transfers, which users asked for next:

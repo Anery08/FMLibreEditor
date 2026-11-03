@@ -27,7 +27,8 @@ How to install and use it: [docs/INSTALL.md](docs/INSTALL.md).
 - Edit attributes, abilities, positions, personality, traits, contracts with their bonuses and
   clauses, reputation, finances, stadiums and more.
 - Heal injuries, lift bans, remove unhappiness, prevent retirement, raise morale and fitness,
-  set captains, for one player or a whole team.
+  max out attributes, set captains, for one player or a whole team.
+- Freeze a player's attributes or a club's money: while the app runs, they do not go down.
 - Transfer, swap or release players, and move staff between clubs.
 - Mass edit many at once, with a preview; undo any change.
 - Checks how it reads the game before it writes, and stays read-only on a version of FM27 it

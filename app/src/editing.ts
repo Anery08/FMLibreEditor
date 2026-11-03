@@ -33,6 +33,18 @@ export const freezeMoney = (club: number, frozen: boolean) => call<number[]>("fr
 /** The clubs whose money is frozen: while the app is connected, their balance does not go down. */
 export const frozenClubs = () => call<number[]>("frozen_clubs");
 
+/** Freezes the attributes of the player `uid`, or unfreezes them; the players whose attributes are frozen now. */
+export const freezeAttributes = (uid: number, frozen: boolean) => call<number[]>("freeze_attributes", { uid, frozen });
+
+/** The players whose attributes are frozen: while the app is connected, they do not get worse. */
+export const frozenPlayers = () => call<number[]>("frozen_players");
+
+/**
+ * Sets every attribute of the player `uid` to its best: 20, and 1 for injury proneness and dirtiness. The changes are
+ * logged as one batch, undone with `undoBatch`; `applied` counts them.
+ */
+export const maxAttributes = (uid: number) => call<MassReport>("max_attributes", { uid });
+
 /** The nations of the people in the lists, by name: what a nation field can be set to. */
 export const listNations = () => call<Nation[]>("list_nations");
 

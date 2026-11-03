@@ -1071,6 +1071,23 @@ input::placeholder {
   margin: 0;
 }
 
+/* Above a player's attributes: Max attributes and the box that freezes them in a row, then what the last write came to
+   (in the box of a squad's, see Club squad) and what freezing does while it is on. */
+.attribute-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.attribute-buttons .freeze-toggle {
+  margin: 0;
+}
+
+.attribute-actions > :not(:first-child):not(:empty) {
+  margin: 8px 0 0;
+}
+
 .note.error {
   color: var(--danger);
 }
@@ -2235,12 +2252,14 @@ input::placeholder {
 }
 
 /* The Compare button sits before Edit and looks like it: pressed while the player is in the comparison. So does Move to
-   another club (see Moving a player), Heal in the Medical group, and the actions on a squad (see Club squad). */
+   another club (see Moving a player), Heal in the Medical group, Max attributes above a player's attributes, and the
+   actions on a squad (see Club squad). */
 .edit-toggle,
 .compare-toggle,
 .move-toggle,
 .release-toggle,
 .heal-toggle,
+.max-toggle,
 .squad-action {
   padding: 4px 12px;
 }
@@ -2275,6 +2294,7 @@ input::placeholder {
    Heal while it is under way, which keeps focus on it, and so do the actions on a squad. */
 .compare-toggle[aria-disabled="true"],
 .heal-toggle[aria-disabled="true"],
+.max-toggle[aria-disabled="true"],
 .squad-action[aria-disabled="true"] {
   opacity: 0.55;
   cursor: default;
@@ -2282,6 +2302,7 @@ input::placeholder {
 
 .compare-toggle[aria-disabled="true"]:hover,
 .heal-toggle[aria-disabled="true"]:hover,
+.max-toggle[aria-disabled="true"]:hover,
 .squad-action[aria-disabled="true"]:hover {
   background: var(--raised);
 }
@@ -2416,9 +2437,10 @@ select.edit-input {
   font-weight: 600;
 }
 
-/* Current and potential ability side by side, not as two rows across the whole panel; so are the values of the Medical
-   group of a player. */
+/* Current and potential ability side by side, not as two rows across the whole panel; so are a player's nationality,
+   birth date and height, and the values of his Medical group. */
 .edit-ability .stats,
+.edit-personal .stats,
 .medical-values {
   display: flex;
   flex-wrap: wrap;
@@ -2426,6 +2448,7 @@ select.edit-input {
 }
 
 .edit-ability .stat,
+.edit-personal .stat,
 .medical-values .stat {
   flex: none;
   gap: 12px;
