@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged by Tauri into the macOS app's Info.plist. macOS may ask the user before an app first writes to the
+     Documents folder; this is what the question says (exports go to Documents/FMLibreEditor/Exports). -->
+<plist version="1.0">
+<dict>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>FMLibreEditor saves the player lists you export in Documents/FMLibreEditor/Exports.</string>
+</dict>
+</plist>

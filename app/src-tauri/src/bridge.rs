@@ -93,6 +93,19 @@ mod imp {
         let places = places(app)?;
         bridge_setup::remove(&places).map(Into::into).map_err(|err| Failure::coded(&err))
     }
+
+    /// The installed bridge and launcher become the ones in the app's bundle, where they differ (see
+    /// `bridge_setup::refresh`). Only for the app run from its bundle: a development build leaves the installed ones
+    /// alone. Failing only means the old ones stay, until the bridge is set up again.
+    pub fn refresh(app: &AppHandle) {
+        let exe = std::env::current_exe().ok();
+        if exe.as_deref().and_then(crate::app_bundle).is_none() {
+            return;
+        }
+        if let (Ok(places), Ok(bundled)) = (places(app), app.path().resource_dir()) {
+            let _ = bridge_setup::refresh(&places, &bundled);
+        }
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -113,11 +126,19 @@ mod imp {
     pub fn remove(app: &AppHandle) -> Result<BridgeInfo, Failure> {
         set_up(app)
     }
+
+    pub fn refresh(_: &AppHandle) {}
 }
 
 /// The bridge's state on macOS; `None` elsewhere, where the app needs no bridge.
 pub fn status(app: &tauri::AppHandle) -> Option<BridgeInfo> {
     imp::status(app)
+}
+
+/// macOS: after an update of the app, puts the bridge it came with in place of the one installed, which the game then
+/// loads the next time it starts. Nothing elsewhere, or while the bridge is not set up.
+pub fn refresh(app: &tauri::AppHandle) {
+    imp::refresh(app);
 }
 
 /// The bridge's state on macOS, read again, e.g. after setting it up failed halfway.

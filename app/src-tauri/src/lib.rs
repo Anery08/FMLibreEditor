@@ -1259,16 +1259,39 @@ fn graphics_info(graphics: State<'_, Graphics>) -> GraphicsInfo {
     }
 }
 
-/// Whether this copy of the app can update itself: download a new version's installer, check its signature and run
-/// it. Only a copy the Windows installer put in place, which has its uninstaller beside it; a portable copy, a copy on
-/// macOS (for now) and a development build open the release's page instead.
+/// Whether this copy of the app can update itself: download a new version, check its signature and put it in place.
+/// On Windows, a copy the installer put in place, which has its uninstaller beside it; on macOS, the app run from its
+/// bundle, unless macOS runs it from a read-only copy, as it does an app opened where it was downloaded (App
+/// Translocation). A portable copy and a development build open the release's page instead.
 #[tauri::command]
 fn can_self_update() -> bool {
-    cfg!(windows)
-        && std::env::current_exe()
-            .ok()
-            .and_then(|exe| exe.parent().map(|folder| folder.join("uninstall.exe").is_file()))
-            .unwrap_or(false)
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    if cfg!(windows) {
+        exe.parent().is_some_and(|folder| folder.join("uninstall.exe").is_file())
+    } else if cfg!(target_os = "macos") {
+        app_bundle(&exe).is_some_and(|bundle| !bundle.to_string_lossy().contains("/AppTranslocation/"))
+    } else {
+        false
+    }
+}
+
+/// The macOS app bundle the executable `exe` is in (`FMLibreEditor.app/Contents/MacOS/FMLibreEditor`); none for a
+/// development build, which runs from the target folder.
+fn app_bundle(exe: &Path) -> Option<&Path> {
+    let macos = exe.parent()?;
+    let contents = macos.parent()?;
+    let bundle = contents.parent()?;
+    let inside = macos.file_name()? == "MacOS" && contents.file_name()? == "Contents" && bundle.extension()? == "app";
+    inside.then_some(bundle)
+}
+
+/// Starts the app again: on macOS, once an update has put the new version in place of this one, so that it runs. On
+/// Windows the update's installer starts the new version itself (see app/src/update.ts).
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    app.restart();
 }
 
 /// Serves `fmgfx` requests such as `/club/728`, `/face/7458500` or `/flag/765` from the
@@ -1609,9 +1632,18 @@ async fn export_players(
     format: ExportFormat,
 ) -> Result<ExportReport, Failure> {
     tauri::async_runtime::spawn_blocking(move || -> Result<ExportReport, Failure> {
-        let failed = |err: std::io::Error| Failure::new("export.failed", err.to_string()).with("reason", err);
         let folder = app.state::<ExportsFolder>().0.clone();
         let folder = folder.ok_or_else(|| Failure::new("export.noFolder", "There is no folder to export to."))?;
+        // macOS may ask the user before an app first writes to the Documents folder (see Info.plist): a no is said as
+        // such, with where to change it.
+        let failed = |err: std::io::Error| {
+            if cfg!(target_os = "macos") && err.kind() == std::io::ErrorKind::PermissionDenied {
+                Failure::new("export.notAllowed", format!("FMLibreEditor may not write to {}: {err}", folder.display()))
+                    .with("folder", folder.display())
+            } else {
+                Failure::new("export.failed", err.to_string()).with("reason", err)
+            }
+        };
         let state = app.state::<AppState>();
         let guard = state.0.lock()?;
         let connection = guard.as_ref().ok_or_else(not_connected)?;
@@ -2402,7 +2434,8 @@ pub fn run() {
     tauri::Builder::default()
         // Opens the page of a new release in the browser (see app/src/update.ts).
         .plugin(tauri_plugin_opener::init())
-        // Downloads a new version's installer, checks its signature against the key in tauri.conf.json and runs it.
+        // Downloads a new version, checks its signature against the key in tauri.conf.json and installs it: the
+        // installer on Windows, the app in place of this one on macOS.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
         .manage(Graphics::default())
@@ -2424,6 +2457,8 @@ pub fn run() {
                 .map(PathBuf::from)
                 .or_else(|| app.path().document_dir().ok().map(|folder| folder.join("FMLibreEditor").join("Exports")));
             app.manage(ExportsFolder(exports));
+            // macOS: after an update, the game is to load the bridge that came with this version.
+            bridge::refresh(app.handle());
             // Frozen money and attributes: every little while, what the game took from them is put back.
             let handle = app.handle().clone();
             std::thread::spawn(move || {
@@ -2505,6 +2540,7 @@ pub fn run() {
             max_attributes,
             graphics_info,
             can_self_update,
+            restart_app,
             bridge::bridge_status,
             bridge::set_up_bridge,
             bridge::remove_bridge

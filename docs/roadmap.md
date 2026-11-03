@@ -194,7 +194,10 @@ changes many at once, and undo.
     takes under a second. The probe writes the same with `players --export FILE`. Staff and clubs could follow.
   - [x] Updates from inside the app: an installed Windows copy downloads the new installer, checks its signature
     (Tauri's updater, the key in the repository's secrets) and runs it, then opens again; the release workflow
-    signs the installer and writes `latest.json`. Portable copies and macOS keep the Download link.
+    signs the installer and writes `latest.json`. Portable copies keep the Download link.
+  - [x] The same for the macOS app: the notarized app in a signed `.tar.gz` takes the place of the running one's
+    bundle, and the app opens again; at startup the installed bridge and launcher become the ones it came with.
+    Max and Freeze attributes, the frozen file, Export and editing in place were checked on the Mac Steam build.
   - Checked on the Mac Steam build and on the Windows Steam and Game Pass builds: the filters on a real save,
     and each new field written, read back and restored. Next: freezing money through a game day.
 - Transfers, which users asked for next:

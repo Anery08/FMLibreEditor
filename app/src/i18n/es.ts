@@ -273,6 +273,9 @@ const errors: ErrorTexts = {
   "app.noChange": (p) => `No existe el cambio ${p.id}.`,
   "app.alreadyUndone": () => "Este cambio ya se ha deshecho.",
   "export.failed": (p) => `No se ha podido escribir el archivo: ${p.reason}`,
+  "export.notAllowed": (p) =>
+    `FMLibreEditor no puede escribir en ${p.folder}. Si macOS ha preguntado si puede usar tu carpeta Documentos, ` +
+    "permítelo en Ajustes del Sistema › Privacidad y seguridad › Archivos y carpetas y vuelve a exportar.",
   "export.noFolder": () => "No hay ninguna carpeta a la que exportar.",
   "export.notExported": () => "Ese no es un archivo que haya exportado FMLibreEditor.",
   "export.openFailed": (p) => `No se ha podido abrir: ${p.reason}`,
