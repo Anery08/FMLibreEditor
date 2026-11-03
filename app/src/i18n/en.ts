@@ -582,6 +582,21 @@ export const en = {
     liftBans: "Lift",
     liftBansTitle: "Lift every ban of this player in the game",
 
+    // Above the attributes, while the profile is read
+    /** Sets every attribute of the player to its best at once. */
+    maxAttributes: "Max attributes",
+    maxAttributesTitle: "Set every attribute of this player to its best: 20, and 1 for injury proneness and dirtiness",
+    /** What Max attributes wrote, beside the button that takes it back; then what that undid. */
+    maxAttributesDone: (count: number) =>
+      count === 0 ? "Every attribute is at its best already" : `${changeCount(count)} written`,
+    maxAttributesUndone: (count: number) => (count === 0 ? "Nothing was undone" : `Undid ${changeCount(count)}`),
+    undoMax: "Undo",
+    undoMaxTitle: "Write his old attributes back to the game",
+    /** Freezing his attributes, while the game can be written to, and what that does. */
+    freezeAttributes: "Freeze attributes",
+    freezeAttributesNote:
+      "While the app is open and connected, his attributes do not get worse: what the game takes is put back, and improvements still count.",
+
     // Staff
     /** Badge on the manager the user controls. */
     you: "You",
@@ -1007,6 +1022,8 @@ export const en = {
     startFailed: (reason: string) => `Could not start editing: ${reason}`,
     /** The group of current and potential ability, above the attributes. */
     ability: "Ability",
+    /** The group of a player's nationality, birth date and height, which the header shows, beside it. */
+    personalDetails: "Personal details",
     /** The grid of inputs under the pitch. */
     positionRatings: "Position ratings",
     /** The name of a position's field, e.g. "ST rating"; `position` is its entry in `positions`. */

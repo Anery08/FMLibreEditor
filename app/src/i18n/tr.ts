@@ -622,6 +622,17 @@ export const tr: Strings = {
     liftBans: "Kaldır",
     liftBansTitle: "Bu oyuncunun tüm cezalarını oyunda kaldır",
 
+    // Above the attributes, while the profile is read
+    maxAttributes: "Özellikleri tamamla",
+    maxAttributesTitle: "Bu oyuncunun bütün özelliklerini en iyiye çıkar: 20; sakatlık eğilimi ve sertlik için 1",
+    maxAttributesDone: (count) => (count === 0 ? "Bütün özellikleri zaten en iyide" : `${changes(count)} yazıldı`),
+    maxAttributesUndone: (count) => (count === 0 ? "Hiçbir şey geri alınmadı" : `${changes(count)} geri alındı`),
+    undoMax: "Geri al",
+    undoMaxTitle: "Eski özelliklerini oyuna geri yaz",
+    freezeAttributes: "Özellikleri dondur",
+    freezeAttributesNote:
+      "Uygulama açık ve oyuna bağlıyken özellikleri düşmez: oyunun düşürdüğü geri konur, gelişmeler yine sayılır.",
+
     // Staff
     you: "Siz",
     youTitle: "Bu kayıtta yönettiğiniz teknik direktör",
@@ -967,6 +978,7 @@ export const tr: Strings = {
     editTitle: "Bu profilin değerlerini oyunda değiştir",
     startFailed: (reason) => `Düzenleme başlatılamadı: ${reason}`,
     ability: "Yetenek",
+    personalDetails: "Kişisel bilgiler",
     positionRatings: "Pozisyon puanları",
     positionRating: (position) => `${position} puanı`,
     was: (value) => `önceki: ${value}`,
