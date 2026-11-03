@@ -39,6 +39,12 @@ extract it and run **FMLibreEditor.exe**.
 The game shows a change after you press **Continue** in FM. The **Changes** view lists what
 you did, and **Undo** puts the old value back.
 
+**Freeze attributes** (in a player's profile) and **Freeze money** (in a club's) hold what
+the game would take away while FMLibreEditor is open and connected. The app remembers them
+for that save: when you connect to it again, after a restart, they are frozen again and a
+notice says so. After an update of FM27 they wait, still remembered, until FMLibreEditor
+can write to the new version.
+
 ## Updating and removing
 
 When a new version is out, FMLibreEditor says so at the top of its window when it starts;

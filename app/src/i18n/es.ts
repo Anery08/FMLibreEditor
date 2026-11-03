@@ -658,7 +658,8 @@ export const es: Strings = {
     freezeAttributes: "Congelar los atributos",
     freezeAttributesNote:
       "Mientras la aplicación esté abierta y conectada, sus atributos no empeoran: lo que el juego quita se devuelve, " +
-      "y las mejoras siguen contando.",
+      "y las mejoras siguen contando. La aplicación lo recuerda para esta partida y vuelve a congelarlos al " +
+      "conectarse a ella.",
 
     // Personal
     you: "Tú",
@@ -837,7 +838,7 @@ export const es: Strings = {
     freeze: "Congelar el dinero",
     freezeNote:
       "Mientras la aplicación esté abierta y conectada, el saldo no baja: lo que el juego quita se devuelve, y los " +
-      "ingresos siguen contando.",
+      "ingresos siguen contando. La aplicación lo recuerda para esta partida y vuelve a congelarlo al conectarse a ella.",
 
     // Estadio
     stadium: "Estadio",
@@ -911,6 +912,18 @@ export const es: Strings = {
     detecting: "Buscando Football Manager…",
     connecting: "Leyendo jugadores, personal y clubes…",
     reloading: "Recargando jugadores, personal y clubes…",
+
+    refrozen: {
+      title: "Congelado de nuevo desde la última vez",
+      waitingTitle: "Lo congelado espera por ahora",
+      players: (names) => `Atributos: ${names}`,
+      clubs: (names) => `Dinero: ${names}`,
+      more: (count) => `y ${format(count)} más`,
+      waiting: (count) =>
+        `${count === 1 ? "1 sigue recordado" : `${format(count)} siguen recordados`}, pero no se congelan ahora: ` +
+        "FMLibreEditor aún no puede escribir en esta versión del juego.",
+      dismiss: "Cerrar",
+    },
 
     connect: {
       title: "Conectar con Football Manager 27",

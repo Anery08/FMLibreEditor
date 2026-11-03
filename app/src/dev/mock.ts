@@ -35,6 +35,7 @@ import type {
   PlayerOrder,
   PlayerPage,
   PlayerSummary,
+  Refrozen,
   ReloadInfo,
   StaffDetails,
   StaffFilter,
@@ -2030,6 +2031,8 @@ let mockConnection: ConnectionInfo | null = null;
  */
 const unknownBuild = new URLSearchParams(window.location.search).has("unknownbuild");
 const failedChecks = new URLSearchParams(window.location.search).has("failedchecks");
+/** `?refrozen` previews connecting to a save in which players and a club were frozen the last time. */
+const refrozen = new URLSearchParams(window.location.search).has("refrozen");
 const CHECKS: CheckKey[] = [
   "gameDate",
   "players",
@@ -2132,7 +2135,17 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         health: mockHealth(),
       };
       mockConnection = info;
-      return info as T;
+      if (!refrozen) {
+        return info as T;
+      }
+      // What a restart of the app finds frozen in this save: the first two players and the first club, with one more
+      // that waits.
+      for (const player of players.slice(0, 2)) {
+        frozenAttributes.add(player.uid);
+      }
+      frozenMoney.add(clubs[0].uid);
+      const again: Refrozen = { players: players.slice(0, 2).map((p) => p.name), clubs: [clubs[0].name], waiting: 1 };
+      return { ...info, refrozen: again } as T;
     }
     case "graphics_info":
       // A plain browser has no graphics packs: every picture falls back.
