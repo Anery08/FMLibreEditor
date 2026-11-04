@@ -11,7 +11,8 @@ import { countFilters, PlayerFilterBar, toPlayerFilter, type PlayerFilterFields 
 import { PlayerProfile } from "./PlayerProfile";
 import { restored, useSnapshot } from "./restore";
 import { SavedFilterControls } from "./SavedFilterControls";
-import { readFields, readOrder } from "./savedFilters";
+import { PLAYER_FILTERS, readFields, readOrder } from "./savedFilters";
+import { SortHeader } from "./SortHeader";
 import type { PlayerOrder, PlayerSort, PlayerSummary } from "./types";
 import { useComparison } from "./useComparison";
 
@@ -26,8 +27,17 @@ const FIRST_ASCENDING: ReadonlySet<PlayerSort> = new Set<PlayerSort>(["name", "n
 /** How many positions a row shows before the ellipsis; its hover text has all of them. */
 const POSITIONS_SHOWN = 3;
 
+interface PlayerBrowserProps {
+  version: number;
+  active: boolean;
+  /** Whether the game's layout tells women from men, for the filter that keeps to one of them. */
+  genderKnown: boolean;
+  /** A player to show from elsewhere, e.g. one picked in a club's squad (see `ListBrowser`'s `open`). */
+  open: { row: PlayerSummary } | null;
+}
+
 /** The players table with the profile of the selected player beside it. */
-export function PlayerBrowser({ version, active }: { version: number; active: boolean }) {
+export function PlayerBrowser({ version, active, genderKnown, open }: PlayerBrowserProps) {
   // The filters and the sort start as they were before the language was switched, if it was (see `restore.ts`).
   const [fields, setFields] = useState<PlayerFilterFields>(() => restored("playerFields", readFields));
   // Null until a header is clicked: no order is asked for, and the search answers with the best current ability first.
@@ -38,13 +48,22 @@ export function PlayerBrowser({ version, active }: { version: number; active: bo
   // view is shown (see `App`), so the set survives switching views.
   const comparison = useComparison();
 
-  const filter = toPlayerFilter(fields);
+  // Where the layout cannot tell women from men, the bar offers no such choice, and a saved filter that made one is
+  // taken without it.
+  const filter = toPlayerFilter(genderKnown ? fields : { ...fields, gender: "" });
   const filterCount = countFilters(filter);
   const sorted = order ?? DEFAULT_ORDER;
   const sortBy = (by: PlayerSort) =>
     setOrder({ by, ascending: sorted.by === by ? !sorted.ascending : FIRST_ASCENDING.has(by) });
   const sortHeader = (by: PlayerSort, className?: string) => (
-    <SortHeader by={by} order={sorted} onSort={sortBy} className={className} />
+    <SortHeader
+      by={by}
+      order={sorted}
+      onSort={sortBy}
+      label={text.columns[by]}
+      title={text.sortBy(text.sortNames[by])}
+      className={className}
+    />
   );
 
   return (
@@ -64,8 +83,10 @@ export function PlayerBrowser({ version, active }: { version: number; active: bo
           fields={fields}
           onChange={setFields}
           active={filterCount}
+          genderKnown={genderKnown}
           actions={
             <SavedFilterControls
+              kind={PLAYER_FILTERS}
               fields={fields}
               order={order}
               filtered={filterCount > 0}
@@ -84,6 +105,7 @@ export function PlayerBrowser({ version, active }: { version: number; active: bo
         </>
       )}
       footer={<ComparisonTray comparison={comparison} />}
+      open={open}
       tableClass="player-grid"
       header={
         <>
@@ -131,30 +153,6 @@ export function PlayerBrowser({ version, active }: { version: number; active: bo
         <PlayerProfile player={p} version={panel.version} onClose={panel.onClose} comparison={comparison} />
       )}
     />
-  );
-}
-
-interface SortHeaderProps {
-  /** The column; it is also what the list is sorted by. */
-  by: PlayerSort;
-  /** How the list is sorted now. */
-  order: PlayerOrder;
-  onSort: (by: PlayerSort) => void;
-  className?: string;
-}
-
-/** A column header that sorts the list; the sorted column shows an arrow and says which way in `aria-sort`. */
-function SortHeader({ by, order, onSort, className }: SortHeaderProps) {
-  const direction = order.by !== by ? undefined : order.ascending ? "ascending" : "descending";
-  return (
-    <th className={className} aria-sort={direction}>
-      <button type="button" className="sort" title={text.sortBy(text.sortNames[by])} onClick={() => onSort(by)}>
-        {text.columns[by]}
-        <svg className="sort-arrow" viewBox="0 0 10 10" aria-hidden="true">
-          <path d="M5 8.5v-7M2 4.5l3-3 3 3" />
-        </svg>
-      </button>
-    </th>
   );
 }
 

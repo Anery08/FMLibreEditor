@@ -1,6 +1,7 @@
 // The Squad tab of a club's profile: the players of each of its teams with the values a squad screen shows, the actions
 // on a whole team (heal everyone, lift every ban, give everyone the best morale, rest everyone) and the captains. What it writes is
-// logged like any change, and undone from the Changes view, or at once from the line under the buttons.
+// logged like any change, and undone from the Changes view, or at once from the line under the buttons. A player's name
+// opens his profile in the player list.
 
 import { useContext, useEffect, useMemo, useRef, useState, type Ref } from "react";
 import { Ability } from "./Ability";
@@ -19,7 +20,9 @@ import {
 } from "./labels";
 import { undoFailureLines } from "./massDraft";
 import { percentText } from "./MedicalGroup";
+import { OpenPlayerContext } from "./openPlayer";
 import type { Loaded, PanelIds } from "./ProfileParts";
+import { SortHeader } from "./SortHeader";
 import type {
   BatchUndo,
   CaptainRole,
@@ -286,6 +289,16 @@ export function SquadTab({ clubUid, version, panel }: SquadTabProps) {
 
   const sortBy = (by: SquadSort) =>
     setOrder({ by, ascending: order.by === by ? !order.ascending : FIRST_ASCENDING.has(by) });
+  const sortHeader = (by: SquadSort, className?: string) => (
+    <SortHeader
+      by={by}
+      order={order}
+      onSort={sortBy}
+      label={text.columns[by]}
+      title={text.sortBy(text.sortNames[by])}
+      className={className}
+    />
+  );
 
   return (
     <div
@@ -327,15 +340,15 @@ export function SquadTab({ clubUid, version, panel }: SquadTabProps) {
             <table className="grid squad-grid" aria-label={text.tableLabel(teamLabel(team))}>
               <thead>
                 <tr>
-                  <SortHeader by="name" order={order} onSort={sortBy} className="col-name" />
-                  <SortHeader by="position" order={order} onSort={sortBy} />
-                  <SortHeader by="age" order={order} onSort={sortBy} className="num" />
-                  <SortHeader by="currentAbility" order={order} onSort={sortBy} className="num" />
-                  <SortHeader by="potentialAbility" order={order} onSort={sortBy} className="num" />
-                  <SortHeader by="condition" order={order} onSort={sortBy} className="num" />
-                  <SortHeader by="matchSharpness" order={order} onSort={sortBy} className="num" />
-                  <SortHeader by="jadedness" order={order} onSort={sortBy} className="num" />
-                  <SortHeader by="morale" order={order} onSort={sortBy} className="num" />
+                  {sortHeader("name", "col-name")}
+                  {sortHeader("position")}
+                  {sortHeader("age", "num")}
+                  {sortHeader("currentAbility", "num")}
+                  {sortHeader("potentialAbility", "num")}
+                  {sortHeader("condition", "num")}
+                  {sortHeader("matchSharpness", "num")}
+                  {sortHeader("jadedness", "num")}
+                  {sortHeader("morale", "num")}
                   <th className="col-actions">
                     <span className="sr-only">{text.columns.actions}</span>
                   </th>
@@ -543,30 +556,6 @@ function ResultLine({ result, busy, onUndo, ref }: ResultLineProps) {
   );
 }
 
-interface SortHeaderProps {
-  /** The column; it is also what the table is sorted by. */
-  by: SquadSort;
-  /** How the table is sorted now. */
-  order: SquadOrder;
-  onSort: (by: SquadSort) => void;
-  className?: string;
-}
-
-/** A column header that sorts the table; the sorted column shows an arrow and says which way in `aria-sort`. */
-function SortHeader({ by, order, onSort, className }: SortHeaderProps) {
-  const direction = order.by !== by ? undefined : order.ascending ? "ascending" : "descending";
-  return (
-    <th className={className} aria-sort={direction}>
-      <button type="button" className="sort" title={text.sortBy(text.sortNames[by])} onClick={() => onSort(by)}>
-        {text.columns[by]}
-        <svg className="sort-arrow" viewBox="0 0 10 10" aria-hidden="true">
-          <path d="M5 8.5v-7M2 4.5l3-3 3 3" />
-        </svg>
-      </button>
-    </th>
-  );
-}
-
 interface SquadRowProps {
   player: SquadPlayer;
   /** The role he holds in the shown team. */
@@ -576,8 +565,12 @@ interface SquadRowProps {
   onCaptain: (role: CaptainRole) => void;
 }
 
-/** One player: his tags and badge by his name, his values, and the menu that makes him captain. */
+/**
+ * One player: his name, which leads to his profile in the player list, with his tags and badge by it, his values, and
+ * the menu that makes him captain.
+ */
 function SquadRow({ player, role, editable, busy, onCaptain }: SquadRowProps) {
+  const openPlayer = useContext(OpenPlayerContext);
   const positions = player.positions.map(positionLabel);
   const fullName = player.fullName !== null && player.fullName !== player.name ? player.fullName : null;
   return (
@@ -585,7 +578,18 @@ function SquadRow({ player, role, editable, busy, onCaptain }: SquadRowProps) {
     <tr className={player.playsHere ? undefined : "away"}>
       <td className="col-name" title={fullName === null ? player.name : `${player.name}\n${fullName}`}>
         <div className="squad-name">
-          <span className="name">{player.name}</span>
+          {openPlayer ? (
+            <button
+              type="button"
+              className="name name-link"
+              title={text.openProfile}
+              onClick={() => openPlayer(player)}
+            >
+              {player.name}
+            </button>
+          ) : (
+            <span className="name">{player.name}</span>
+          )}
           {role !== null && (
             <abbr className={`role-badge ${role}`} title={fieldLabel("club", ROLE_FIELD[role])}>
               {role === "captain" ? text.captainShort : text.viceCaptainShort}

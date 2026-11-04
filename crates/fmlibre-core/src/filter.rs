@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
@@ -80,6 +79,8 @@ pub struct PlayerFilter {
     /// Only players their club has put on the transfer list, and on the loan list.
     pub transfer_listed: bool,
     pub loan_listed: bool,
+    /// `Some(true)` for women only, `Some(false)` for men only. Whom the layout cannot tell apart matches neither.
+    pub women: Option<bool>,
     /// Bounds on attributes, every one of which must hold.
     pub attributes: Vec<AttributeBound>,
 }
@@ -104,6 +105,7 @@ impl PlayerFilter {
             && self.contract_expires_by.is_none_or(|by| p.contract_expires.is_some_and(|end| end <= by))
             && (!self.transfer_listed || p.transfer_listed)
             && (!self.loan_listed || p.loan_listed)
+            && self.women.is_none_or(|women| p.woman == Some(women))
             && self.attributes.iter().all(|bound| bound.holds(&PLAYER_ATTRIBUTES, &p.attributes))
     }
 }
@@ -141,65 +143,74 @@ pub struct PlayerOrder {
 /// accents or case. The sort is stable: equal players keep their order, which after a
 /// search is best first.
 pub fn sort_players(players: &mut [&PlayerSummary], order: PlayerOrder) {
+    sort_rows(players, order.ascending, |p| match order.by {
+        PlayerSort::CurrentAbility => Some(SortKey::Number(p.current_ability.into())),
+        PlayerSort::PotentialAbility => Some(SortKey::Number(p.potential_ability.into())),
+        PlayerSort::Age => p.age.map(|age| SortKey::Number(age.into())),
+        PlayerSort::Name => Some(SortKey::Text(&p.name)),
+        PlayerSort::Nation => p.nation.as_deref().map(SortKey::Text),
+        PlayerSort::Club => p.club.as_deref().map(SortKey::Text),
+        PlayerSort::ContractExpires => p.contract_expires.map(|end| SortKey::Number(end.to_number())),
+    });
+}
+
+/// What a row of a list is sorted by: a number, or a text, which compares without accents or case.
+enum SortKey<'a> {
+    Number(i64),
+    Text(&'a str),
+}
+
+/// Sorts `rows` by what `key` gives each, the lowest first when `ascending`; the rows it gives nothing for go last
+/// either way. The sort is stable: equal rows keep their order.
+fn sort_rows<'a, T>(rows: &mut [&'a T], ascending: bool, key: impl Fn(&'a T) -> Option<SortKey<'a>>) {
+    /// A key as it is compared.
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
+    enum Compared {
+        Number(i64),
+        Text(String),
+    }
     // Fold each distinct text once rather than on every comparison.
     let mut folded: HashMap<&str, String> = HashMap::new();
-    let mut keyed: Vec<(Option<String>, &PlayerSummary)> = players
+    let mut keyed: Vec<(Option<Compared>, &'a T)> = rows
         .iter()
-        .map(|&p| (sort_text(p, order.by).map(|text| folded.entry(text).or_insert_with(|| fold(text)).clone()), p))
+        .map(|&row| {
+            let compared = key(row).map(|key| match key {
+                SortKey::Number(number) => Compared::Number(number),
+                SortKey::Text(text) => Compared::Text(folded.entry(text).or_insert_with(|| fold(text)).clone()),
+            });
+            (compared, row)
+        })
         .collect();
-    keyed.sort_by(|(a_text, a), (b_text, b)| {
-        let primary = match order.by {
-            PlayerSort::CurrentAbility => Some(a.current_ability.cmp(&b.current_ability)),
-            PlayerSort::PotentialAbility => Some(a.potential_ability.cmp(&b.potential_ability)),
-            PlayerSort::Age => known(a.age, b.age),
-            PlayerSort::Name | PlayerSort::Nation | PlayerSort::Club => known(a_text.as_ref(), b_text.as_ref()),
-            PlayerSort::ContractExpires => known(a.contract_expires, b.contract_expires),
-        };
-        match primary {
-            Some(ordering) if order.ascending => ordering,
-            Some(ordering) => ordering.reverse(),
-            None => unknown_last(a, b, order.by),
-        }
+    keyed.sort_by(|(a, _), (b, _)| match (a, b) {
+        (Some(a), Some(b)) if ascending => a.cmp(b),
+        (Some(a), Some(b)) => b.cmp(a),
+        _ => b.is_some().cmp(&a.is_some()),
     });
-    for (slot, (_, player)) in players.iter_mut().zip(keyed) {
-        *slot = player;
+    for (slot, (_, row)) in rows.iter_mut().zip(keyed) {
+        *slot = row;
     }
 }
 
-/// The text a player is sorted by, for the text columns.
-fn sort_text(p: &PlayerSummary, by: PlayerSort) -> Option<&str> {
-    match by {
-        PlayerSort::Name => Some(&p.name),
-        PlayerSort::Nation => p.nation.as_deref(),
-        PlayerSort::Club => p.club.as_deref(),
-        _ => None,
-    }
-}
-
-/// Compares two optional values, or `None` when either is unknown.
-fn known<T: Ord>(a: Option<T>, b: Option<T>) -> Option<Ordering> {
-    Some(a.as_ref()?.cmp(b.as_ref()?))
-}
-
-fn unknown_last(a: &PlayerSummary, b: &PlayerSummary, by: PlayerSort) -> Ordering {
-    let has = |p: &PlayerSummary| match by {
-        PlayerSort::Age => p.age.is_some(),
-        PlayerSort::Nation => p.nation.is_some(),
-        PlayerSort::Club => p.club.is_some(),
-        PlayerSort::ContractExpires => p.contract_expires.is_some(),
-        _ => true,
-    };
-    has(b).cmp(&has(a))
-}
-
-/// Filters for the staff list.
+/// Filters for the staff list, the player list's where they apply to staff. Unset fields match everyone.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct StaffFilter {
     /// FM job code; a player-coach variant (code + 1) matches too.
     pub job: Option<u8>,
+    pub min_age: Option<u16>,
+    pub max_age: Option<u16>,
+    pub min_current_ability: Option<u16>,
+    pub min_potential_ability: Option<i16>,
+    /// Part of the nation's name, accents and case ignored.
+    pub nation: Option<String>,
+    /// Part of the employer's name, accents and case ignored.
+    pub club: Option<String>,
     /// Only staff without a contract.
     pub unemployed: bool,
+    /// Only contracts ending on or before this date.
+    pub contract_expires_by: Option<FmDate>,
+    /// `Some(true)` for women only, `Some(false)` for men only. Whom the layout cannot tell apart matches neither.
+    pub women: Option<bool>,
     /// Bounds on attributes, every one of which must hold.
     pub attributes: Vec<AttributeBound>,
 }
@@ -207,9 +218,50 @@ pub struct StaffFilter {
 impl StaffFilter {
     pub fn matches(&self, s: &StaffSummary) -> bool {
         self.job.is_none_or(|job| s.job.is_some_and(|code| code == job || code == job + 1))
+            && self.min_age.is_none_or(|min| s.age.is_some_and(|age| age >= min))
+            && self.max_age.is_none_or(|max| s.age.is_some_and(|age| age <= max))
+            && self.min_current_ability.is_none_or(|min| s.current_ability >= min)
+            && self.min_potential_ability.is_none_or(|min| s.potential_ability >= min)
+            && contains(s.nation.as_deref(), self.nation.as_deref())
+            && contains(s.club.as_deref(), self.club.as_deref())
             && (!self.unemployed || s.job.is_none())
+            && self.contract_expires_by.is_none_or(|by| s.contract_expires.is_some_and(|end| end <= by))
+            && self.women.is_none_or(|women| s.woman == Some(women))
             && self.attributes.iter().all(|bound| bound.holds(&STAFF_ATTRIBUTES, &s.attributes))
     }
+}
+
+/// Columns the staff list can be sorted by.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StaffSort {
+    #[default]
+    CurrentAbility,
+    PotentialAbility,
+    Age,
+    Name,
+    Nation,
+    Club,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct StaffOrder {
+    pub by: StaffSort,
+    pub ascending: bool,
+}
+
+/// Sorts `staff` by `order` as [`sort_players`] sorts players. Unlike the search's own order, it does not put the
+/// human manager first.
+pub fn sort_staff(staff: &mut [&StaffSummary], order: StaffOrder) {
+    sort_rows(staff, order.ascending, |s| match order.by {
+        StaffSort::CurrentAbility => Some(SortKey::Number(s.current_ability.into())),
+        StaffSort::PotentialAbility => Some(SortKey::Number(s.potential_ability.into())),
+        StaffSort::Age => s.age.map(|age| SortKey::Number(age.into())),
+        StaffSort::Name => Some(SortKey::Text(&s.name)),
+        StaffSort::Nation => s.nation.as_deref().map(SortKey::Text),
+        StaffSort::Club => s.club.as_deref().map(SortKey::Text),
+    });
 }
 
 /// Filters for the club list.
@@ -252,6 +304,31 @@ mod tests {
             attributes: vec![10; PLAYER_ATTRIBUTES.len()],
             transfer_listed: false,
             loan_listed: false,
+            woman: Some(false),
+            address: 0,
+            shift: 0,
+        }
+    }
+
+    fn staff(name: &str, age: Option<u16>, ca: u16, club: Option<&str>, job: Option<u8>) -> StaffSummary {
+        StaffSummary {
+            uid: 1,
+            name: name.to_owned(),
+            full_name: None,
+            date_of_birth: None,
+            age,
+            nation: Some("Nederland".to_owned()),
+            nation_uid: None,
+            nation_address: 0,
+            club: club.map(str::to_owned),
+            club_uid: None,
+            job,
+            current_ability: ca,
+            potential_ability: ca as i16 + 5,
+            is_human: false,
+            attributes: vec![10; STAFF_ATTRIBUTES.len()],
+            contract_expires: club.map(|_| FmDate { year: 2027, month: 7, day: 31 }),
+            woman: Some(false),
             address: 0,
             shift: 0,
         }
@@ -259,6 +336,56 @@ mod tests {
 
     fn bound(key: &str, min: Option<u8>, max: Option<u8>) -> AttributeBound {
         AttributeBound { key: key.to_owned(), min, max }
+    }
+
+    #[test]
+    fn women_and_men() {
+        let mut player = player("Bonmatí", Some(28), 170, Some("Barcelona"), 1);
+        let women = PlayerFilter { women: Some(true), ..PlayerFilter::default() };
+        let men = PlayerFilter { women: Some(false), ..PlayerFilter::default() };
+        assert!(men.matches(&player) && !women.matches(&player));
+        player.woman = Some(true);
+        assert!(women.matches(&player) && !men.matches(&player));
+        // Where the layout cannot tell, the player is neither, and only a list without the filter shows him.
+        player.woman = None;
+        assert!(!women.matches(&player) && !men.matches(&player));
+        assert!(PlayerFilter::default().matches(&player));
+    }
+
+    #[test]
+    fn staff_filters_combine() {
+        let mut coach = staff("Wiegman", Some(56), 160, Some("England Women"), Some(16));
+        coach.woman = Some(true);
+        let filter = StaffFilter {
+            job: Some(16),
+            min_age: Some(50),
+            max_age: Some(60),
+            min_current_ability: Some(150),
+            min_potential_ability: Some(160),
+            nation: Some("nederland".to_owned()),
+            club: Some("england".to_owned()),
+            contract_expires_by: Some(FmDate { year: 2027, month: 12, day: 31 }),
+            women: Some(true),
+            ..StaffFilter::default()
+        };
+        assert!(filter.matches(&coach));
+        assert!(!StaffFilter { women: Some(false), ..StaffFilter::default() }.matches(&coach));
+        assert!(!StaffFilter { max_age: Some(55), ..StaffFilter::default() }.matches(&coach));
+        assert!(!StaffFilter { min_potential_ability: Some(170), ..StaffFilter::default() }.matches(&coach));
+        assert!(!StaffFilter { club: Some("arsenal".to_owned()), ..StaffFilter::default() }.matches(&coach));
+        assert!(!StaffFilter { unemployed: true, ..StaffFilter::default() }.matches(&coach));
+        let by = |year| StaffFilter {
+            contract_expires_by: Some(FmDate { year, month: 1, day: 1 }),
+            ..StaffFilter::default()
+        };
+        assert!(!by(2027).matches(&coach) && by(2028).matches(&coach));
+
+        // Without a contract: no club and no end, so only the unemployed filter takes him.
+        let free = staff("Ten Hag", None, 150, None, None);
+        assert!(StaffFilter { unemployed: true, ..StaffFilter::default() }.matches(&free));
+        assert!(!by(2030).matches(&free));
+        assert!(!StaffFilter { min_age: Some(30), ..StaffFilter::default() }.matches(&free));
+        assert!(!StaffFilter { nation: Some("türk".to_owned()), ..StaffFilter::default() }.matches(&free));
     }
 
     #[test]
@@ -317,6 +444,28 @@ mod tests {
         assert_eq!(list.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["A", "C", "B"]);
         sort_players(&mut list, PlayerOrder { by: PlayerSort::CurrentAbility, ascending: false });
         assert_eq!(list.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["B", "C", "A"]);
+    }
+
+    #[test]
+    fn staff_sorting() {
+        let mut human = staff("Zeki", Some(40), 120, Some("Arsenal"), Some(16));
+        human.is_human = true;
+        let free = staff("Ünal", None, 160, None, None);
+        let coach = staff("Ali", Some(55), 140, Some("Beşiktaş"), Some(2));
+        let mut list = vec![&human, &free, &coach];
+        let by = |by, ascending| StaffOrder { by, ascending };
+        let names = |list: &[&StaffSummary]| list.iter().map(|s| s.name.clone()).collect::<Vec<_>>();
+        sort_staff(&mut list, by(StaffSort::Name, true));
+        assert_eq!(names(&list), ["Ali", "Ünal", "Zeki"]);
+        sort_staff(&mut list, by(StaffSort::CurrentAbility, false));
+        assert_eq!(names(&list), ["Ünal", "Ali", "Zeki"]);
+        // No age and no club go last, whichever way.
+        sort_staff(&mut list, by(StaffSort::Age, false));
+        assert_eq!(names(&list), ["Ali", "Zeki", "Ünal"]);
+        sort_staff(&mut list, by(StaffSort::Club, true));
+        assert_eq!(names(&list), ["Zeki", "Ali", "Ünal"]);
+        sort_staff(&mut list, by(StaffSort::Club, false));
+        assert_eq!(names(&list), ["Ali", "Zeki", "Ünal"]);
     }
 
     #[test]

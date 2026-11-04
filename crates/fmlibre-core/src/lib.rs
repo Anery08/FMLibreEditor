@@ -47,14 +47,17 @@ pub use details::{
 };
 pub use edit::{Change, EditError, Entity, Field, Kind, Scale, Target, fields};
 pub use export::{ExportFormat, ExportHeader, Exported};
-pub use filter::{AttributeBound, ClubFilter, PlayerFilter, PlayerOrder, PlayerSort, StaffFilter, sort_players};
+pub use filter::{
+    AttributeBound, ClubFilter, PlayerFilter, PlayerOrder, PlayerSort, StaffFilter, StaffOrder, StaffSort,
+    sort_players, sort_staff,
+};
 pub use game::{GAME_EXE, GAME_PLUGIN, GameInfo, Storefront};
 pub use graphics::{GraphicsCounts, GraphicsIndex, Picture};
 pub use health::{Check, CheckResult, Health, Lock, STRUCTURE};
 pub use index::{Listed, SearchIndex};
 pub use mass::{Operation, Plan, Planned, Skipped};
 pub use medical::{Ban, HealPlan, Healed, Injury, LiftPlan, Lifted};
-pub use players::{Nation, PLAYABLE_RATING, PlayerIndex, PlayerSummary, nations, read_players};
+pub use players::{Nation, PLAYABLE_RATING, PlayerIndex, PlayerSummary, is_woman, nations, read_players};
 pub use profile::{
     ArrayRvas, BuildProfile, ContractLayout, Layout, PlayerLayout, PluginFingerprint, SelectionLayout, StaffLayout,
     layout_for, profile_for,

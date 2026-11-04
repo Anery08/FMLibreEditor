@@ -67,6 +67,11 @@ interface ListBrowserProps<Row extends { uid: number }> {
   toolbarActions?: (list: ListState) => ReactNode;
   /** Under the table, e.g. the tray of the players picked for a comparison; it takes no room while it is empty. */
   footer?: ReactNode;
+  /**
+   * A row to select from outside the list, e.g. a player picked in a club's squad: its profile opens whether or not
+   * the search and the filters have the row. A new object each time, so the same row can be asked for again.
+   */
+  open?: { row: Row } | null;
   /** An extra class of the table, for column rules of that list. */
   tableClass?: string;
   /** The header cells. */
@@ -80,7 +85,7 @@ interface ListBrowserProps<Row extends { uid: number }> {
 /** A searchable table with the profile of the selected row beside it. */
 export function ListBrowser<Row extends { uid: number }>(props: ListBrowserProps<Row>) {
   const { command, requestArgs, version, active, placeholder, summary, empty, filterBar, toolbarActions } = props;
-  const { name, footer, tableClass, header, cells, profile } = props;
+  const { name, footer, open, tableClass, header, cells, profile } = props;
   // What the list held before the language was switched, if it was: the search text, and the UID of the row to select
   // as soon as the rows are there again.
   const [start] = useState(() => restored(name, readList));
@@ -162,6 +167,24 @@ export function ListBrowser<Row extends { uid: number }>(props: ListBrowserProps
       searchInput.current?.focus();
     }
   }, [active]);
+
+  // A row asked for from outside: whoever asks has asked the profile open now to leave (see `askToLeave`). It takes
+  // the place of the row that was to be selected again after the language was switched, should the rows not be in yet.
+  useEffect(() => {
+    if (open) {
+      wanted.current = null;
+      setSelected(open.row);
+    }
+  }, [open]);
+
+  // Once it is selected, its row is scrolled into view if the list has it; once only, as the next picks are the user's.
+  const scrolledTo = useRef<{ row: Row } | null>(null);
+  useEffect(() => {
+    if (open && open !== scrolledTo.current && selected === open.row) {
+      scrolledTo.current = open;
+      selectedRow.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [open, selected]);
 
   const settled = page !== null && shownFor !== null && shownFor.query === query && shownFor.argsKey === argsKey;
 

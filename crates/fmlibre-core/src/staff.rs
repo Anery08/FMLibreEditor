@@ -8,7 +8,7 @@ use crate::date::FmDate;
 use crate::details::{Attribute, PERSONALITY, Reputation};
 use crate::filter::attribute_keys;
 use crate::index::{Listed, SearchIndex};
-use crate::players::{club_of_team, club_uid_of_team, nation_name, nation_uid};
+use crate::players::{club_of_team, club_uid_of_team, is_woman, nation_name, nation_uid};
 use crate::profile::{Layout, StaffLayout};
 use crate::text::{Memo, display_name, is_name_like, read_fm_string, read_name_entry};
 
@@ -103,6 +103,12 @@ pub struct StaffSummary {
     /// the layout does not place.
     #[serde(skip)]
     pub attributes: Vec<u8>,
+    /// When the contract ends, for the list's filter.
+    #[serde(skip)]
+    pub contract_expires: Option<FmDate>,
+    /// Whether this is a woman, for the list's filter; unknown where the layout does not place the gender flags.
+    #[serde(skip)]
+    pub woman: Option<bool>,
     #[serde(skip)]
     pub address: u64,
     /// How far this object's identity block is shifted (see [`StaffLayout::identity_shifts`]).
@@ -202,15 +208,18 @@ pub fn read_staff(
         let nation_uid = *nation_uids.entry(nation_ptr).or_insert_with(|| nation_uid(process, layout, nation_ptr));
 
         let contract_ptr = u64_at(at(s.contract));
-        let (job, club, club_uid) = if is_user_pointer(contract_ptr)
+        let (job, club, club_uid, contract_expires) = if is_user_pointer(contract_ptr)
             && process.read_into(contract_ptr, &mut contract).is_ok()
         {
             let team = u64::from_le_bytes(contract[c.team as usize..c.team as usize + 8].try_into().expect("8 bytes"));
             let club = clubs.get(team, |team| club_of_team(process, layout, team));
             let club_uid = *club_uids.entry(team).or_insert_with(|| club_uid_of_team(process, layout, team));
-            (Some(contract[c.job as usize]), club.clone(), club.and(club_uid))
+            let contract_u16 =
+                |offset: u64| u16::from_le_bytes([contract[offset as usize], contract[offset as usize + 1]]);
+            let expires = FmDate::from_raw(contract_u16(c.expires), contract_u16(c.expires + 2));
+            (Some(contract[c.job as usize]), club.clone(), club.and(club_uid), expires)
         } else {
-            (None, None, None)
+            (None, None, None, None)
         };
 
         staff.push(StaffSummary {
@@ -236,6 +245,8 @@ pub fn read_staff(
                     None => 0,
                 })
                 .collect(),
+            contract_expires,
+            woman: s.gender.map(|offset| is_woman(buf[at(offset)])),
             address: object,
             shift,
         });

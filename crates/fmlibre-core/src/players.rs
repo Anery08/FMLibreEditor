@@ -49,6 +49,9 @@ pub struct PlayerSummary {
     pub transfer_listed: bool,
     #[serde(skip)]
     pub loan_listed: bool,
+    /// Whether this is a woman, for the list's filter; unknown where the layout does not place the gender flags.
+    #[serde(skip)]
+    pub woman: Option<bool>,
     /// Address of the player object in the game process.
     #[serde(skip)]
     pub address: u64,
@@ -179,6 +182,7 @@ pub fn read_players(
             attributes,
             transfer_listed: listing & 1 != 0,
             loan_listed: listing & 2 != 0,
+            woman: p.gender.map(|offset| is_woman(buf[at(offset)])),
             address: object,
             shift,
         });
@@ -209,6 +213,13 @@ pub fn nations<'a>(people: impl IntoIterator<Item = (u64, Option<&'a str>, Optio
     let mut out: Vec<Nation> = seen.into_values().collect();
     out.sort_by_cached_key(|nation| (crate::text::fold(&nation.name), nation.address));
     out
+}
+
+/// Whether the gender flags of a player or member of staff (see [`crate::PlayerLayout::gender`]) are a woman's. The
+/// flag 0x10 is set for every player of a women's club and for no player of a men's club; among staff, for women, and
+/// not for the men who work for women's clubs. The other flags are not known.
+pub fn is_woman(flags: u8) -> bool {
+    flags & 0x10 != 0
 }
 
 /// Rating from which FM calls a position one the player can play ("accomplished").

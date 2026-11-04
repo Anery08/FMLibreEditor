@@ -33,6 +33,10 @@ team = 0x128              # team pointer; the club hangs off the team
 person_block = 0x278
 identity = 0x388
 person_block_shifts = [0x0, 0xF8]
+# u8 of flags, 0x19 into the identity block: 0x10 is set for a woman. On the Arsenal save it was set
+# for all 6,964 players of women's clubs, for none of the 26,476 of men's clubs, and for 1,325 of
+# the 4,528 free agents (Sophia Wilson, Emma Sears, Cristiane).
+gender = 0x3A1
 
 height = 0x226            # u16, centimetres
 match_sharpness = 0x250   # u16, 0..10000
@@ -169,6 +173,9 @@ potential_ability = 0xDC  # u16
 person_block = 0xF8
 identity = 0x208
 person_block_shifts = [0x0, 0x340]
+# u8 of flags, 0x19 into the identity block as for players: 0x10 is set for Sarina Wiegman, Emma
+# Hayes and Sonia Bompastor, not for the men who work for women's clubs.
+gender = 0x221
 
 # u8, raw 0..100, shown as (raw + 2) / 5; as on Windows
 [staff.attributes]

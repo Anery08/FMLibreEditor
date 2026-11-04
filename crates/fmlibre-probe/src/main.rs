@@ -2325,6 +2325,12 @@ struct PlayerFilterArgs {
     /// Only players on the loan list.
     #[arg(long)]
     loan_listed: bool,
+    /// Only women.
+    #[arg(long, conflicts_with = "men")]
+    women: bool,
+    /// Only men.
+    #[arg(long)]
+    men: bool,
     /// A bound on an attribute as FM shows it (1-20): finishing=15.., pace=15..18 or injury_proneness=..5.
     /// Repeat it for more.
     #[arg(long = "attribute", value_name = "KEY=MIN..MAX")]
@@ -2379,6 +2385,7 @@ impl PlayerFilterArgs {
             contract_expires_by,
             transfer_listed: self.transfer_listed,
             loan_listed: self.loan_listed,
+            women: (self.women || self.men).then_some(self.women),
             attributes,
         };
         let by = match self.sort.as_deref() {

@@ -21,6 +21,7 @@ import type {
   MassPreview,
   PlayerSort,
   SquadSort,
+  StaffSort,
   Storefront,
 } from "../types";
 import { fieldName } from "./fieldNames";
@@ -680,6 +681,7 @@ export const en = {
       club: "club",
       contractExpires: "contract end",
     } satisfies Record<PlayerSort, string>,
+    /** The filters; the staff list has those that are not about players too (see FilterBar.tsx). */
     filters: {
       /** The button that shows or hides the filters. */
       toggle: "Filters",
@@ -689,6 +691,10 @@ export const en = {
       /** The entry of the position select that is no filter. */
       any: "Any",
       position: "Position",
+      /** Whom the list shows: the select's name, and its choices after `any`. */
+      gender: "Gender",
+      men: "Men",
+      women: "Women",
       age: "Age",
       minAge: "Minimum age",
       maxAge: "Maximum age",
@@ -752,10 +758,20 @@ export const en = {
     /** In the status line, once connected. */
     count: (total: number) => `${format(total)} staff`,
     search: "Search staff by name or ID",
-    summary: (total: number, shown: number) =>
-      total > shown
-        ? `${format(total)} staff · showing the top ${shown} by current ability`
-        : `${format(total)} staff`,
+    /**
+     * The line beside the search box. `sorted` is the order a column header was clicked for, or null while the
+     * list is in its default order (the human manager first, then the best current ability); its `by` is a name from
+     * `sortNames`.
+     */
+    summary: (total: number, shown: number, sorted: { by: string; ascending: boolean } | null) => {
+      const count = `${format(total)} staff`;
+      if (total <= shown) {
+        return count;
+      }
+      return sorted === null
+        ? `${count} · showing the top ${shown} by current ability`
+        : `${count} · showing the first ${shown} by ${sorted.by}, ${sorted.ascending ? "ascending" : "descending"}`;
+    },
     /** The message under an empty table; `filtered` is whether any filter is in effect. */
     empty: (query: string, filtered: boolean) => {
       if (query === "") {
@@ -773,7 +789,19 @@ export const en = {
       currentAbility: "CA",
       potentialAbility: "PA",
       id: "ID",
-    },
+    } satisfies Record<StaffSort | "job" | "born" | "id", string>,
+    /** Hover text of a column header that sorts the list; `by` is a name from `sortNames`. */
+    sortBy: (by: string) => `Sort by ${by}`,
+    /** The name of each sortable column, as the summary line and the hover text of a header say it. */
+    sortNames: {
+      currentAbility: "current ability",
+      potentialAbility: "potential ability",
+      age: "age",
+      name: "name",
+      nation: "nation",
+      club: "club",
+    } satisfies Record<StaffSort, string>,
+    /** The filters only the staff list has; the others are the player list's (`playerList.filters`). */
     filters: {
       job: "Job",
       /** The entry of the job select that is no filter. */
@@ -1704,6 +1732,8 @@ export const en = {
     // The table
     /** The table's name for assistive technology; `team` is the name of the team. */
     tableLabel: (team: string) => `Players of ${team}`,
+    /** Hover text of a player's name, which opens his profile in the player list. */
+    openProfile: "Open the player's profile",
     columns: {
       name: "Name",
       position: "Pos",

@@ -272,6 +272,28 @@ The Intel half was not running, so its static was found in the file:
 The x86_64 build profile takes `0x5C5FEF0`; it was not read in a running game. The editor checks the manager's class
 before it uses it, so a wrong static would only hide the feature.
 
+## Men and women
+
+A person's identity block holds a byte of flags 0x19 in: player `+0x3A1`, staff `+0x221`. The flag `0x10` is set for
+women. It was found on the maintainer's save (Arsenal, November 2026) by sorting the players by their club's women's
+flag (club `+0xB9`) and looking for a byte of the player object whose values never overlap between the two:
+
+| Players | `0x10` set | `0x10` clear |
+|---|---|---|
+| of women's clubs | 6,964 | 0 |
+| of men's clubs | 0 | 26,476 |
+| without a club | 1,325 (Sophia Wilson, Emma Sears, Cristiane) | 3,203 (Christian Eriksen, Karim Benzema) |
+
+Every player reads one way or the other: 8,289 women and 29,679 men of 37,968. Among staff, the flag is set for
+Sarina Wiegman, Emma Hayes, Sonia Bompastor, Pia Sundhage and Renée Slegers, and clear for the 947 men who work for
+women's clubs, so it is the person's, not the club's. The other flags are not known: `0x02` is set for about half the
+players and for staff such as Pep Guardiola and Jürgen Klopp, `0x01` for Alex Ferguson and some chairmen and owners,
+and `0x20`, `0x40` and `0x80` for a few hundred people.
+
+The layout's `gender` places the byte (`fmlibre_core::is_woman` reads it), and the player and staff lists filter on it.
+On Windows the identity block sits at player `+0x288` and staff `+0x100` (see the table above), so the byte may well
+sit at `+0x2A1` and `+0x119` there; that is not checked yet. `fmlibre-probe players --women` and `--men` list each.
+
 ## 27.0.0 (Steam build 26340721)
 
 The release that followed the Launch Preview, on 2 November 2026, gave both halves of `game_plugin` new UUIDs: arm64
