@@ -131,8 +131,8 @@ before trusting them.
 
 - [x] Move a player to another club's senior team, on his contract or new terms,
   with undo. Nothing is allocated in the game, so the new club's squad list must
-  have room in its block. Loans and free agents are refused; so are players at a human
-  manager's club, except on macOS (see Transfers in Phase 7).
+  have room in its block. Loans and free agents are refused. A player at a human manager's
+  club also leaves its team selections (see Transfers in Phase 7).
 - [x] Make room in a full squad list: the dialog offers to release one of the club's
   players in the same transfer (the weakest who is neither injured nor a captain, by
   default), who leaves his place in the list to the player who joins; or to make it a
@@ -220,13 +220,15 @@ changes many at once, and undo.
   - [x] A move with a fee: the buying club pays it out of its balance and transfer budget, the selling
     club's balance takes it, and one undo takes back the move and the fee (the money by what it changed, as
     the game moves money on every day). Checked on the Mac Steam build and both Windows builds.
-  - [x] Players out of a club a human manager runs, on macOS: a move, a release or a swap also empties the
-    player's places in the club's team selections, as the game does when he leaves, so that its tactics screen
-    shows "None" there; an undo puts him back in each one nothing has changed since. The match engine keeps them by
+  - [x] Players out of a club a human manager runs: a move, a release or a swap also empties the player's
+    places in the club's team selections, as the game does when he leaves, so that its tactics screen shows
+    "None" there; an undo puts him back in each one nothing has changed since. The match engine keeps them by
     the game's person id in several copies, found by their class in a few seconds (see the
     [transfer notes](recon/fm27-transfers.md#a-club-a-human-manager-runs)). Checked on the Mac Steam build: Declan
     Rice, Arsenal's captain and a regular starter, moved to Ipswich; the next match and the days after it went as
-    usual. Windows keeps refusing until its builds place these selections.
+    usual. On Windows the class is found from MSVC's descriptors and the threads' stacks are left out; checked
+    on the Game Pass build with Bruno Fernandes, Manchester United's captain, moved to Juventus and back, and on
+    the Steam build with a player of a club whose new manager had no selection yet.
   - [ ] The transfer in the game's history. When the game makes a transfer it writes events (date, fee,
     player, clubs) into a stream that nothing points at one by one: see the
     [transfer notes](recon/fm27-transfers.md).

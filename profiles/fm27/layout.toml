@@ -268,6 +268,19 @@ person = 0x00             # in an entry: u32 person id
 date = 0x0C               # in an entry: the date he retires
 player_person = 0x290     # in a player: u32, the game's id of the person (Ronaldo 0x0A30, Wass 0x0E69)
 
+# What a human manager has picked for his club, laid out as on macOS (see layout-macos.toml): the match engine's
+# prepared tactics, objects whose 26 slots hold the game's person ids (a player's `player_person`), the starting
+# eleven in the order of the formation's positions, then the substitutes; an empty slot holds 0xFFFFFFFF. Each object
+# also keeps a list (begin, end, capacity) at `list`. Read on the Game Pass save (15 September 2026): of the 21 objects
+# of the class, three held Manchester United's selection, the same 20 players in each (one of them in another order);
+# four held Manchester City's, four Millwall's, and nine were empty. The last one sat on a thread's stack, with no list.
+[selection]
+class = "simatch::PREPARED_TACTICS_CREATOR_ARRAY"
+list = 0x08
+slots = 0x28
+count = 26
+player_person = 0x290
+
 [team]
 club = 0x30               # club pointer
 # u8, the kind of team: on the test save 0 for the first team, 10 for the under-21s and

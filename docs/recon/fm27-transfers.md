@@ -173,9 +173,30 @@ Checked on that save:
 - Declan Rice, Arsenal's captain and a starter, was moved to Ipswich from the app. The next match and the following
   days went as usual. No copy held him afterwards, and Arsenal's captaincy stayed empty for the manager to fill.
 
-**On Windows.** The editor reads only the Itanium type info of the Mac build, so on Windows it does not find the
-class, and still refuses to move a player out of a club a human manager runs. The probe already finds vtables there
-from MSVC's type descriptors (`class_vtables`); the layout of the objects is to be checked.
+**On Windows.** The class has the same layout there, and the editor finds its vtables from MSVC's descriptors: the
+type descriptor that names `.?AVPREPARED_TACTICS_CREATOR_ARRAY@simatch@@`, the complete object locator that points at
+the descriptor, and the vtable after a pointer to the locator (`fmlibre_core::rtti`). Read on the Game Pass save
+(0.9.2409.0, 15 September 2026), whose manager runs Manchester United:
+
+- 21 objects of the class. Three held Manchester United's selection, the same 20 players in each, one of them in
+  another order; four held Manchester City's, four Millwall's, and nine were empty. Every one on the heap held a
+  sound list at `+0x08` with one entry.
+- The last one sat on a thread's stack, with 0 for its list and no person ids in its slots. Windows does not tag a
+  stack's memory as macOS does, so the editor asks Windows for the game's threads and reads where each one's stack is
+  from its environment block (TEB); it leaves those ranges out, and refuses the move when Windows will not tell.
+- The flags at `+0x20` read `0xff00` in all of them, Manchester United's too.
+- Finding the vtable takes about half a second, and finding the objects 3.7 seconds, in a release build.
+
+Checked there with the probe's `move --restore --hold 20`: Mason Mount, a substitute, and Bruno Fernandes, the captain
+and a starter, each moved to Juventus. While they were away, the slot each had held was empty in the three copies of
+Manchester United's selection and nowhere else; Bruno Fernandes's captaincy was empty too. Moved back, all 21 objects
+read as before, and Bruno Fernandes was captain again.
+
+The Steam build (26340721) was read on a save of 1 July 2027, whose manager had just taken over Monza in the
+close season. The class was found the same way. Of its 18 objects, ten held other clubs' selections with all 26
+slots filled, seven were empty, and one held a list whose end came before its begin, as a block the allocator has
+taken back; none held a Monza player yet. Adam Bakoune moved out of Monza to Juventus and back, with the probe and
+through the app's dialog: as no copy was the club's, none changed, and every object read as before.
 
 ## Still to find
 

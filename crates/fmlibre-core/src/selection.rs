@@ -75,7 +75,7 @@ impl Session {
             return Err(MoveError::HumanClub);
         }
         let mut patches = Patches::default();
-        for object in rtti::objects(&self.process, &self.plugin, vtables).into_values().flatten() {
+        for object in rtti::objects(&self.process, &self.plugin, vtables)?.into_values().flatten() {
             // A block the game has taken back keeps its vtable, but not its list.
             if PointerList::read(&self.process, object + selection.list)?.is_none() {
                 continue;

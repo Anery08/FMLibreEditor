@@ -12,23 +12,16 @@
 //! [`BuildProfile::retirement_manager`]: crate::profile::BuildProfile::retirement_manager
 
 use fmlibre_mem::is_user_pointer;
-#[cfg(windows)]
-use fmlibre_mem::{Module, Process};
 use serde::Serialize;
 
 use crate::date::FmDate;
 use crate::players::PlayerSummary;
-#[cfg(target_os = "macos")]
-use crate::rtti::class_of;
+use crate::rtti::{class_of, mangled};
 use crate::session::Session;
 use crate::transfer::{MoveError, Patch, Patches, PointerList, removal_patches};
 
-/// The name the compiler keeps for the class of the retirement manager: MSVC's on Windows, the Itanium C++ ABI's on
-/// macOS.
-#[cfg(windows)]
-const MANAGER_CLASS: &str = ".?AVRETIREMENT_MANAGER@@";
-#[cfg(target_os = "macos")]
-const MANAGER_CLASS: &str = "18RETIREMENT_MANAGER";
+/// The class of the retirement manager, as written in C++.
+const MANAGER_CLASS: &str = "RETIREMENT_MANAGER";
 
 /// The traits (bits of player `traits`) "Will retire at top" and "Will play football as long as possible".
 const RETIRE_AT_TOP: u32 = 48;
@@ -266,7 +259,7 @@ impl Session {
         let manager = self.process.read_u64(self.plugin.base + rva).ok().filter(|&at| is_user_pointer(at))?;
         let vtable = self.process.read_u64(manager).ok()?;
         if self.retirement_class.get() != Some(&vtable) {
-            if class_of(&self.process, &self.plugin, manager)? != MANAGER_CLASS {
+            if class_of(&self.process, &self.plugin, manager)? != mangled(MANAGER_CLASS) {
                 return None;
             }
             let _ = self.retirement_class.set(vtable);
@@ -340,26 +333,4 @@ impl Session {
         }
         Ok(self.process.read_u32(player.address + p.at(r.player_person, player.shift))?)
     }
-}
-
-/// The name the compiler keeps for the class of the object at `object`, e.g. `.?AVRETIREMENT_MANAGER@@`, when its
-/// vtable is one of the plugin's. As MSVC lays them out on x64, a vtable is preceded by a pointer to its complete
-/// object locator: signature 1, the type descriptor's RVA at +12 and the locator's own at +20; the descriptor holds
-/// the name after a vtable pointer and a spare word. (macOS: [`crate::rtti::class_of`].)
-#[cfg(windows)]
-fn class_of(process: &Process, plugin: &Module, object: u64) -> Option<String> {
-    let inside = |at: u64| (plugin.base..plugin.end()).contains(&at);
-    let vtable = process.read_u64(object).ok()?;
-    if !inside(vtable) {
-        return None;
-    }
-    let locator = process.read_u64(vtable - 8).ok().filter(|&at| inside(at))?;
-    let bytes = process.read_bytes(locator, 24).ok()?;
-    let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().expect("4 bytes"));
-    if word(0) != 1 || u64::from(word(20)) != locator - plugin.base {
-        return None;
-    }
-    let name = process.read_bytes(plugin.base + u64::from(word(12)) + 0x10, 128).ok()?;
-    let end = name.iter().position(|&b| b == 0)?;
-    String::from_utf8(name[..end].to_vec()).ok()
 }

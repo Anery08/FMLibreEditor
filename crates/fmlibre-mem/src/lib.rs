@@ -31,7 +31,7 @@ pub use module::Module;
 #[cfg(windows)]
 pub use windows::{
     Export, PeImage, Process, ProcessEntry, Region, Section, find_processes, is_current_process_elevated, list_modules,
-    region_at, regions,
+    region_at, regions, thread_stacks,
 };
 
 /// Whether `p` looks like a user-mode pointer: 8-byte aligned and inside the
