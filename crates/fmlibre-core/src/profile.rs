@@ -31,6 +31,27 @@ pub struct Layout {
     /// The retirements the game has planned; only in the layouts they have been checked in.
     #[serde(default)]
     pub retirement: Option<RetirementLayout>,
+    /// What a human manager has picked for his club; only in the layouts it has been checked in.
+    #[serde(default)]
+    pub selection: Option<SelectionLayout>,
+}
+
+/// What a human manager has picked for his club, as the match engine keeps it: for each of his tactics, objects of one
+/// class (`class`, found by its name: see [`crate::rtti`]) whose `count` slots of `u32` person ids, from `slots` on,
+/// are the starting eleven in the order of the formation's positions and then the substitutes. An empty slot holds
+/// `0xFFFF_FFFF`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SelectionLayout {
+    /// The class, as written in C++.
+    pub class: String,
+    /// In an object: a list `(begin, end, capacity)` every live one holds.
+    pub list: u64,
+    /// In an object: the first slot.
+    pub slots: u64,
+    pub count: u64,
+    /// In a player: the `u32` id the game gives the person, which the slots hold.
+    pub player_person: u64,
 }
 
 /// The retirements the game has planned, which its retirement manager keeps (`RETIREMENT_MANAGER`, one object a

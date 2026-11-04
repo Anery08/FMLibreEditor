@@ -201,8 +201,8 @@ const errors: ErrorTexts = {
   "move.playerCoach": () => "Los jugadores-entrenadores no se pueden traspasar: también trabajan como personal.",
   "move.unusualContract": () => "El contrato del jugador no es un contrato de jugador corriente.",
   "move.humanClub": () =>
-    "El jugador está en un club que dirige un mánager humano. Las tácticas y el entrenamiento del club también " +
-    "apuntan a él, así que solo puede salir del club desde el propio juego.",
+    "El jugador está en un club que dirige un mánager humano. En esta versión del juego, el editor aún no " +
+    "encuentra las alineaciones del club, así que solo puede salir del club desde el propio juego.",
   "move.menAndWomen": () => "Uno de los clubes es masculino y el otro, femenino.",
   "move.notListed": () => "Las listas de la plantilla no tienen al jugador donde deberían.",
   "move.noRoom": (p) =>

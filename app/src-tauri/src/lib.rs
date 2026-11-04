@@ -1621,17 +1621,22 @@ fn search_staff(
     ))
 }
 
-/// Clubs matching `query`, highest reputation first; at most `limit` rows.
+/// Clubs matching `query`, highest reputation first; at most `limit` rows. `kind_of` keeps to the clubs of the same kind
+/// as the club with that UID, men's or women's: those its players and staff can move to.
 #[tauri::command]
 fn search_clubs(
     state: State<'_, AppState>,
     query: String,
     limit: usize,
     filter: Option<ClubFilter>,
+    kind_of: Option<u32>,
 ) -> Result<Page<fmlibre_core::ClubSummary>, Failure> {
     let guard = state.0.lock()?;
     let connection = guard.as_ref().ok_or_else(not_connected)?;
-    let filter = filter.unwrap_or_default();
+    let mut filter = filter.unwrap_or_default();
+    if let Some(club) = kind_of.and_then(|uid| connection.clubs.get(uid)) {
+        filter.women = Some(club.women);
+    }
     Ok(page(&connection.clubs, &query, limit, |c| filter.matches(c), |_| {}))
 }
 
@@ -1934,33 +1939,37 @@ fn plan_club_move(
 
 /// Moves the player `uid` to the senior team of the club `club` on the contract `terms`, the club paying his old
 /// one `fee` pounds if given, worked out again from the game as it is now, and logs the move. When the fee cannot be
-/// paid, the player is moved back.
+/// paid, the player is moved back. Off the window's thread: leaving a club a human manager runs takes a few seconds.
 #[tauri::command]
-fn move_player(
-    state: State<'_, AppState>,
+async fn move_player(
+    app: tauri::AppHandle,
     uid: u32,
     club: u32,
     terms: MoveTerms,
     fee: Option<i64>,
 ) -> Result<LoggedChange, Failure> {
-    let mut guard = state.0.lock()?;
-    let connection = guard.as_mut().ok_or_else(not_connected)?;
-    let plan = connection.plan_move(uid, club, terms)?;
-    let fee_plan = connection.plan_fee(plan.from_club, plan.to_club, fee)?;
-    let club = |uid: u32| connection.clubs.get(uid).cloned().ok_or_else(|| not_found(Entity::Club, uid));
-    let (buyer, seller) = (club(plan.to_club)?, club(plan.from_club)?);
-    let done = connection.session.apply_club_move(&plan)?;
-    let paid = match fee_plan {
-        Some(fee_plan) => match connection.session.pay_fee(&fee_plan, &buyer, &seller) {
-            Ok(paid) => paid,
-            Err(err) => {
-                let _ = connection.session.undo_club_move(&done);
-                return Err(err.into());
-            }
-        },
-        None => Vec::new(),
-    };
-    Ok(connection.log_move(done, terms, paid, fee_plan.map(|plan| plan.fee)))
+    tauri::async_runtime::spawn_blocking(move || -> Result<LoggedChange, Failure> {
+        let state = app.state::<AppState>();
+        let mut guard = state.0.lock()?;
+        let connection = guard.as_mut().ok_or_else(not_connected)?;
+        let plan = connection.plan_move(uid, club, terms)?;
+        let fee_plan = connection.plan_fee(plan.from_club, plan.to_club, fee)?;
+        let club = |uid: u32| connection.clubs.get(uid).cloned().ok_or_else(|| not_found(Entity::Club, uid));
+        let (buyer, seller) = (club(plan.to_club)?, club(plan.from_club)?);
+        let done = connection.session.apply_club_move(&plan)?;
+        let paid = match fee_plan {
+            Some(fee_plan) => match connection.session.pay_fee(&fee_plan, &buyer, &seller) {
+                Ok(paid) => paid,
+                Err(err) => {
+                    let _ = connection.session.undo_club_move(&done);
+                    return Err(err.into());
+                }
+            },
+            None => Vec::new(),
+        };
+        Ok(connection.log_move(done, terms, paid, fee_plan.map(|plan| plan.fee)))
+    })
+    .await?
 }
 
 /// Checks that the player `uid` can be released from his club, and names it; the error says why he cannot. Nothing is
@@ -1974,14 +1983,18 @@ fn plan_release(state: State<'_, AppState>, uid: u32) -> Result<ClubName, Failur
 }
 
 /// Releases the player `uid` from his club, worked out again from the game as it is now, and logs it: he becomes a
-/// free agent.
+/// free agent. Off the window's thread, as a move.
 #[tauri::command]
-fn release_player(state: State<'_, AppState>, uid: u32) -> Result<LoggedChange, Failure> {
-    let mut guard = state.0.lock()?;
-    let connection = guard.as_mut().ok_or_else(not_connected)?;
-    let plan = connection.plan_release(uid)?;
-    let done = connection.session.apply_club_move(&plan)?;
-    Ok(connection.log_release(done))
+async fn release_player(app: tauri::AppHandle, uid: u32) -> Result<LoggedChange, Failure> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<LoggedChange, Failure> {
+        let state = app.state::<AppState>();
+        let mut guard = state.0.lock()?;
+        let connection = guard.as_mut().ok_or_else(not_connected)?;
+        let plan = connection.plan_release(uid)?;
+        let done = connection.session.apply_club_move(&plan)?;
+        Ok(connection.log_release(done))
+    })
+    .await?
 }
 
 /// Checks that the member of staff `uid` can move to the club `club`, and names the clubs; the error says why he
@@ -2034,14 +2047,19 @@ fn plan_club_swap(state: State<'_, AppState>, uid: u32, other: u32) -> Result<Mo
 }
 
 /// Swaps the clubs of the players `uid` and `other`, worked out again from the game as it is
-/// now; each keeps his contract's terms. Logged as one change of `uid`'s club.
+/// now; each keeps his contract's terms. Logged as one change of `uid`'s club. Off the
+/// window's thread, as a move.
 #[tauri::command]
-fn swap_players(state: State<'_, AppState>, uid: u32, other: u32) -> Result<LoggedChange, Failure> {
-    let mut guard = state.0.lock()?;
-    let connection = guard.as_mut().ok_or_else(not_connected)?;
-    let plan = connection.plan_swap(uid, other)?;
-    let done = connection.session.apply_club_move(&plan)?;
-    Ok(connection.log_move(done, MoveTerms::default(), Vec::new(), None))
+async fn swap_players(app: tauri::AppHandle, uid: u32, other: u32) -> Result<LoggedChange, Failure> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<LoggedChange, Failure> {
+        let state = app.state::<AppState>();
+        let mut guard = state.0.lock()?;
+        let connection = guard.as_mut().ok_or_else(not_connected)?;
+        let plan = connection.plan_swap(uid, other)?;
+        let done = connection.session.apply_club_move(&plan)?;
+        Ok(connection.log_move(done, MoveTerms::default(), Vec::new(), None))
+    })
+    .await?
 }
 
 /// Heals every current injury of the player `uid`, as the game does when he gets over them,

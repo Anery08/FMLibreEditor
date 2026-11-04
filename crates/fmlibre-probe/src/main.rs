@@ -2825,6 +2825,9 @@ fn move_player(
     }
 
     let done = session.apply_club_move(&plan)?;
+    if plan.leaves_a_human_club() {
+        println!("  out of {} of the human club's selections", done.selections());
+    }
     let paid = match fee_plan {
         Some(fee_plan) => match session.pay_fee(&fee_plan, to, from_club) {
             Ok(paid) => paid,
@@ -2868,6 +2871,9 @@ fn release_player(session: &Session, uid: u32, restore: bool, hold: u64) -> Resu
 
     // A release is written and undone like a move: as the patches it was planned as.
     let done = session.apply_club_move(&plan)?;
+    if plan.leaves_a_human_club() {
+        println!("  out of {} of the human club's selections", done.selections());
+    }
     // Read him again as the lists would.
     let club_now = |label: &str| -> Result<Option<u32>> {
         let now = session.players()?.into_iter().find(|p| p.uid == uid).context("the player is gone")?;
@@ -3162,6 +3168,9 @@ fn swap_players(session: &Session, uid: u32, other: u32, restore: bool) -> Resul
     );
     // A swap is written and undone like a move: as the patches it was planned as.
     let done = session.apply_club_move(&plan)?;
+    if plan.leaves_a_human_club() {
+        println!("  out of {} of the human club's selections", done.selections());
+    }
     // Read both again as the lists would.
     let clubs_now = |label: &str| -> Result<(Option<u32>, Option<u32>)> {
         let now = PlayerIndex::new(session.players()?);
