@@ -24,9 +24,11 @@ team = 0x130              # team pointer; the club hangs off the team
 # block in front of it, so every field from here on sits 0xF8 further for them.
 person_block = 0x288
 person_block_shifts = [0x0, 0xF8]
-# u8 of flags, 0x19 into the person block as on macOS: 0x10 is set for a woman. The Game Pass save
-# holds no women's football: the flag was set for none of its 59,284 players, while the byte's other
-# flags read as on the Mac (0x02 for about half the players, 0x40 and 0x80 for a few hundred).
+# u8 of flags, 0x19 into the person block as on macOS: 0x10 is set for a woman. On the Steam save
+# (1 July 2027), with women's football, it was set for all 6,434 players of women's clubs, for none
+# of the 26,948 of men's clubs, and for 1,956 of the 6,887 without a club. The Game Pass save holds
+# no women's football: the flag was set for none of its 59,284 players, while the byte's other flags
+# read as on the Mac (0x02 for about half the players, 0x40 and 0x80 for a few hundred).
 gender = 0x2A1
 
 height = 0x22E            # u16, centimetres
@@ -190,7 +192,9 @@ potential_ability = 0xDC  # u16
 person_block = 0x100
 person_block_shifts = [0x0, 0x340]
 # u8 of flags, 0x19 into the person block as for players: 0x10 is set for a woman. On the Game Pass
-# save it was set for 851 of the 29,512 staff, all women (Carolina Morace, Ria Ledwaba, Isha Johansen).
+# save it was set for 851 of the 29,512 staff, all women (Carolina Morace, Ria Ledwaba, Isha Johansen);
+# on the Steam save for 2,548 of 25,776 (Emma Hayes, Sarina Wiegman, Jill Ellis), and not for the 846
+# men who work for women's clubs.
 gender = 0x119
 
 # u8, raw 0..100, shown as (raw + 2) / 5
