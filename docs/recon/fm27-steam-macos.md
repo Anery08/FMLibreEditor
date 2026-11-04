@@ -310,8 +310,25 @@ players and for staff such as Pep Guardiola and Jürgen Klopp, `0x01` for Alex F
 and `0x20`, `0x40` and `0x80` for a few hundred people.
 
 The layout's `gender` places the byte (`fmlibre_core::is_woman` reads it), and the player and staff lists filter on it.
-On Windows the identity block sits at player `+0x288` and staff `+0x100` (see the table above), so the byte may well
-sit at `+0x2A1` and `+0x119` there; that is not checked yet. `fmlibre-probe players --women` and `--men` list each.
+On Windows the identity block sits at player `+0x288` and staff `+0x100` (see the table above), and the byte 0x19 in,
+at `+0x2A1` and `+0x119`, as `layout.toml` places it:
+
+- Steam build 26340721, on a save with women's football (1 July 2027), against the clubs' women's flag:
+
+  | Players | `0x10` set | `0x10` clear |
+  |---|---|---|
+  | of women's clubs | 6,434 | 0 |
+  | of men's clubs | 0 | 26,948 |
+  | without a club | 1,956 | 4,931 |
+
+  Every player reads one way or the other: 8,390 women and 31,879 men of 40,269. Among staff it is set for 2,548 of
+  25,776 (Emma Hayes, Sarina Wiegman, Jill Ellis), and clear for the 846 men who work for women's clubs.
+- Game Pass 0.9.2409.0, on a save without women's football (15 September 2026): no player has the flag, so all
+  59,284 read as men, and the byte's other flags read as on the Mac: `0x02` for about half the players, `0x40` and
+  `0x80` for a few hundred. Among staff it is set for 851 of 29,512, all women: Carolina Morace, Ria Ledwaba and Isha
+  Johansen among them.
+
+`fmlibre-probe players --women` and `--men` list each.
 
 ## 27.0.0 (Steam build 26340721)
 

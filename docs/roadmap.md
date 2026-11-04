@@ -209,8 +209,8 @@ changes many at once, and undo.
   - [x] A player's name in a club's squad tab opens his profile in the player list. The club keeps its squad tab
     meanwhile, so the Clubs tab leads back to it.
   - [x] Men or women in the player and staff lists: a flag in the person's identity block, set for women (see the
-    [macOS notes](recon/fm27-steam-macos.md#men-and-women)). On the Mac Steam build; the Windows layouts do not place
-    it yet, and the lists offer the choice only where the layout does.
+    [macOS notes](recon/fm27-steam-macos.md#men-and-women)). On the Mac Steam build and both Windows builds; the
+    lists offer the choice only where the layout places the flag.
   - [x] The staff list filters as the player list does
     ([#80](https://github.com/tozmoz/FMLibreEditor/issues/80)): age, current and potential ability, nation, club,
     contract end and men or women, besides the job, the unemployed and the attributes, behind the same Filters
