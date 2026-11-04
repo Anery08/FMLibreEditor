@@ -212,8 +212,9 @@ changes many at once, and undo.
   - Checked on the Mac Steam build and on the Windows Steam and Game Pass builds: the filters on a real save,
     and each new field written, read back and restored. Next: freezing money through a game day.
 - Asked for in the issues, on SortItOutSI and on Reddit:
-  - [x] A player's name in a club's squad tab opens his profile in the player list. The club keeps its squad tab
-    meanwhile, so the Clubs tab leads back to it.
+  - [x] A player's name in a club's squad tab opens his profile over the squad, as a dialog with everything the
+    player list's profile offers (editing, Transfer, Release, Compare, the freezes). Closing it goes back to the
+    squad as it was. A dialog it opens, such as Transfer, is the only one Escape and Tab reach until it closes.
   - [x] Men or women in the player and staff lists: a flag in the person's identity block, set for women (see the
     [macOS notes](recon/fm27-steam-macos.md#men-and-women)). On the Mac Steam build and both Windows builds; the
     lists offer the choice only where the layout places the flag.

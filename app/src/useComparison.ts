@@ -1,7 +1,8 @@
-// The players picked for a comparison. The set lives in the player list (see `PlayerBrowser`), which stays mounted
-// while another view is shown, so it survives switching views; a reload of the window starts with none.
+// The players picked for a comparison. The set lives in the app (see `App`), so it survives switching views, and a
+// player's profile opened from a club's squad adds to the set the player list's tray shows; a reload of the window
+// starts with none.
 
-import { useMemo, useState } from "react";
+import { createContext, useMemo, useState } from "react";
 
 /** The most players one comparison holds: more columns would no longer read side by side. */
 export const MAX_COMPARED = 4;
@@ -25,7 +26,10 @@ export interface Comparison {
   clear: () => void;
 }
 
-/** The comparison of the list that calls it: empty to begin with. */
+/** The app's comparison, for the profiles that are not in the player list; null outside the connected app. */
+export const ComparisonContext = createContext<Comparison | null>(null);
+
+/** A comparison, empty to begin with: the app's (see `App`). */
 export function useComparison(): Comparison {
   const [players, setPlayers] = useState<readonly ComparedPlayer[]>([]);
 

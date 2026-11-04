@@ -14,7 +14,7 @@ import { SavedFilterControls } from "./SavedFilterControls";
 import { PLAYER_FILTERS, readFields, readOrder } from "./savedFilters";
 import { SortHeader } from "./SortHeader";
 import type { PlayerOrder, PlayerSort, PlayerSummary } from "./types";
-import { useComparison } from "./useComparison";
+import type { Comparison } from "./useComparison";
 
 const text = playerListText;
 
@@ -32,21 +32,18 @@ interface PlayerBrowserProps {
   active: boolean;
   /** Whether the game's layout tells women from men, for the filter that keeps to one of them. */
   genderKnown: boolean;
-  /** A player to show from elsewhere, e.g. one picked in a club's squad (see `ListBrowser`'s `open`). */
-  open: { row: PlayerSummary } | null;
+  /** The players picked for a comparison, which the tray under the table shows (see `useComparison`). */
+  comparison: Comparison;
 }
 
 /** The players table with the profile of the selected player beside it. */
-export function PlayerBrowser({ version, active, genderKnown, open }: PlayerBrowserProps) {
+export function PlayerBrowser({ version, active, genderKnown, comparison }: PlayerBrowserProps) {
   // The filters and the sort start as they were before the language was switched, if it was (see `restore.ts`).
   const [fields, setFields] = useState<PlayerFilterFields>(() => restored("playerFields", readFields));
   // Null until a header is clicked: no order is asked for, and the search answers with the best current ability first.
   const [order, setOrder] = useState<PlayerOrder | null>(() => restored("playerOrder", readOrder));
   useSnapshot("playerFields", () => fields);
   useSnapshot("playerOrder", () => order);
-  // The players picked for a comparison. They are kept here, as the list is: every list stays mounted while another
-  // view is shown (see `App`), so the set survives switching views.
-  const comparison = useComparison();
 
   // Where the layout cannot tell women from men, the bar offers no such choice, and a saved filter that made one is
   // taken without it.
@@ -105,7 +102,6 @@ export function PlayerBrowser({ version, active, genderKnown, open }: PlayerBrow
         </>
       )}
       footer={<ComparisonTray comparison={comparison} />}
-      open={open}
       tableClass="player-grid"
       header={
         <>

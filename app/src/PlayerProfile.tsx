@@ -1,4 +1,5 @@
 import { useContext, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { AttributeActions } from "./AttributeActions";
 import { ClauseList } from "./ClauseList";
 import { CompareToggle } from "./Comparison";
@@ -29,7 +30,7 @@ import {
   type RatingRow,
 } from "./ProfileParts";
 import type { ApplyReport, Concern, Contract, FmDate, PlayerDetails, PlayerSummary } from "./types";
-import type { Comparison } from "./useComparison";
+import { ComparisonContext, type Comparison } from "./useComparison";
 import { EditorContext, useEditableField, useProfileEditing } from "./useProfileEditing";
 
 interface PlayerProfileProps {
@@ -38,12 +39,47 @@ interface PlayerProfileProps {
   /** Changes when the game data is read again, so the profile is too. */
   version: number;
   onClose: () => void;
-  /** The players picked for a comparison: the header has the button that adds this player to it, or takes them out. */
-  comparison: Comparison;
+  /**
+   * The players picked for a comparison: the header has the button that adds this player to it, or takes them out.
+   * None outside the connected app.
+   */
+  comparison: Comparison | null;
+  /** A dialog over the window instead of a panel beside the player list (see `PlayerDialog`). */
+  modal?: boolean;
+}
+
+/**
+ * The profile of a player named in a club's squad, as a dialog over the window: the squad stays as it was behind it,
+ * and closing it goes back there. It offers what the profile in the player list does, and its Compare adds to the
+ * comparison that list's tray shows.
+ */
+export function PlayerDialog({ player, version, onClose }: Omit<PlayerProfileProps, "comparison" | "modal">) {
+  const comparison = useContext(ComparisonContext);
+  return createPortal(
+    // A click beside the dialog does nothing, and keeps focus where it is, as for the other dialogs.
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          event.preventDefault();
+        }
+      }}
+    >
+      <PlayerProfile
+        key={player.uid}
+        player={player}
+        version={version}
+        onClose={onClose}
+        comparison={comparison}
+        modal
+      />
+    </div>,
+    document.body,
+  );
 }
 
 /** The profile of one player. Mount it with `key={uid}` so a new player starts at the top. */
-export function PlayerProfile({ player, version, onClose, comparison }: PlayerProfileProps) {
+export function PlayerProfile({ player, version, onClose, comparison, modal }: PlayerProfileProps) {
   const loaded = useProfileDetails<PlayerDetails>("player_details", player.uid, version);
   const editing = useProfileEditing("player", player.uid);
   const details = loaded?.details;
@@ -88,6 +124,7 @@ export function PlayerProfile({ player, version, onClose, comparison }: PlayerPr
       loaded={loaded}
       onClose={onClose}
       editing={editing}
+      modal={modal}
       actions={
         <>
           {/* Only while the profile is read, not edited, and for a player who has a club to leave. The Transfer dialog
@@ -102,7 +139,7 @@ export function PlayerProfile({ player, version, onClose, comparison }: PlayerPr
               <ReleaseButton player={{ uid: info.uid, name: info.name, club: info.club, clubUid: info.clubUid }} />
             </div>
           )}
-          <CompareToggle comparison={comparison} player={{ uid: info.uid, name: info.name }} />
+          {comparison && <CompareToggle comparison={comparison} player={{ uid: info.uid, name: info.name }} />}
         </>
       }
     >

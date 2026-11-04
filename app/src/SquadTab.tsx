@@ -1,7 +1,8 @@
 // The Squad tab of a club's profile: the players of each of its teams with the values a squad screen shows, the actions
 // on a whole team (heal everyone, lift every ban, give everyone the best morale, rest everyone), the boxes that freeze
 // the whole team, and the captains. What it writes is logged like any change, and undone from the Changes view, or at
-// once from the line under the buttons. A player's name opens his profile in the player list.
+// once from the line under the buttons. A player's name opens his profile over the squad, which stays as it was behind
+// it.
 
 import { useContext, useEffect, useMemo, useRef, useState, type Ref } from "react";
 import { Ability } from "./Ability";
@@ -20,7 +21,7 @@ import {
 } from "./labels";
 import { undoFailureLines } from "./massDraft";
 import { percentText } from "./MedicalGroup";
-import { OpenPlayerContext } from "./openPlayer";
+import { PlayerDialog } from "./PlayerProfile";
 import type { Loaded, PanelIds } from "./ProfileParts";
 import { SortHeader } from "./SortHeader";
 import type {
@@ -191,6 +192,10 @@ export function SquadTab({ clubUid, version, panel }: SquadTabProps) {
   const resultBox = useRef<HTMLDivElement>(null);
   // Set while a write may take the button that has focus out of play.
   const refocus = useRef(false);
+  // The player whose profile is up over the squad, and the name that opened it.
+  const [shown, setShown] = useState<SquadPlayer | null>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  const wasShown = useRef(false);
 
   const teams = loaded?.details;
   // A team that is no longer there (the game changed) gives way to the first one.
@@ -210,6 +215,15 @@ export function SquadTab({ clubUid, version, panel }: SquadTabProps) {
   useEffect(() => {
     setBusy(false);
   }, [loaded]);
+
+  // Once his profile is closed, focus goes back to the name that opened it, if the squad still has him. Doing it
+  // earlier, with the dialog still up, would only make the dialog take focus back.
+  useEffect(() => {
+    if (wasShown.current && shown === null && opener.current?.isConnected) {
+      opener.current.focus();
+    }
+    wasShown.current = shown !== null;
+  }, [shown]);
 
   // A write can take the button that had focus out of play: Heal all once nobody is injured, Undo once it is done.
   // Focus then goes to the line under the buttons, so that someone using the keyboard stays in the tab.
@@ -395,6 +409,10 @@ export function SquadTab({ clubUid, version, panel }: SquadTabProps) {
                     editable={editable}
                     busy={busy}
                     onCaptain={(role) => void makeCaptain(team, role, player)}
+                    onOpen={(from) => {
+                      opener.current = from;
+                      setShown(player);
+                    }}
                   />
                 ))}
               </tbody>
@@ -403,6 +421,8 @@ export function SquadTab({ clubUid, version, panel }: SquadTabProps) {
           </div>
         </>
       )}
+
+      {shown && <PlayerDialog player={shown} version={version} onClose={() => setShown(null)} />}
     </div>
   );
 }
@@ -687,14 +707,15 @@ interface SquadRowProps {
   editable: boolean;
   busy: boolean;
   onCaptain: (role: CaptainRole) => void;
+  /** Opens his profile over the squad; `from` is the name, which takes focus back once it is closed. */
+  onOpen: (from: HTMLButtonElement) => void;
 }
 
 /**
- * One player: his name, which leads to his profile in the player list, with his tags and badge by it, his values, and
- * the menu that makes him captain.
+ * One player: his name, which opens his profile over the squad, with his tags and badge by it, his values, and the menu
+ * that makes him captain.
  */
-function SquadRow({ player, role, editable, busy, onCaptain }: SquadRowProps) {
-  const openPlayer = useContext(OpenPlayerContext);
+function SquadRow({ player, role, editable, busy, onCaptain, onOpen }: SquadRowProps) {
   const positions = player.positions.map(positionLabel);
   const fullName = player.fullName !== null && player.fullName !== player.name ? player.fullName : null;
   return (
@@ -702,18 +723,15 @@ function SquadRow({ player, role, editable, busy, onCaptain }: SquadRowProps) {
     <tr className={player.playsHere ? undefined : "away"}>
       <td className="col-name" title={fullName === null ? player.name : `${player.name}\n${fullName}`}>
         <div className="squad-name">
-          {openPlayer ? (
-            <button
-              type="button"
-              className="name name-link"
-              title={text.openProfile}
-              onClick={() => openPlayer(player)}
-            >
-              {player.name}
-            </button>
-          ) : (
-            <span className="name">{player.name}</span>
-          )}
+          <button
+            type="button"
+            className="name name-link"
+            aria-haspopup="dialog"
+            title={text.openProfile}
+            onClick={(event) => onOpen(event.currentTarget)}
+          >
+            {player.name}
+          </button>
           {role !== null && (
             <abbr className={`role-badge ${role}`} title={fieldLabel("club", ROLE_FIELD[role])}>
               {role === "captain" ? text.captainShort : text.viceCaptainShort}

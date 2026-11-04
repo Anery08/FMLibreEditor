@@ -10,13 +10,13 @@ import { FrozenNotice } from "./FrozenNotice";
 import { GraphicsStatus } from "./GraphicsStatus";
 import { SettingsMenu } from "./SettingsMenu";
 import { appText, changesText, clubListText, playerListText, staffListText } from "./labels";
-import { OpenPlayerContext } from "./openPlayer";
 import { PlayerBrowser } from "./PlayerBrowser";
 import { restored, useSnapshot } from "./restore";
 import { StaffBrowser } from "./StaffBrowser";
-import type { BridgeInfo, ConnectionInfo, Detection, PlayerSummary, Refrozen, ReloadInfo } from "./types";
+import type { BridgeInfo, ConnectionInfo, Detection, Refrozen, ReloadInfo } from "./types";
 import { useUpdateCheck } from "./update";
 import { UpdateCheck, UpdateNotice } from "./UpdateNotice";
+import { ComparisonContext, useComparison } from "./useComparison";
 import { askToLeave, EditorContext } from "./useProfileEditing";
 import "./App.css";
 
@@ -63,8 +63,8 @@ function App() {
   const [refrozen, setRefrozen] = useState<Refrozen | null>(null);
   const [view, setView] = useState<View>(() => restored("view", readView));
   useSnapshot("view", () => view);
-  // A player picked elsewhere, e.g. in a club's squad, for the player list to show: a new object each time.
-  const [playerToOpen, setPlayerToOpen] = useState<{ row: PlayerSummary } | null>(null);
+  // The players picked for a comparison: in the player list's profiles and in those opened from a club's squad.
+  const comparison = useComparison();
   const { log, error: logError, reload: reloadLog, clear: clearLog } = useChangeLog();
   const update = useUpdateCheck();
   // Whether Check for updates was pressed: only then does the foot of the window say what was found.
@@ -90,11 +90,11 @@ function App() {
   const connect = () =>
     run(appText.connecting, async () => {
       const { refrozen: again, ...connected } = await call<ConnectionInfo>("connect");
-      // A new connection has an empty change log, and its field tables may differ. Its lists start afresh, without
-      // the player last asked for.
+      // A new connection has an empty change log, and its field tables may differ. Its lists start afresh, with no one
+      // picked for a comparison.
       forgetFieldTables();
       clearLog();
-      setPlayerToOpen(null);
+      comparison.clear();
       setConnection(connected);
       setRefrozen(again ?? null);
       setDataVersion((v) => v + 1);
@@ -183,15 +183,6 @@ function App() {
     }
   };
 
-  const openPlayer = useCallback(
-    (player: PlayerSummary) =>
-      askToLeave(() => {
-        setView("players");
-        setPlayerToOpen({ row: player });
-      }),
-    [],
-  );
-
   return (
     <div className="app">
       <header className="masthead">
@@ -259,19 +250,19 @@ function App() {
         {connection ? (
           // All the lists stay mounted, so each keeps its search and selection while another is shown.
           <EditorContext.Provider value={editor}>
-            <OpenPlayerContext.Provider value={openPlayer}>
+            <ComparisonContext.Provider value={comparison}>
               <div className="views">
                 <PlayerBrowser
                   version={dataVersion}
                   active={view === "players"}
                   genderKnown={connection.genderKnown}
-                  open={playerToOpen}
+                  comparison={comparison}
                 />
                 <StaffBrowser version={dataVersion} active={view === "staff"} genderKnown={connection.genderKnown} />
                 <ClubBrowser version={dataVersion} active={view === "clubs"} />
                 {view === "changes" && <ChangesView log={log} error={logError} reload={reloadLog} onUndone={edited} />}
               </div>
-            </OpenPlayerContext.Provider>
+            </ComparisonContext.Provider>
           </EditorContext.Provider>
         ) : (
           checked && (
