@@ -26,6 +26,7 @@ mod relations;
 mod retirement;
 pub mod rtti;
 mod scan;
+mod selection;
 mod session;
 mod squad;
 mod staff;
@@ -55,8 +56,8 @@ pub use mass::{Operation, Plan, Planned, Skipped};
 pub use medical::{Ban, HealPlan, Healed, Injury, LiftPlan, Lifted};
 pub use players::{Nation, PLAYABLE_RATING, PlayerIndex, PlayerSummary, nations, read_players};
 pub use profile::{
-    ArrayRvas, BuildProfile, ContractLayout, Layout, PlayerLayout, PluginFingerprint, StaffLayout, layout_for,
-    profile_for,
+    ArrayRvas, BuildProfile, ContractLayout, Layout, PlayerLayout, PluginFingerprint, SelectionLayout, StaffLayout,
+    layout_for, profile_for,
 };
 pub use relations::{HOMEGROWN_RULES, Relation, RelationPlan, RelationSet, Tie, TieTarget};
 pub use retirement::{PlannedRetirement, RetirementPlan, RetirementSet};

@@ -9,11 +9,12 @@
 //! The editor allocates nothing in the game, so the senior team's list must have room in
 //! the block it already has: below its capacity, or up to the end of the allocator's block
 //! (see [`HeapLayout`]). Only players with simple ties move: under contract with the club
-//! they play for (no loans), not player-coaches, and not at a club a human manager runs,
-//! whose tactics, training and the like point at its players too.
+//! they play for (no loans), and not player-coaches.
 //!
 //! A player who leaves a club gives up the captaincies he holds in its teams: they are left
-//! empty, as a youth team's often are, for the club to fill.
+//! empty, as a youth team's often are, for the club to fill. One who leaves a club a human
+//! manager runs also leaves his places in its selections empty, as he does when the game
+//! moves him (see [`crate::selection`]); where the editor cannot find them, he is not moved.
 //!
 //! A release takes him out of his club's lists and leaves him with no team and no contract,
 //! as the game's own free agents have. His contract is left as it was: nothing else in the
@@ -35,6 +36,7 @@ use crate::edit::{EditError, Entity, Field, Kind, Target};
 use crate::health::Lock;
 use crate::players::PlayerSummary;
 use crate::profile::HeapLayout;
+use crate::selection::Leaver;
 use crate::session::Session;
 use crate::staff::job_name;
 
@@ -53,9 +55,9 @@ const LONGEST_LIST: u64 = 2_000;
 /// Bytes the editor writes at one address, with the bytes it expects to find there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Patch {
-    address: u64,
-    before: Vec<u8>,
-    after: Vec<u8>,
+    pub(crate) address: u64,
+    pub(crate) before: Vec<u8>,
+    pub(crate) after: Vec<u8>,
 }
 
 /// The contract a move gives the player, as stored: a wage in pounds per week and an end
@@ -79,12 +81,20 @@ pub struct MovePlan {
     pub other: Option<u32>,
     /// The writes, in the order they are made.
     patches: Vec<Patch>,
+    /// Those who leave a club a human manager runs: their places in its selections are emptied too, found as the move
+    /// is written (see [`crate::selection`]).
+    leavers: Vec<Leaver>,
 }
 
 impl MovePlan {
-    /// How many writes the move takes.
+    /// How many writes the move takes, besides those to selections.
     pub fn writes(&self) -> usize {
         self.patches.len()
+    }
+
+    /// Whether the move takes a player out of a club a human manager runs, which takes a few seconds more to write.
+    pub fn leaves_a_human_club(&self) -> bool {
+        !self.leavers.is_empty()
     }
 }
 
@@ -98,6 +108,15 @@ pub struct ClubMove {
     /// In a swap, the player who went the other way.
     pub other: Option<u32>,
     patches: Vec<Patch>,
+    /// The selections of a club a human manager runs whose slots the move emptied, one write each.
+    selections: Vec<Patch>,
+}
+
+impl ClubMove {
+    /// How many selections of a club a human manager runs the move took a player out of.
+    pub fn selections(&self) -> usize {
+        self.selections.len()
+    }
 }
 
 /// What ties a player to his club, checked: the player, the team he plays for, his
@@ -112,6 +131,8 @@ struct Departure {
     record: Vec<u8>,
     club: u64,
     club_uid: u32,
+    /// Whether a human manager runs the club.
+    human: bool,
     /// The club's teams.
     teams: Vec<u64>,
     /// Each list of the club that holds him: the team, the list, where in it he is, and what it holds.
@@ -146,7 +167,8 @@ pub enum MoveError {
     PlayerCoach,
     /// The contract does not point back at the player, is not a player's, or names two teams.
     UnusualContract,
-    /// The player is at a club a human manager runs.
+    /// The player is at a club a human manager runs, and the editor cannot find its selections in this version of the
+    /// game.
     HumanClub,
     /// One club is a men's club and the other a women's club.
     MenAndWomen,
@@ -248,8 +270,8 @@ impl fmt::Display for MoveError {
             MoveError::PlayerCoach => f.write_str("player-coaches cannot be moved: they work as staff too"),
             MoveError::UnusualContract => f.write_str("the player's contract is not a plain player's contract"),
             MoveError::HumanClub => f.write_str(
-                "the player is at a club a human manager runs; its tactics and training point at him too, \
-                 so he leaves it in the game itself",
+                "the player is at a club a human manager runs, and the editor cannot yet find that club's team \
+                 selections in this version of the game to take him out of them; he leaves it in the game itself",
             ),
             MoveError::MenAndWomen => f.write_str("one club is a men's club and the other a women's club"),
             MoveError::NotListed => f.write_str("the squad lists do not hold the player where they should"),
@@ -482,7 +504,7 @@ impl Patches {
 impl Session {
     /// Works out moving `player` to the senior team of `club` from the game as it is now,
     /// under the contract `terms`. `human_clubs` are the UIDs of the clubs human managers
-    /// run. Nothing is written.
+    /// run: a player who leaves one also leaves its selections. Nothing is written.
     pub fn plan_club_move(
         &self,
         player: &PlayerSummary,
@@ -513,6 +535,7 @@ impl Session {
             to_club: joining.club_uid,
             other: None,
             patches: patches.0,
+            leavers: self.leavers(&[&leaving])?,
         })
     }
 
@@ -530,7 +553,14 @@ impl Session {
         // Only once no list holds him: the game may follow a listed player to his contract.
         patches.push(leaving.object + p.team, leaving.team.to_le_bytes(), 0u64.to_le_bytes());
         patches.push(leaving.object + p.contract, leaving.contract.to_le_bytes(), 0u64.to_le_bytes());
-        Ok(MovePlan { player: leaving.uid, from_club: leaving.club_uid, to_club: 0, other: None, patches: patches.0 })
+        Ok(MovePlan {
+            player: leaving.uid,
+            from_club: leaving.club_uid,
+            to_club: 0,
+            other: None,
+            patches: patches.0,
+            leavers: self.leavers(&[&leaving])?,
+        })
     }
 
     /// Works out `player` and `other` swapping clubs, each joining the other's senior team
@@ -581,6 +611,7 @@ impl Session {
             to_club: second.club_uid,
             other: Some(second.uid),
             patches: patches.0,
+            leavers: self.leavers(&[&first, &second])?,
         })
     }
 
@@ -620,7 +651,8 @@ impl Session {
             return Err(MoveError::OnLoan);
         }
         let club_uid = process.read_u32(old_club + layout.club.uid)?;
-        if human_clubs.contains(&club_uid) {
+        let human = human_clubs.contains(&club_uid);
+        if human && !self.selections_known() {
             return Err(MoveError::HumanClub);
         }
 
@@ -661,9 +693,15 @@ impl Session {
             record,
             club: old_club,
             club_uid,
+            human,
             teams: old_teams,
             leaving,
         })
+    }
+
+    /// Those of `departures` who leave a club a human manager runs, as far as its selections go.
+    fn leavers(&self, departures: &[&Departure]) -> Result<Vec<Leaver>, MoveError> {
+        departures.iter().filter(|d| d.human).map(|d| self.leaver(d.object, &d.teams)).collect()
     }
 
     /// Each captaincy the player `leaving` describes holds in his club's teams is left empty.
@@ -759,17 +797,26 @@ impl Session {
     }
 
     /// Writes a planned move. Every write lands only on the bytes the plan found, and is
-    /// read back; when one fails, the ones before it are put back.
+    /// read back; when one fails, the ones before it are put back. A player leaving a club a
+    /// human manager runs leaves its selections first, which are found now.
     pub fn apply_club_move(&self, plan: &MovePlan) -> Result<ClubMove, MoveError> {
-        self.apply_patches(&plan.patches)?;
-        let MovePlan { player, from_club, to_club, other, ref patches } = *plan;
-        Ok(ClubMove { player, from_club, to_club, other, patches: patches.clone() })
+        let mut selections = Vec::new();
+        for leaver in &plan.leavers {
+            selections.extend(self.selection_patches(leaver)?);
+        }
+        let all: Vec<Patch> = selections.iter().chain(&plan.patches).cloned().collect();
+        self.apply_patches(&all)?;
+        let MovePlan { player, from_club, to_club, other, ref patches, .. } = *plan;
+        Ok(ClubMove { player, from_club, to_club, other, patches: patches.clone(), selections })
     }
 
     /// Moves the player back as he was, provided memory still holds everything the move
-    /// wrote. When a write fails, the ones already undone are written again.
+    /// wrote. When a write fails, the ones already undone are written again. The selections
+    /// he left get him back where nothing has changed them since.
     pub fn undo_club_move(&self, done: &ClubMove) -> Result<(), MoveError> {
-        self.undo_patches(&done.patches)
+        self.undo_patches(&done.patches)?;
+        self.restore_selections(&done.selections);
+        Ok(())
     }
 
     /// Writes `patches` in order, each over the bytes it expects, after checking them all;
@@ -835,7 +882,7 @@ impl Session {
     }
 
     /// Writes `bytes` over `expected`, and reads them back; on a mismatch `expected` goes back.
-    fn write_patch(&self, address: u64, expected: &[u8], bytes: &[u8]) -> Result<(), MoveError> {
+    pub(crate) fn write_patch(&self, address: u64, expected: &[u8], bytes: &[u8]) -> Result<(), MoveError> {
         self.expect(address, expected)?;
         self.process.write_bytes(address, bytes)?;
         if self.process.read_bytes(address, bytes.len())? != bytes {
