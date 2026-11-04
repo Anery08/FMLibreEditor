@@ -24,7 +24,7 @@ mod windows;
 pub use error::{Error, Result};
 #[cfg(target_os = "macos")]
 pub use macos::{
-    MachImage, MachSection, Process, ProcessEntry, Region, Segment, bridge, find_processes,
+    MachImage, MachSection, Process, ProcessEntry, Region, Segment, bridge, find_processes, is_apple_silicon,
     is_current_process_elevated, list_modules, region_at, regions,
 };
 pub use module::Module;

@@ -7,9 +7,12 @@
 //! becomes the game, so that Steam goes on following the process it started. When the bridge
 //! is not beside it, the game starts as it is.
 //!
-//! Steam starts a launch option as Intel code, under Rosetta on Apple silicon, and a program
-//! that merely `exec`s a universal game would keep it there. So the game is started with the
-//! Mac's own architecture first, as Steam starts it without a launch option.
+//! Steam starts a launch option's program preferring Intel code (x86_64 first, then arm64), so
+//! the editor installs only this program's part for the Mac's own architecture (see
+//! `fmlibre_core::bridge_setup`): the Intel part of the universal one would need Rosetta on
+//! Apple silicon. Started as Intel code all the same, a program that merely `exec`s a universal
+//! game would keep the game there too. So the game is started with the Mac's own architecture
+//! first, as Steam starts it without a launch option.
 //!
 //! The release build is signed with Apple's hardened runtime, and dyld takes every `DYLD_*`
 //! variable out of the environment of such a program before it runs. The ones Steam sets (its

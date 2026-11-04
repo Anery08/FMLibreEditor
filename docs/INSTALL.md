@@ -85,3 +85,6 @@ for the latest release; it sends nothing else.
 - **Your antivirus flags it:** tools that read another program's memory are sometimes
   flagged by mistake. FMLibreEditor is open source; you can allow it in your antivirus.
 - **macOS: it cannot get into the game:** quit FM27 and start it again from Steam.
+- **macOS: Steam says "Failed to start process for this game: OS Error 0":** update
+  FMLibreEditor with **Check for updates**, then start FM27 from Steam again. If you removed
+  the bridge, set it up again first.

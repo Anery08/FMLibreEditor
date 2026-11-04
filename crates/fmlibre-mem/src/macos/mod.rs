@@ -13,7 +13,7 @@ use mach2::kern_return::kern_return_t;
 
 pub use macho::{MachImage, MachSection, Segment};
 pub use module::list_modules;
-pub use process::{Process, ProcessEntry, find_processes, is_current_process_elevated};
+pub use process::{Process, ProcessEntry, find_processes, is_apple_silicon, is_current_process_elevated};
 pub use region::{Region, region_at, regions};
 
 unsafe extern "C" {
