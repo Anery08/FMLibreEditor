@@ -40,7 +40,7 @@ struct Connection {
     players: PlayerIndex,
     staff: StaffIndex,
     clubs: ClubIndex,
-    /// The clubs human managers run: their players are not moved to other clubs.
+    /// The clubs human managers run: a player who leaves one leaves its team selections too.
     human_clubs: Vec<u32>,
     log: Vec<LoggedChange>,
     /// The mass edit last previewed, until it is applied or replaced.

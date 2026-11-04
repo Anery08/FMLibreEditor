@@ -1895,9 +1895,8 @@ fn instances(
     Ok(())
 }
 
-/// The vtables of the class `class` (as `types` prints it), from the type info that names it: on macOS, as the
-/// Itanium C++ ABI lays them out (see `fmlibre_core::rtti`), only those of whole objects.
-#[cfg(target_os = "macos")]
+/// The vtables of the class `class` (as `types` prints it), from the name the compiler keeps for it: only those of
+/// whole objects (see `fmlibre_core::rtti`).
 fn class_vtables(process: &Process, plugin: &Module, class: &str) -> Result<std::collections::HashSet<u64>> {
     let vtables = fmlibre_core::rtti::vtables(process, plugin, class);
     ensure!(!vtables.is_empty(), "no class named {class} (see `types`)");
@@ -1907,43 +1906,6 @@ fn class_vtables(process: &Process, plugin: &Module, class: &str) -> Result<std:
         vtables.iter().map(|v| format!("{GAME_PLUGIN}+{:#x}", v - plugin.base)).collect::<Vec<_>>().join(", ")
     );
     Ok(vtables.into_iter().collect())
-}
-
-/// The vtables of the class `class` (as `types` prints it), from its type descriptor.
-#[cfg(windows)]
-fn class_vtables(process: &Process, plugin: &Module, class: &str) -> Result<std::collections::HashSet<u64>> {
-    let descriptors: Vec<u64> =
-        type_descriptors(process, plugin).into_iter().filter(|(_, name)| name == class).map(|(at, _)| at).collect();
-    ensure!(!descriptors.is_empty(), "no class named {class} (see `types`)");
-
-    // The complete object locators that name it (MSVC x64): signature 1, then at +12 the descriptor's RVA and at
-    // +20 the locator's own. Each vtable is preceded by a pointer to one.
-    let rvas: std::collections::HashSet<u32> = descriptors.iter().map(|&at| (at - plugin.base) as u32).collect();
-    let mut locators = std::collections::HashSet::new();
-    for region in regions(process, plugin.base, plugin.end()).into_iter().filter(|r| r.is_readable()) {
-        let Ok(bytes) = process.read_bytes(region.base, region.size as usize) else { continue };
-        for (i, entry) in bytes.as_chunks::<4>().0.iter().enumerate().skip(3) {
-            if !rvas.contains(&u32::from_le_bytes(*entry)) {
-                continue;
-            }
-            let at = (i - 3) * 4;
-            let word =
-                |k: usize| bytes.get(at + k..at + k + 4).map(|b| u32::from_le_bytes(b.try_into().expect("4 bytes")));
-            let locator = region.base + at as u64;
-            if word(0) == Some(1) && word(20) == Some((locator - plugin.base) as u32) {
-                locators.insert(locator);
-            }
-        }
-    }
-    let vtables: std::collections::HashSet<u64> =
-        words_equal_to(process, plugin.base, plugin.end(), &locators).into_iter().map(|(at, _)| at + 8).collect();
-    println!(
-        "{class}: {} type descriptor(s), {} locator(s), vtable(s) {}",
-        descriptors.len(),
-        locators.len(),
-        vtables.iter().map(|v| format!("{GAME_PLUGIN}+{:#x}", v - plugin.base)).collect::<Vec<_>>().join(", ")
-    );
-    Ok(vtables)
 }
 
 /// The entries of the list `(begin, end)` at `at`, `size` bytes each; none when it does not look like a list.
