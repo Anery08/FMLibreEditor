@@ -24,6 +24,10 @@ team = 0x130              # team pointer; the club hangs off the team
 # block in front of it, so every field from here on sits 0xF8 further for them.
 person_block = 0x288
 person_block_shifts = [0x0, 0xF8]
+# u8 of flags, 0x19 into the person block as on macOS: 0x10 is set for a woman. The Game Pass save
+# holds no women's football: the flag was set for none of its 59,284 players, while the byte's other
+# flags read as on the Mac (0x02 for about half the players, 0x40 and 0x80 for a few hundred).
+gender = 0x2A1
 
 height = 0x22E            # u16, centimetres
 # Live values, 0..10000 (100.00%). Checked against the game's own words on the test save:
@@ -185,6 +189,9 @@ potential_ability = 0xDC  # u16
 # personality, birth date and contract. Attributes, reputation and CA/PA stay put.
 person_block = 0x100
 person_block_shifts = [0x0, 0x340]
+# u8 of flags, 0x19 into the person block as for players: 0x10 is set for a woman. On the Game Pass
+# save it was set for 851 of the 29,512 staff, all women (Carolina Morace, Ria Ledwaba, Isha Johansen).
+gender = 0x119
 
 # u8, raw 0..100, shown as (raw + 2) / 5
 [staff.attributes]
