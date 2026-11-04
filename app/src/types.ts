@@ -595,6 +595,11 @@ export interface LoggedChange {
     to?: string;
     /** For a swap of two players, logged as one change, the player who went the other way. */
     with?: string;
+    /**
+     * For a move that released a player of the new club to make room, logged as one change and undone as one: the
+     * player released.
+     */
+    released?: string;
     /** The fee the buying club paid the selling one, in pounds, if any. */
     fee?: number;
   };
@@ -695,6 +700,16 @@ export interface MoveTerms {
   wage?: number;
   /** A date as a number like 20290630; it must come after the game's date. */
   expires?: number;
+}
+
+/**
+ * From `room_makers`: a player of a club's senior team that a move to the club can release to make room in its full
+ * squad list, with what makes him a worse choice.
+ */
+export interface RoomMaker extends PlayerSummary {
+  injured: boolean;
+  /** He captains one of the club's teams, or is its vice-captain. */
+  captain: boolean;
 }
 
 /** From `plan_club_move`: the move can be made, between these clubs. */

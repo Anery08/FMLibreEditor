@@ -185,12 +185,27 @@ enum Command {
         /// into the other's balance.
         #[arg(long)]
         fee: Option<i64>,
+        /// The UID of a player of the club's senior team to release in the same move, to make room in a full squad
+        /// list: he takes that player's place in it.
+        #[arg(long)]
+        release: Option<u32>,
         /// Move him back afterwards and check it: tests a move without changing the save.
         #[arg(long)]
         restore: bool,
         /// With --restore, how many seconds to wait before moving him back, to look at the game meanwhile.
         #[arg(long, default_value_t = 0)]
         hold: u64,
+    },
+    /// Work out a move as the app's transfer dialog does, on the player's contract, and say whether it can be made.
+    /// Writes nothing.
+    Plan {
+        /// The player's UID.
+        uid: u32,
+        /// The UID of the club he would join.
+        club: u32,
+        /// The UID of a player of that club to release in the same move, to make room.
+        #[arg(long)]
+        release: Option<u32>,
     },
     /// Release a player from his club in the running game: he becomes a free agent.
     Release {
@@ -328,6 +343,15 @@ enum Command {
     Teams {
         /// The club's UID.
         club: u32,
+    },
+    /// How full a club's senior squad list is, and the players a move to the club can release to make room (move
+    /// --release), the one the app suggests first. Without a club, the clubs whose lists are full, best known first.
+    Room {
+        /// The club's UID.
+        club: Option<u32>,
+        /// Without a club, stop after this many.
+        #[arg(long, default_value_t = 20)]
+        max: usize,
     },
     /// Make a player the captain or vice-captain of his team in the running game.
     Captain {
@@ -819,11 +843,14 @@ fn run(cli: Cli) -> Result<()> {
             let session = connect(process, ArraySource::ProfileFirst)?;
             set(&session, entity.into(), uid, &field, &value, shown, restore.then_some(hold))
         }
-        Command::Move { uid, club, wage, expires, fee, restore, hold } => {
+        Command::Move { uid, club, wage, expires, fee, release, restore, hold } => {
             let expires = expires.as_deref().map(parse_iso_date).transpose()?.map(FmDate::to_number);
             let terms = MoveTerms { wage, expires };
             let session = connect(process, ArraySource::ProfileFirst)?;
-            move_player(&session, uid, club, terms, fee, restore, hold)
+            move_player(&session, uid, club, terms, fee, release, restore.then_some(hold))
+        }
+        Command::Plan { uid, club, release } => {
+            plan_move(&connect(process, ArraySource::ProfileFirst)?, uid, club, release)
         }
         Command::Release { uid, restore, hold } => {
             release_player(&connect(process, ArraySource::ProfileFirst)?, uid, restore, hold)
@@ -872,6 +899,7 @@ fn run(cli: Cli) -> Result<()> {
             swap_players(&connect(process, ArraySource::ProfileFirst)?, uid, other, restore)
         }
         Command::Teams { club } => teams(&connect(process, ArraySource::ProfileFirst)?, club),
+        Command::Room { club, max } => room(&connect(process, ArraySource::ProfileFirst)?, club, max),
         Command::Captain { club, uid, vice, team, restore, hold } => {
             let role = if vice { CaptainRole::ViceCaptain } else { CaptainRole::Captain };
             let session = connect(process, ArraySource::ProfileFirst)?;
@@ -2789,18 +2817,26 @@ fn move_player(
     club: u32,
     terms: MoveTerms,
     fee: Option<i64>,
-    restore: bool,
-    hold: u64,
+    release: Option<u32>,
+    restore_after: Option<u64>,
 ) -> Result<()> {
     let players = PlayerIndex::new(session.players()?);
     let clubs = ClubIndex::new(session.clubs()?);
     let player = players.get(uid).with_context(|| format!("no player with UID {uid}"))?;
     let to = clubs.get(club).with_context(|| format!("no club with UID {club}"))?;
     let human: Vec<u32> = session.staff()?.iter().filter(|s| s.is_human).filter_map(|s| s.club_uid).collect();
-    let plan = session.plan_club_move(player, to, terms, &human)?;
+    let leaver = release.map(|leaver| players.get(leaver).with_context(|| format!("no player with UID {leaver}")));
+    let leaver = leaver.transpose()?;
+    let plan = match leaver {
+        Some(leaver) => session.plan_club_move_releasing(player, to, terms, leaver, &human)?,
+        None => session.plan_club_move(player, to, terms, &human)?,
+    };
     let from_club = clubs.get(plan.from_club).context("his club is not in the list")?;
     let from = from_club.name.as_str();
     println!("{} (UID {uid}): {from} -> {}, {} writes", player.name, to.name, plan.writes());
+    if let Some(leaver) = leaver {
+        println!("  making room: {} (UID {}) is released by {}", leaver.name, leaver.uid, to.name);
+    }
     let fee_plan = fee.filter(|&fee| fee > 0).map(|fee| session.plan_fee(to, from_club, fee)).transpose()?;
     if let Some(fee_plan) = fee_plan {
         let money = |money: Option<fmlibre_core::ClubMoney>, name: &str| match money {
@@ -2831,24 +2867,60 @@ fn move_player(
         },
         None => Vec::new(),
     };
-    // Read him again as the lists would, from the team he now plays for.
-    let club_now = |label: &str| -> Result<Option<u32>> {
-        let now = session.players()?.into_iter().find(|p| p.uid == uid).context("the player is gone")?;
-        println!("  {label} {}", now.club.as_deref().unwrap_or("-"));
-        Ok(now.club_uid)
+    // Read him again as the lists would, from the team he now plays for, and the player released to make room.
+    let clubs_now = |label: &str| -> Result<(Option<u32>, Option<u32>)> {
+        let now = session.players()?;
+        let find = |uid: u32| now.iter().find(|p| p.uid == uid).context("the player is gone");
+        let moved = find(uid)?;
+        println!("  {label} {}", moved.club.as_deref().unwrap_or("-"));
+        let released = match leaver {
+            Some(leaver) => {
+                let released = find(leaver.uid)?;
+                println!("  {}: {}", released.name, released.club.as_deref().unwrap_or("no club"));
+                released.club_uid
+            }
+            None => None,
+        };
+        Ok((moved.club_uid, released))
     };
-    ensure!(club_now("now at")? == Some(club), "the player does not read as being at {}", to.name);
-    if restore {
+    let (moved, released) = clubs_now("now at")?;
+    ensure!(moved == Some(club), "the player does not read as being at {}", to.name);
+    ensure!(released.is_none(), "the player released still reads as being at a club");
+    if let Some(hold) = restore_after {
         if hold > 0 {
             println!("  moving him back in {hold} s");
             std::thread::sleep(std::time::Duration::from_secs(hold));
         }
         session.refund_fee(&paid)?;
         session.undo_club_move(&done)?;
-        ensure!(club_now("moved back to")? == Some(plan.from_club), "the player is not back at {from}");
+        let (moved, released) = clubs_now("moved back to")?;
+        ensure!(moved == Some(plan.from_club), "the player is not back at {from}");
+        ensure!(leaver.is_none() || released == Some(club), "the player released is not back at {}", to.name);
         if !paid.is_empty() {
             println!("  fee taken back");
         }
+    }
+    Ok(())
+}
+
+fn plan_move(session: &Session, uid: u32, club: u32, release: Option<u32>) -> Result<()> {
+    let players = PlayerIndex::new(session.players()?);
+    let clubs = ClubIndex::new(session.clubs()?);
+    let player = players.get(uid).with_context(|| format!("no player with UID {uid}"))?;
+    let to = clubs.get(club).with_context(|| format!("no club with UID {club}"))?;
+    let human: Vec<u32> = session.staff()?.iter().filter(|s| s.is_human).filter_map(|s| s.club_uid).collect();
+    let leaver = release.map(|leaver| players.get(leaver).with_context(|| format!("no player with UID {leaver}")));
+    let leaver = leaver.transpose()?;
+    let plan = match leaver {
+        Some(leaver) => session.plan_club_move_releasing(player, to, MoveTerms::default(), leaver, &human),
+        None => session.plan_club_move(player, to, MoveTerms::default(), &human),
+    };
+    let releasing = leaver.map_or(String::new(), |leaver| format!(", releasing {} (UID {})", leaver.name, leaver.uid));
+    match plan {
+        Ok(plan) => {
+            println!("{} (UID {uid}) -> {}{releasing}: can be made, {} writes", player.name, to.name, plan.writes())
+        }
+        Err(err) => println!("{} (UID {uid}) -> {}{releasing}: refused: {err}", player.name, to.name),
     }
     Ok(())
 }
@@ -3220,6 +3292,47 @@ fn teams(session: &Session, uid: u32) -> Result<()> {
                 tags.join(", ")
             );
         }
+    }
+    Ok(())
+}
+
+fn room(session: &Session, uid: Option<u32>, max: usize) -> Result<()> {
+    let clubs = ClubIndex::new(session.clubs()?);
+    let Some(uid) = uid else {
+        // Best known first, as the club search lists them.
+        let full: Vec<_> = clubs
+            .search("")
+            .into_iter()
+            .filter_map(|club| match session.senior_squad_room(club) {
+                Ok((players, room)) if players > 0 && players >= room => Some((club, players)),
+                _ => None,
+            })
+            .collect();
+        println!("{} clubs have a full senior squad list", full.len());
+        for (club, players) in full.into_iter().take(max) {
+            println!("  {:>10}  {:<32}  {players} players", club.uid, clip(&club.name, 32));
+        }
+        return Ok(());
+    };
+    let players = PlayerIndex::new(session.players()?);
+    let club = clubs.get(uid).with_context(|| format!("no club with UID {uid}"))?;
+    let (listed, room) = session.senior_squad_room(club)?;
+    let state = if listed >= room { "full" } else { "has room" };
+    println!("{}: its senior team lists {listed} players, with room for {room} ({state})", club.name);
+    let human: Vec<u32> = session.staff()?.iter().filter(|s| s.is_human).filter_map(|s| s.club_uid).collect();
+    let makers = session.room_makers(club, &players, &human)?;
+    println!("  {} of them can be released to make room, the first suggested", makers.len());
+    for maker in makers {
+        let player = players.get(maker.uid);
+        let tags = [maker.injured.then_some("injured"), maker.captain.then_some("captain")];
+        let tags: Vec<&str> = tags.into_iter().flatten().collect();
+        println!(
+            "  {:>10}  {:<28}  CA {:>3}  {}",
+            maker.uid,
+            clip(player.map_or("-", |p| p.name.as_str()), 28),
+            player.map_or(0, |p| p.current_ability),
+            tags.join(", ")
+        );
     }
     Ok(())
 }

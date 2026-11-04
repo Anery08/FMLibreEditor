@@ -11,6 +11,9 @@
 //! (see [`HeapLayout`]). Only players with simple ties move: under contract with the club
 //! they play for (no loans), and not player-coaches.
 //!
+//! A full list is no obstacle when one of the team's players is released in the same move: the
+//! player who joins takes his slot, as in a swap (see [`Session::plan_club_move_releasing`]).
+//!
 //! A player who leaves a club gives up the captaincies he holds in its teams: they are left
 //! empty, as a youth team's often are, for the club to fill. One who leaves a club a human
 //! manager runs also leaves his places in its selections empty, as he does when the game
@@ -34,7 +37,7 @@ use crate::coded::Coded;
 use crate::date::FmDate;
 use crate::edit::{EditError, Entity, Field, Kind, Target};
 use crate::health::Lock;
-use crate::players::PlayerSummary;
+use crate::players::{PlayerIndex, PlayerSummary};
 use crate::profile::HeapLayout;
 use crate::selection::Leaver;
 use crate::session::Session;
@@ -79,6 +82,8 @@ pub struct MovePlan {
     pub to_club: u32,
     /// In a swap, the player who goes the other way.
     pub other: Option<u32>,
+    /// The player of the club he joins who is released to make room for him, if any.
+    pub released: Option<u32>,
     /// The writes, in the order they are made.
     patches: Vec<Patch>,
     /// Those who leave a club a human manager runs: their places in its selections are emptied too, found as the move
@@ -107,6 +112,8 @@ pub struct ClubMove {
     pub to_club: u32,
     /// In a swap, the player who went the other way.
     pub other: Option<u32>,
+    /// The player released to make room for him, if any.
+    pub released: Option<u32>,
     patches: Vec<Patch>,
     /// The selections of a club a human manager runs whose slots the move emptied, one write each.
     selections: Vec<Patch>,
@@ -117,6 +124,18 @@ impl ClubMove {
     pub fn selections(&self) -> usize {
         self.selections.len()
     }
+}
+
+/// A player of a club's senior team whom a move to the club can release to make room (see
+/// [`Session::room_makers`]), with what makes him a worse choice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomMaker {
+    pub uid: u32,
+    /// He has a current injury.
+    pub injured: bool,
+    /// He captains one of the club's teams, or is its vice-captain.
+    pub captain: bool,
 }
 
 /// What ties a player to his club, checked: the player, the team he plays for, his
@@ -501,6 +520,13 @@ impl Patches {
     }
 }
 
+/// `found`, each with his current ability, in the order to suggest them: those neither injured nor a captain first,
+/// the weakest first among each; a tie keeps the order of the list.
+fn suggestion_order(mut found: Vec<(RoomMaker, u16)>) -> Vec<RoomMaker> {
+    found.sort_by_key(|&(maker, ability)| (maker.injured || maker.captain, ability));
+    found.into_iter().map(|(maker, _)| maker).collect()
+}
+
 impl Session {
     /// Works out moving `player` to the senior team of `club` from the game as it is now,
     /// under the contract `terms`. `human_clubs` are the UIDs of the clubs human managers
@@ -534,9 +560,96 @@ impl Session {
             from_club: leaving.club_uid,
             to_club: joining.club_uid,
             other: None,
+            released: None,
             patches: patches.0,
             leavers: self.leavers(&[&leaving])?,
         })
+    }
+
+    /// Works out moving `player` to the senior team of `club` under the contract `terms`, and
+    /// releasing `leaver`, one of that team's players, to make room for him: the player takes
+    /// his slot in the team's list, as in a swap, so a full list is no obstacle. `leaver` is
+    /// released as [`Session::plan_release`] releases him. One plan, written and undone as
+    /// one. Nothing is written.
+    pub fn plan_club_move_releasing(
+        &self,
+        player: &PlayerSummary,
+        club: &ClubSummary,
+        terms: MoveTerms,
+        leaver: &PlayerSummary,
+        human_clubs: &[u32],
+    ) -> Result<MovePlan, MoveError> {
+        self.check_terms(terms, self.game_date())?;
+        let leaving = self.departure(player, human_clubs)?;
+        if self.process.read_u32(club.address + self.layout.club.uid)? != club.uid {
+            return Err(MoveError::NotAClub { uid: club.uid });
+        }
+        let joining = self.arrival(club.address, &leaving)?;
+        let released = self.departure(leaver, human_clubs)?;
+        // His slot in the senior team's list is the one the player takes: releasing someone it does not hold makes no
+        // room there.
+        let slot = match joining.elements.iter().position(|&e| e == released.object) {
+            Some(index) => joining.list.begin + index as u64 * 8,
+            None => return Err(MoveError::NotListed),
+        };
+
+        let mut patches = Patches::default();
+        // He leaves first, in the order a release goes, but where the senior team's list holds him the player comes
+        // in instead.
+        self.captaincy_patches(&released, &mut patches)?;
+        patches.push(slot, released.object.to_le_bytes(), leaving.object.to_le_bytes());
+        for (_, list, index, elements) in &released.leaving {
+            if list.header != joining.list.header {
+                removal_patches(list, *index, elements, &mut patches);
+            }
+        }
+        self.free_agent_patches(&released, &mut patches);
+        // Then the player, in the order a move goes.
+        self.contract_patches(&leaving, joining.senior, terms, &mut patches);
+        self.captaincy_patches(&leaving, &mut patches)?;
+        for (_, list, index, elements) in &leaving.leaving {
+            removal_patches(list, *index, elements, &mut patches);
+        }
+        Ok(MovePlan {
+            player: leaving.uid,
+            from_club: leaving.club_uid,
+            to_club: joining.club_uid,
+            other: None,
+            released: Some(released.uid),
+            patches: patches.0,
+            leavers: self.leavers(&[&leaving, &released])?,
+        })
+    }
+
+    /// The players of `club`'s senior team whom a move to the club can release to make room
+    /// (see [`Session::plan_club_move_releasing`]): those its list holds who could be released
+    /// on their own, as the lists of `players` know them. Those to suggest come first: neither
+    /// injured nor a captain, then the weakest.
+    pub fn room_makers(
+        &self,
+        club: &ClubSummary,
+        players: &PlayerIndex,
+        human_clubs: &[u32],
+    ) -> Result<Vec<RoomMaker>, MoveError> {
+        let teams = self.club_teams(club, players)?;
+        let Some(senior) = teams.first() else {
+            return Ok(Vec::new());
+        };
+        let captains: Vec<u32> = teams.iter().flat_map(|team| [team.captain, team.vice_captain]).flatten().collect();
+        let mut found = Vec::new();
+        for member in &senior.players {
+            let Some(player) = players.get(member.uid) else {
+                continue;
+            };
+            // A loan in either direction is refused there too, but needs no reading to tell.
+            if member.loan.is_some() || self.departure(player, human_clubs).is_err() {
+                continue;
+            }
+            let maker =
+                RoomMaker { uid: member.uid, injured: member.injuries > 0, captain: captains.contains(&member.uid) };
+            found.push((maker, player.current_ability));
+        }
+        Ok(suggestion_order(found))
     }
 
     /// Works out releasing `player` from his club, which leaves him a free agent. He gives
@@ -544,23 +657,29 @@ impl Session {
     /// written.
     pub fn plan_release(&self, player: &PlayerSummary, human_clubs: &[u32]) -> Result<MovePlan, MoveError> {
         let leaving = self.departure(player, human_clubs)?;
-        let p = &self.layout.player;
         let mut patches = Patches::default();
         self.captaincy_patches(&leaving, &mut patches)?;
         for (_, list, index, elements) in &leaving.leaving {
             removal_patches(list, *index, elements, &mut patches);
         }
-        // Only once no list holds him: the game may follow a listed player to his contract.
-        patches.push(leaving.object + p.team, leaving.team.to_le_bytes(), 0u64.to_le_bytes());
-        patches.push(leaving.object + p.contract, leaving.contract.to_le_bytes(), 0u64.to_le_bytes());
+        self.free_agent_patches(&leaving, &mut patches);
         Ok(MovePlan {
             player: leaving.uid,
             from_club: leaving.club_uid,
             to_club: 0,
             other: None,
+            released: None,
             patches: patches.0,
             leavers: self.leavers(&[&leaving])?,
         })
+    }
+
+    /// The player `leaving` describes is left with no team and no contract. Only once no list
+    /// holds him: the game may follow a listed player to his contract.
+    fn free_agent_patches(&self, leaving: &Departure, patches: &mut Patches) {
+        let p = &self.layout.player;
+        patches.push(leaving.object + p.team, leaving.team.to_le_bytes(), 0u64.to_le_bytes());
+        patches.push(leaving.object + p.contract, leaving.contract.to_le_bytes(), 0u64.to_le_bytes());
     }
 
     /// Works out `player` and `other` swapping clubs, each joining the other's senior team
@@ -610,6 +729,7 @@ impl Session {
             from_club: first.club_uid,
             to_club: second.club_uid,
             other: Some(second.uid),
+            released: None,
             patches: patches.0,
             leavers: self.leavers(&[&first, &second])?,
         })
@@ -730,7 +850,19 @@ impl Session {
         if women(leaving.club)? != women(club)? {
             return Err(MoveError::MenAndWomen);
         }
-        // The senior team must point back at its club.
+        let (senior, list) = self.senior_team(club, club_uid)?;
+        // A team without a list has no block to add to.
+        let list = list.ok_or(MoveError::NoRoom { players: 0 })?;
+        let elements = list.elements(process)?;
+        if elements.contains(&leaving.object) {
+            return Err(MoveError::NotListed);
+        }
+        Ok(Arrival { club_uid, senior, list, elements })
+    }
+
+    /// The senior team of the club at `club`, which must point back at it, and its list, if it has one.
+    fn senior_team(&self, club: u64, club_uid: u32) -> Result<(u64, Option<PointerList>), MoveError> {
+        let (process, layout) = (&self.process, &self.layout);
         let senior = match PointerList::read(process, club + layout.club.teams)? {
             Some(teams) if teams.len() > 0 => process.read_u64(teams.begin)?,
             _ => 0,
@@ -738,13 +870,17 @@ impl Session {
         if !is_user_pointer(senior) || process.read_u64(senior + layout.team.club)? != club {
             return Err(MoveError::NotAClub { uid: club_uid });
         }
-        // A team without a list has no block to add to.
-        let list = PointerList::read(process, senior + layout.team.players)?.ok_or(MoveError::NoRoom { players: 0 })?;
-        let elements = list.elements(process)?;
-        if elements.contains(&leaving.object) {
-            return Err(MoveError::NotListed);
+        Ok((senior, PointerList::read(process, senior + layout.team.players)?))
+    }
+
+    /// How many players the list of `club`'s senior team holds, and how many its block has
+    /// room for: a move to the club needs one more, unless it releases one of them (see
+    /// [`Session::plan_club_move_releasing`]).
+    pub fn senior_squad_room(&self, club: &ClubSummary) -> Result<(u64, u64), MoveError> {
+        match self.senior_team(club.address, club.uid)?.1 {
+            Some(list) => Ok((list.len(), list.room(&self.process, &self.layout.heap)?)),
+            None => Ok((0, 0)),
         }
-        Ok(Arrival { club_uid, senior, list, elements })
     }
 
     /// The player `object` goes into the first free slot of `list`, then the list takes it in.
@@ -806,8 +942,8 @@ impl Session {
         }
         let all: Vec<Patch> = selections.iter().chain(&plan.patches).cloned().collect();
         self.apply_patches(&all)?;
-        let MovePlan { player, from_club, to_club, other, ref patches, .. } = *plan;
-        Ok(ClubMove { player, from_club, to_club, other, patches: patches.clone(), selections })
+        let MovePlan { player, from_club, to_club, other, released, ref patches, .. } = *plan;
+        Ok(ClubMove { player, from_club, to_club, other, released, patches: patches.clone(), selections })
     }
 
     /// Moves the player back as he was, provided memory still holds everything the move
@@ -1048,5 +1184,21 @@ mod tests {
         patches.push(0x10, [1u8], [1u8]);
         patches.push(0x20, [1u8], [2u8]);
         assert_eq!(patches.0, [Patch { address: 0x20, before: vec![1], after: vec![2] }]);
+    }
+
+    #[test]
+    fn the_weakest_fit_player_is_suggested_first() {
+        let maker = |uid, injured, captain| RoomMaker { uid, injured, captain };
+        let found = vec![
+            (maker(1, true, false), 60),
+            (maker(2, false, true), 55),
+            (maker(3, false, false), 90),
+            (maker(4, false, false), 70),
+            // As weak as the one before him: after him, as the list has them.
+            (maker(5, false, false), 70),
+            (maker(6, true, true), 50),
+        ];
+        let order: Vec<u32> = suggestion_order(found).iter().map(|maker| maker.uid).collect();
+        assert_eq!(order, [4, 5, 3, 6, 2, 1]);
     }
 }

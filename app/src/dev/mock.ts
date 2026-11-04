@@ -56,6 +56,7 @@ import type {
   MovePreview,
   MoveTerms,
   PlannedChange,
+  RoomMaker,
   SkippedField,
 } from "../types";
 
@@ -1205,11 +1206,18 @@ type ClubRow = Pick<PlayerSummary, "club" | "clubUid" | "contractExpires">;
 
 /**
  * What each move (by the id of its logged change) found in the list row and on top of the profile, for its undo; a
- * swap also keeps the row of the player who went the other way.
+ * swap also keeps the row of the player who went the other way, and a move that made room the row of the player it
+ * released.
  */
 const moveUndo = new Map<
   number,
-  { row: ClubRow; written?: FieldValues; other?: { uid: number; row: ClubRow }; paid?: [number, string, number][] }
+  {
+    row: ClubRow;
+    written?: FieldValues;
+    other?: { uid: number; row: ClubRow };
+    released?: { uid: number; row: ClubRow };
+    paid?: [number, string, number][];
+  }
 >();
 
 /** The most a transfer fee can be, as in the real commands. */
@@ -1245,11 +1253,31 @@ function feePlan(from: number, to: number, fee: number): FeePlan {
   return { fee, buyer: money(to, true), seller: money(from, false) };
 }
 
-/** The men's fixture club whose squad list is full, so that the move dialog's refusal can be seen. */
+/** The men's fixture club whose squad list is full, so that the move dialog's offer to make room can be seen. */
 const FULL_CLUB = 500 + (CLUBS.length - 1) * 7;
 
-/** `plan_club_move`: the checks of the real command that the fixtures can have, with its messages. */
-function planMove(uid: number, clubUid: number, terms: MoveTerms, fee?: number): MovePreview {
+/**
+ * `room_makers`: the senior players of the fixture club that are not out on loan, in the real command's order: those
+ * neither injured nor a captain first, the weakest first among each.
+ */
+function roomMakers(clubUid: number): RoomMaker[] {
+  const teams = clubSquads(clubUid);
+  const captains = new Set(teams.flatMap((team) => [team.captain, team.viceCaptain]));
+  const makers = teams[0].players
+    .filter((member) => member.loan === null)
+    .map((member): RoomMaker => {
+      const row = players.find((p) => p.uid === member.uid)!;
+      return { ...row, injured: member.injuries > 0, captain: captains.has(member.uid) };
+    });
+  const worse = (maker: RoomMaker) => (maker.injured || maker.captain ? 1 : 0);
+  return makers.sort((a, b) => worse(a) - worse(b) || a.currentAbility - b.currentAbility);
+}
+
+/**
+ * `plan_club_move`: the checks of the real command that the fixtures can have, with its messages. With `release`,
+ * that player of the club makes room: he must be one `room_makers` lists.
+ */
+function planMove(uid: number, clubUid: number, terms: MoveTerms, fee?: number, release?: number): MovePreview {
   const player = players.find((p) => p.uid === uid);
   const to = clubs.find((c) => c.uid === clubUid);
   if (!player) {
@@ -1276,7 +1304,14 @@ function planMove(uid: number, clubUid: number, terms: MoveTerms, fee?: number):
   if (to.women) {
     throw failure("move.menAndWomen", "one club is a men's club and the other a women's club");
   }
-  if (clubUid === FULL_CLUB) {
+  if (release !== undefined) {
+    if (!players.some((p) => p.uid === release)) {
+      throw notFound("player", release);
+    }
+    if (!roomMakers(clubUid).some((maker) => maker.uid === release)) {
+      throw failure("move.notListed", "the squad lists do not hold the player where they should");
+    }
+  } else if (clubUid === FULL_CLUB) {
     const message = "the club's squad list has no room for another player (36 now), and the editor cannot make it bigger";
     throw failure("move.noRoom", message, { players: 36 });
   }
@@ -1288,10 +1323,14 @@ function planMove(uid: number, clubUid: number, terms: MoveTerms, fee?: number):
   };
 }
 
-/** `move_player`: moves the fixture player and logs it as a change of his `club`. */
-function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number): LoggedChange {
-  const preview = planMove(uid, clubUid, terms, fee);
+/**
+ * `move_player`: moves the fixture player and logs it as a change of his `club`; with `release`, that player of the
+ * club becomes a free agent in the same change.
+ */
+function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number, release?: number): LoggedChange {
+  const preview = planMove(uid, clubUid, terms, fee, release);
   const player = players.find((p) => p.uid === uid)!;
+  const leaver = players.find((p) => p.uid === release);
   const id = changes.length + 1;
   // The fee, as the real command pays it: each amount by what it changes, so that undoing takes back just that.
   const paid: [number, string, number][] = [];
@@ -1305,9 +1344,11 @@ function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number
       }
     }
   }
+  const rowOf = (p: PlayerSummary) => ({ club: p.club, clubUid: p.clubUid, contractExpires: p.contractExpires });
   moveUndo.set(id, {
-    row: { club: player.club, clubUid: player.clubUid, contractExpires: player.contractExpires },
+    row: rowOf(player),
     written: written.get(`player:${uid}`),
+    ...(leaver && { released: { uid: leaver.uid, row: rowOf(leaver) } }),
     paid,
   });
   player.club = preview.to.name;
@@ -1317,6 +1358,9 @@ function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number
   }
   if (terms.wage !== undefined) {
     writeValue("player", uid, "contract.wage", terms.wage);
+  }
+  if (leaver) {
+    Object.assign(leaver, { club: null, clubUid: null, contractExpires: null });
   }
   movedPlayers.set(uid, (movedPlayers.get(uid) ?? 0) + 1);
   const logged: LoggedChange = {
@@ -1330,7 +1374,12 @@ function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number
     new: preview.to.uid,
     undoneAt: null,
     batch: null,
-    moved: { from: preview.from.name, to: preview.to.name, ...(preview.fee && { fee: preview.fee.fee }) },
+    moved: {
+      from: preview.from.name,
+      to: preview.to.name,
+      ...(leaver && { released: leaver.name }),
+      ...(preview.fee && { fee: preview.fee.fee }),
+    },
   };
   changes.push(logged);
   return { ...logged };
@@ -1441,18 +1490,28 @@ function unmoved(uid: number): void {
 
 /**
  * Puts back what the move (or swap, or release) logged as `entry` changed, unless a player has moved again since. A
- * release logged 0 as his new club: he has none.
+ * release logged 0 as his new club: he has none. A move that made room brings the player it released back too.
  */
 function undoMove(entry: LoggedChange): void {
   const player = players.find((p) => p.uid === entry.uid);
   const before = moveUndo.get(entry.id);
   const other = before?.other && players.find((p) => p.uid === before.other!.uid);
-  if (!player || !before || (player.clubUid ?? 0) !== entry.new || (before.other && other?.clubUid !== entry.old)) {
+  const leaver = before?.released && players.find((p) => p.uid === before.released!.uid);
+  if (
+    !player ||
+    !before ||
+    (player.clubUid ?? 0) !== entry.new ||
+    (before.other && other?.clubUid !== entry.old) ||
+    (before.released && (!leaver || leaver.clubUid !== null))
+  ) {
     throw failure("move.changed", "the game has changed the player's club since; reload and try again");
   }
   if (before.other && other) {
     Object.assign(other, before.other.row);
     unmoved(other.uid);
+  }
+  if (before.released && leaver) {
+    Object.assign(leaver, before.released.row);
   }
   // The fee goes back by what it changed.
   for (const [club, key, change] of before.paid ?? []) {
@@ -2290,10 +2349,16 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       return applyMass(Number(args?.id)) as T;
     case "undo_batch":
       return undoMassBatch(Number(args?.batch)) as T;
-    case "plan_club_move":
-      return planMove(Number(args?.uid), Number(args?.club), (args?.terms ?? {}) as MoveTerms, args?.fee as number) as T;
-    case "move_player":
-      return movePlayer(Number(args?.uid), Number(args?.club), (args?.terms ?? {}) as MoveTerms, args?.fee as number) as T;
+    case "plan_club_move": {
+      const terms = (args?.terms ?? {}) as MoveTerms;
+      return planMove(Number(args?.uid), Number(args?.club), terms, args?.fee as number, args?.release as number) as T;
+    }
+    case "move_player": {
+      const terms = (args?.terms ?? {}) as MoveTerms;
+      return movePlayer(Number(args?.uid), Number(args?.club), terms, args?.fee as number, args?.release as number) as T;
+    }
+    case "room_makers":
+      return roomMakers(Number(args?.club)) as T;
     case "staff_jobs":
       return [...STAFF_JOBS] as T;
     case "plan_staff_move":

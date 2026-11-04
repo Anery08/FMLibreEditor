@@ -36,7 +36,8 @@ function keepTabInside(event: KeyboardEvent, box: HTMLElement): void {
 /**
  * Makes `box` a modal dialog while it is mounted: Tab and focus stay inside it, and Escape closes it when `canClose`
  * (and does nothing while a call runs). Escape is answered here and goes no further, so the profile behind the dialog,
- * which closes on Escape too, stays open.
+ * which closes on Escape too, stays open. While a note of the dialog shows (see `InfoTip`), Escape is the note's: it
+ * hides that, and stops the key itself.
  */
 export function useModal(box: RefObject<HTMLElement | null>, canClose: boolean, onClose: () => void): void {
   // Kept up to date as soon as a render is on screen, so that a key pressed right after (say) Preview was pressed
@@ -53,6 +54,9 @@ export function useModal(box: RefObject<HTMLElement | null>, canClose: boolean, 
         return;
       }
       if (event.key === "Escape") {
+        if (dialog.querySelector("[data-open-tip]")) {
+          return;
+        }
         event.stopPropagation();
         event.preventDefault();
         if (latest.current.canClose) {

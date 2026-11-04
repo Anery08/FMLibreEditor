@@ -1046,6 +1046,7 @@ export const tr: Strings = {
     hint: "En yeniler üstte. Bir değişiklik yalnızca oyun yazdığı değeri hâlâ tutuyorsa geri alınabilir.",
     continueHint: "Oyun değişiklikleri bir kez ilerleyince gösterir: oyunda Devam'a basın.",
     swappedWith: (name) => `Takas: ${name}`,
+    released: (name) => `${name} serbest bırakıldı`,
     fee: (amount) => `Bedel ${amount}`,
     healed: (count) => `${format(count)} sakatlık iyileştirildi`,
     lifted: (count) => `${format(count)} ceza kaldırıldı`,
@@ -1313,6 +1314,36 @@ export const tr: Strings = {
       "Eski kulübündeki kaptanlığı boş kalır",
       "Oyunun transfer geçmişinde henüz görünmez",
       "Değişiklikler bölümünde listelenir; tek geri alma transferi ve bedeli birlikte geri alır",
+    ],
+
+    // A club whose squad list is full: the box that offers to make room. The names take no suffix, as elsewhere: a
+    // foreign name's suffix follows how it is said ("Rice'ın"), which its spelling does not tell.
+    noRoom: (club) => `${club} kadrosunda boş yer yok.`,
+    noRoomInfoLabel: "Neden?",
+    noRoomInfo:
+      "Oyun her takımın oyuncu listesini bellekte tam ölçüsünde tutar ve listeyi kendisi büyütür. Editör oyunun " +
+      "içinde bellek ayırmaz, çünkü oyunun kendisinin vermediği bir bellek alanı oyunu sonradan çökertebilir. Bu " +
+      "yüzden şimdilik yer açmak en güvenli yol; listeyi oyunun kendi yöntemiyle büyütmenin bir yolu üzerinde " +
+      "çalışıyoruz.",
+    noRoomNeed: (player) => `${player} transferi için kadrodan bir oyuncunun ayrılması gerekiyor.`,
+    releaseChoice: "Serbest bırak:",
+    releasePickLabel: "Serbest bırakılacak oyuncu",
+    releaseOutcome: "→ kulüpsüz kalır",
+    injuredTag: "sakat",
+    captainTag: "kaptan",
+    swapChoice: "Takasa çevir:",
+    swapChoiceOutcome: (club) => `bu oyuncu ${club} kulübüne gelsin`,
+    moveAndRelease: (name) => `Transfer et ve serbest bırak: ${name}`,
+    makeRoomDoes: [
+      "Yeni kulübün A takımına, serbest bırakılan oyuncunun yerine katılır",
+      "Serbest bırakılan oyuncu o kulübün bütün takımlarından ayrılır, sözleşmesi biter: serbest oyuncu olur",
+      "Sözleşme oyundaki tarihle başlar; forma numarası silinir",
+      "Transfer ve kiralık listelerinden çıkar",
+      "Maaş ve sözleşme bitişi, siz yeni değer girmedikçe aynı kalır",
+      "Bedel, alan kulübün bakiyesinden ve transfer bütçesinden düşer, satan kulübün bakiyesine eklenir",
+      "İkisinin de ayrıldığı kulüpteki kaptanlığı boş kalır",
+      "Oyunun transfer geçmişinde henüz görünmez",
+      "Değişiklikler bölümünde tek değişiklik olarak listelenir; tek geri alma transferi, serbest bırakmayı ve bedeli birlikte geri alır",
     ],
 
     // Swapping with a player of the club instead

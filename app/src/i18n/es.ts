@@ -1090,6 +1090,7 @@ export const es: Strings = {
       "Los más recientes primero. Un cambio solo se puede deshacer mientras el juego conserve el valor que escribió.",
     continueHint: "El juego muestra un cambio cuando avanza: pulsa Continuar en el juego.",
     swappedWith: (name) => `Intercambiado por ${name}`,
+    released: (name) => `Contrato rescindido: ${name}`,
     fee: (amount) => `Traspaso: ${amount}`,
     healed: (count) => (count === 1 ? "1 lesión curada" : `${format(count)} lesiones curadas`),
     lifted: (count) => (count === 1 ? "1 sanción levantada" : `${format(count)} sanciones levantadas`),
@@ -1368,6 +1369,35 @@ export const es: Strings = {
       "Cualquier capitanía en el club anterior queda vacante",
       "El historial de traspasos del juego aún no lo recoge",
       "Aparece en Cambios, donde deshacerlo revierte de una vez el traspaso y el precio",
+    ],
+
+    // Un club con la plantilla llena: el recuadro que sustituye al rechazo y ofrece hacer sitio
+    noRoom: (club) => `${club} no tiene sitio en su plantilla.`,
+    noRoomInfoLabel: "¿Por qué?",
+    noRoomInfo:
+      "El juego guarda en memoria la lista de jugadores de cada equipo con su tamaño justo, y la amplía él mismo. El " +
+      "editor no reserva memoria dentro del juego, porque una memoria que el juego no ha repartido él mismo podría " +
+      "hacer que se cerrara más adelante. Por ahora, hacer sitio es lo más seguro; estamos trabajando en una forma " +
+      "de ampliar la lista como lo hace el juego.",
+    noRoomNeed: (player) => `Para que llegue ${player}, tiene que salir un jugador de la plantilla.`,
+    releaseChoice: "Rescindir:",
+    releasePickLabel: "Jugador cuyo contrato se rescinde",
+    releaseOutcome: "→ queda sin club",
+    injuredTag: "lesionado",
+    captainTag: "capitán",
+    swapChoice: "Convertir en intercambio:",
+    swapChoiceOutcome: (club) => `este jugador pasa a ${club}`,
+    moveAndRelease: (name) => `Traspasar y rescindir: ${name}`,
+    makeRoomDoes: [
+      "Se une al primer equipo del nuevo club, en el lugar del jugador rescindido",
+      "El jugador rescindido sale de todos los equipos de ese club y su contrato termina: es agente libre",
+      "Contrato con fecha del día del juego; se le quita el dorsal",
+      "Sale de las listas de transferibles y cedibles",
+      "El salario y el fin de contrato solo cambian si fijas otros nuevos",
+      "El precio sale del saldo y del presupuesto de fichajes del comprador, y entra en el saldo del vendedor",
+      "Cualquier capitanía que uno u otro tuviera en el club que deja queda vacante",
+      "El historial de traspasos del juego aún no lo recoge",
+      "Aparece en Cambios como un solo cambio; deshacerlo revierte de una vez el traspaso, la rescisión y el precio",
     ],
 
     // El intercambio

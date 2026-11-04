@@ -20,6 +20,7 @@ import type {
   MovePreview,
   MoveTerms,
   Nation,
+  RoomMaker,
   TeamAction,
   TieKind,
 } from "./types";
@@ -167,9 +168,16 @@ export const undoBatch = (batch: number) => call<BatchUndo>("undo_batch", { batc
 /**
  * Checks that the player `uid` can move to the club `club` on `terms`, and names both clubs. Nothing is written;
  * when he cannot move, the error says why (a loan, a club a human manager runs, a squad list with no room, ...).
+ * With `release`, that player of the club (one of `roomMakers`) is released to make room for him.
  */
-export const planClubMove = (uid: number, club: number, terms: MoveTerms, fee?: number) =>
-  call<MovePreview>("plan_club_move", { uid, club, terms, fee });
+export const planClubMove = (uid: number, club: number, terms: MoveTerms, fee?: number, release?: number) =>
+  call<MovePreview>("plan_club_move", { uid, club, terms, fee, release });
+
+/**
+ * The players of the club's senior team that a move to it can release to make room in its full squad list, the one
+ * to suggest first: neither injured nor a captain, then the weakest.
+ */
+export const roomMakers = (club: number) => call<RoomMaker[]>("room_makers", { club });
 
 /**
  * Checks that the player `uid` can be released from his club, and names it. Nothing is written; when he cannot be
@@ -232,9 +240,12 @@ export const changeStaffJob = (uid: number, job: number) => call<LoggedChange>("
 /** The jobs `changeStaffJob` gives, by contract code. */
 export const staffJobs = () => call<number[]>("staff_jobs");
 
-/** Moves the player to the senior team of the club on `terms`; the move is logged and undone like any change. */
-export const movePlayer = (uid: number, club: number, terms: MoveTerms, fee?: number) =>
-  call<LoggedChange>("move_player", { uid, club, terms, fee });
+/**
+ * Moves the player to the senior team of the club on `terms`; the move is logged and undone like any change. With
+ * `release`, that player of the club is released in the same move, to make room: one change, undone as one.
+ */
+export const movePlayer = (uid: number, club: number, terms: MoveTerms, fee?: number, release?: number) =>
+  call<LoggedChange>("move_player", { uid, club, terms, fee, release });
 
 /**
  * Checks that the players `uid` and `other` can swap clubs, each joining the other's senior team on his own contract,

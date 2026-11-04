@@ -604,7 +604,7 @@ impl Connection {
             change: Change { entity: Entity::Staff, uid: done.member, field: field.to_owned(), old, new },
             undone_at: None,
             batch: None,
-            moved: moved.then_some(MovedClubs { from, to: Some(to), with: None, fee: None }),
+            moved: moved.then_some(MovedClubs { from, to: Some(to), with: None, released: None, fee: None }),
             captaincy: None,
             tie: None,
             clause: None,
@@ -625,11 +625,18 @@ impl Connection {
         Ok(Some(self.session.plan_fee(buyer, seller, fee)?))
     }
 
-    /// Works out moving the player `uid` to the club `club` on the contract `terms`.
-    fn plan_move(&self, uid: u32, club: u32, terms: MoveTerms) -> Result<MovePlan, Failure> {
+    /// Works out moving the player `uid` to the club `club` on the contract `terms`; with `release`, releasing that
+    /// player of the club to make room for him.
+    fn plan_move(&self, uid: u32, club: u32, terms: MoveTerms, release: Option<u32>) -> Result<MovePlan, Failure> {
         let player = self.players.get(uid).ok_or_else(|| not_found(Entity::Player, uid))?;
         let to = self.clubs.get(club).ok_or_else(|| not_found(Entity::Club, club))?;
-        Ok(self.session.plan_club_move(player, to, terms, &self.human_clubs)?)
+        Ok(match release {
+            Some(leaver) => {
+                let leaver = self.players.get(leaver).ok_or_else(|| not_found(Entity::Player, leaver))?;
+                self.session.plan_club_move_releasing(player, to, terms, leaver, &self.human_clubs)?
+            }
+            None => self.session.plan_club_move(player, to, terms, &self.human_clubs)?,
+        })
     }
 
     /// Works out releasing the player `uid` from his club.
@@ -677,7 +684,8 @@ impl Connection {
     }
 
     /// Logs a move just written, as a change of the player's `club` from one club UID to the
-    /// other; a swap is one change too, which names the player who went the other way.
+    /// other; a swap is one change too, which names the player who went the other way, and so
+    /// is a move that released a player of the new club, which names him.
     fn log_move(&mut self, done: ClubMove, terms: MoveTerms, paid: Vec<Paid>, fee: Option<i64>) -> LoggedChange {
         let (from, to) = (self.club_name(done.from_club), self.club_name(done.to_club));
         let name = self.player_name(done.player);
@@ -697,6 +705,15 @@ impl Connection {
             });
             self.player_name(other)
         });
+        let released = done.released.map(|leaver| {
+            rows.push(self.row_before(leaver));
+            self.players.update(leaver, |player| {
+                player.club = None;
+                player.club_uid = None;
+                player.contract_expires = None;
+            });
+            self.player_name(leaver)
+        });
         let before = LoggedMove { done: done.clone(), rows, paid };
         let change = Change {
             entity: Entity::Player,
@@ -712,7 +729,7 @@ impl Connection {
             change,
             undone_at: None,
             batch: None,
-            moved: Some(MovedClubs { from, to: Some(to), with, fee }),
+            moved: Some(MovedClubs { from, to: Some(to), with, released, fee }),
             captaincy: None,
             tie: None,
             clause: None,
@@ -746,7 +763,13 @@ impl Connection {
             change,
             undone_at: None,
             batch: None,
-            moved: Some(MovedClubs { from: self.club_name(done.from_club), to: None, with: None, fee: None }),
+            moved: Some(MovedClubs {
+                from: self.club_name(done.from_club),
+                to: None,
+                with: None,
+                released: None,
+                fee: None,
+            }),
             captaincy: None,
             tie: None,
             clause: None,
@@ -1058,6 +1081,16 @@ struct SquadRow {
     bans: usize,
 }
 
+/// A player a move can release to make room: his list row, and what makes him a worse choice.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RoomMakerRow {
+    #[serde(flatten)]
+    player: PlayerSummary,
+    injured: bool,
+    captain: bool,
+}
+
 /// What a team-wide action does to every player of the team.
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1083,6 +1116,9 @@ struct MovedClubs {
     /// In a swap, the player who went the other way.
     #[serde(skip_serializing_if = "Option::is_none")]
     with: Option<String>,
+    /// The player of the new club released to make room for him, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    released: Option<String>,
     /// The fee the buying club paid the selling one, in pounds, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     fee: Option<i64>,
@@ -1905,7 +1941,8 @@ fn undo_change(state: State<'_, AppState>, id: usize) -> Result<LoggedChange, Fa
 }
 
 /// Checks that the player `uid` can move to the club `club` on the contract `terms`, and
-/// names the clubs; the error says why he cannot. Nothing is written.
+/// names the clubs; the error says why he cannot. With `release`, that player of the club is
+/// released to make room for him (see `room_makers`). Nothing is written.
 #[tauri::command]
 fn plan_club_move(
     state: State<'_, AppState>,
@@ -1913,18 +1950,42 @@ fn plan_club_move(
     club: u32,
     terms: MoveTerms,
     fee: Option<i64>,
+    release: Option<u32>,
 ) -> Result<MovePreview, Failure> {
     let guard = state.0.lock()?;
     let connection = guard.as_ref().ok_or_else(not_connected)?;
-    let plan = connection.plan_move(uid, club, terms)?;
+    let plan = connection.plan_move(uid, club, terms, release)?;
     let fee = connection.plan_fee(plan.from_club, plan.to_club, fee)?;
     let name = |uid: u32| ClubName { uid, name: connection.club_name(uid) };
     Ok(MovePreview { from: name(plan.from_club), to: name(plan.to_club), fee })
 }
 
+/// The players of the senior team of the club `club` that a move to it can release to make room in a full squad list,
+/// the one to suggest first: each one's list row, and whether he is injured or a captain. Off the window's thread: it
+/// reads the club's teams and checks each player as a release would.
+#[tauri::command]
+async fn room_makers(app: tauri::AppHandle, club: u32) -> Result<Vec<RoomMakerRow>, Failure> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<RoomMakerRow>, Failure> {
+        let state = app.state::<AppState>();
+        let guard = state.0.lock()?;
+        let connection = guard.as_ref().ok_or_else(not_connected)?;
+        let to = connection.clubs.get(club).ok_or_else(|| not_found(Entity::Club, club))?;
+        let makers = connection.session.room_makers(to, &connection.players, &connection.human_clubs)?;
+        Ok(makers
+            .into_iter()
+            .filter_map(|maker| {
+                let player = connection.players.get(maker.uid)?.clone();
+                Some(RoomMakerRow { player, injured: maker.injured, captain: maker.captain })
+            })
+            .collect())
+    })
+    .await?
+}
+
 /// Moves the player `uid` to the senior team of the club `club` on the contract `terms`, the club paying his old
-/// one `fee` pounds if given, worked out again from the game as it is now, and logs the move. When the fee cannot be
-/// paid, the player is moved back. Off the window's thread: leaving a club a human manager runs takes a few seconds.
+/// one `fee` pounds if given, worked out again from the game as it is now, and logs the move. With `release`, that
+/// player of the club is released in the same move, to make room for him. When the fee cannot be paid, the move is
+/// undone. Off the window's thread: leaving a club a human manager runs takes a few seconds.
 #[tauri::command]
 async fn move_player(
     app: tauri::AppHandle,
@@ -1932,12 +1993,13 @@ async fn move_player(
     club: u32,
     terms: MoveTerms,
     fee: Option<i64>,
+    release: Option<u32>,
 ) -> Result<LoggedChange, Failure> {
     tauri::async_runtime::spawn_blocking(move || -> Result<LoggedChange, Failure> {
         let state = app.state::<AppState>();
         let mut guard = state.0.lock()?;
         let connection = guard.as_mut().ok_or_else(not_connected)?;
-        let plan = connection.plan_move(uid, club, terms)?;
+        let plan = connection.plan_move(uid, club, terms, release)?;
         let fee_plan = connection.plan_fee(plan.from_club, plan.to_club, fee)?;
         let club = |uid: u32| connection.clubs.get(uid).cloned().ok_or_else(|| not_found(Entity::Club, uid));
         let (buyer, seller) = (club(plan.to_club)?, club(plan.from_club)?);
@@ -2533,6 +2595,7 @@ pub fn run() {
             apply_mass_edit,
             undo_batch,
             plan_club_move,
+            room_makers,
             move_player,
             plan_release,
             release_player,

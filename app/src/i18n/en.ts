@@ -1124,6 +1124,8 @@ export const en = {
     continueHint: "The game shows a change once it moves on: press Continue in the game.",
     /** Under a move to another club that was a swap: the player who went the other way. */
     swappedWith: (name: string) => `Swapped with ${name}`,
+    /** Under a move that released a player of the new club to make room: that player. */
+    released: (name: string) => `${name} released`,
     /** Under a transfer that had a fee: the amount, written out. */
     fee: (amount: string) => `Fee ${amount}`,
     /** What a heal changed, in the place of its values: `count` is how many injuries the player had. */
@@ -1459,6 +1461,43 @@ export const en = {
       "Any captaincy at the old club is left empty",
       "The game's transfer history does not list it yet",
       "Listed under Changes, where one undo takes back the transfer and the fee",
+    ],
+
+    // A club whose squad list is full: the box that takes the place of the refusal and offers to make room, by
+    // releasing one of its players in the same transfer, or by making it a swap with that player.
+    /** The first line; `club` is the club picked. */
+    noRoom: (club: string) => `${club} has no room in its squad.`,
+    /** The name of the (i) button after the first line, for assistive technology, and the note it shows. */
+    noRoomInfoLabel: "Why?",
+    noRoomInfo:
+      "The game keeps each team's player list in memory at its exact size and grows it itself. The editor " +
+      "allocates no memory in the game, since memory the game did not hand out itself could crash it later. Making " +
+      "room is the safe way for now; a way to grow the list as the game does is being worked on.",
+    /** The second line, which also names the choices under it; `player` is the player transferred. */
+    noRoomNeed: (player: string, club: string) => `For ${player} to join, a player has to leave ${club}.`,
+    /** The first choice: a player of the club picked from a list, who becomes a free agent. */
+    releaseChoice: "Release:",
+    releasePickLabel: "Player to release",
+    releaseOutcome: "→ becomes a free agent",
+    /** After a player's name in that list: what makes him a worse choice. */
+    injuredTag: "injured",
+    captainTag: "captain",
+    /** The second choice, which turns the dialog into a swap with the player picked; `club` is the player's club. */
+    swapChoice: "Make it a swap:",
+    swapChoiceOutcome: (club: string) => `this player goes to ${club}`,
+    /** The button of the foot while a player is released; `name` is that player. */
+    moveAndRelease: (name: string) => `Transfer and release ${name}`,
+    /** What a transfer that makes room does, one line each, in the place of `does`. */
+    makeRoomDoes: [
+      "Joins the senior team of the new club, in the place of the player released",
+      "The player released leaves every team of that club, and their contract ends: a free agent",
+      "Contract dated from the game's date; squad number cleared",
+      "Comes off the transfer and loan lists",
+      "Wage and contract end change only if you set new ones",
+      "The fee comes out of the buying club's balance and transfer budget, and goes into the selling club's balance",
+      "Any captaincy either of them held at the club they leave is left empty",
+      "The game's transfer history does not list it yet",
+      "Listed under Changes as one change, where one undo takes back the transfer, the release and the fee",
     ],
 
     // Swapping with a player of the club instead: the title, and the section that picks the player (the club is
