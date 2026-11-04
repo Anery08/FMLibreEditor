@@ -227,7 +227,8 @@ changes many at once, and undo.
     [transfer notes](recon/fm27-transfers.md#a-club-a-human-manager-runs)). Checked on the Mac Steam build: Declan
     Rice, Arsenal's captain and a regular starter, moved to Ipswich; the next match and the days after it went as
     usual. On Windows the class is found from MSVC's descriptors and the threads' stacks are left out; checked
-    on the Game Pass build with Bruno Fernandes, Manchester United's captain, moved to Juventus and back.
+    on the Game Pass build with Bruno Fernandes, Manchester United's captain, moved to Juventus and back, and on
+    the Steam build with a player of a club whose new manager had no selection yet.
   - [ ] The transfer in the game's history. When the game makes a transfer it writes events (date, fee,
     player, clubs) into a stream that nothing points at one by one: see the
     [transfer notes](recon/fm27-transfers.md).

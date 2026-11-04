@@ -192,6 +192,12 @@ and a starter, each moved to Juventus. While they were away, the slot each had h
 Manchester United's selection and nowhere else; Bruno Fernandes's captaincy was empty too. Moved back, all 21 objects
 read as before, and Bruno Fernandes was captain again.
 
+The Steam build (26340721) was read on a save of 1 July 2027, whose manager had just taken over Monza in the
+close season. The class was found the same way. Of its 18 objects, ten held other clubs' selections with all 26
+slots filled, seven were empty, and one held a list whose end came before its begin, as a block the allocator has
+taken back; none held a Monza player yet. Adam Bakoune moved out of Monza to Juventus and back, with the probe and
+through the app's dialog: as no copy was the club's, none changed, and every object read as before.
+
 ## Still to find
 
 - Where the game keeps the fee it shows in a player's transfer history. The surest way: watch
