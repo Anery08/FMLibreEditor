@@ -6,6 +6,11 @@
 //! program, with the rest as its arguments and `%command%` standing for the game's app bundle,
 //! so FM27's launch option is `"…/fmlibre-launch" %command%`.
 //!
+//! Steam starts that program preferring Intel code (x86_64 first, then arm64). The Intel part
+//! of a universal launcher would run under Rosetta on Apple silicon, and a Mac without Rosetta
+//! fails to start it ("Failed to start process for this game: OS Error 0"). So only the part of
+//! the app's universal launcher for the Mac's own architecture is installed.
+//!
 //! The launch option lives in each Steam account's `localconfig.vdf`, which Steam reads when
 //! it starts and writes back when it quits, so it is only changed while Steam is not running.
 //! A launch option the player already has stays, behind the launcher.
@@ -13,7 +18,7 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use fmlibre_mem::find_processes;
+use fmlibre_mem::{find_processes, is_apple_silicon};
 
 /// Steam's app id of Football Manager 27.
 pub const STEAM_APP_ID: u32 = 4_530_370;
@@ -26,6 +31,10 @@ pub const LAUNCHER_FILE: &str = "fmlibre-launch";
 
 /// The process of the Steam client on macOS.
 const STEAM_EXE: &str = "steam_osx";
+
+/// `cpu_type_t` of arm64 and x86_64, as a universal file lists its parts.
+const CPU_ARM64: u32 = 0x0100_000C;
+const CPU_X86_64: u32 = 0x0100_0007;
 
 /// The first launch option of the bridge put the variable in front of `%command%`, as a shell
 /// would take it. Steam fails to start the game with it ("OS Error 260"), so setting up again
@@ -176,7 +185,7 @@ pub fn set_up(places: &Places, from: &Path) -> Result<BridgeStatus, SetupError> 
         let path = from.join(name);
         std::fs::read(&path).map_err(|_| SetupError::NoLibrary(path))
     };
-    let (bridge, launcher) = (read(BRIDGE_FILE)?, read(LAUNCHER_FILE)?);
+    let (bridge, launcher) = (read(BRIDGE_FILE)?, native(read(LAUNCHER_FILE)?));
     // New files in place of the old: a game still running keeps the library it loaded.
     write_new(&places.bridge, &bridge, false)?;
     write_new(&places.launcher, &launcher, true)?;
@@ -208,7 +217,8 @@ pub fn set_up(places: &Places, from: &Path) -> Result<BridgeStatus, SetupError> 
 /// Puts the bridge library and its launcher from the folder `from` in place of the installed
 /// ones that differ, so that after an update of the app the game loads the bridge that came
 /// with it the next time it starts. Only once the bridge is installed; the launch options are
-/// left as they are. Returns whether a file was replaced.
+/// left as they are. A universal launcher that an older version installed gives way to the
+/// Mac's own part. Returns whether a file was replaced.
 pub fn refresh(places: &Places, from: &Path) -> Result<bool, SetupError> {
     if !installed(places) {
         return Ok(false);
@@ -218,7 +228,7 @@ pub fn refresh(places: &Places, from: &Path) -> Result<bool, SetupError> {
         std::fs::read(&path).map_err(|_| SetupError::NoLibrary(path))
     };
     // Both are read first: one of them alone is never replaced.
-    let files = [(read(BRIDGE_FILE)?, &places.bridge, false), (read(LAUNCHER_FILE)?, &places.launcher, true)];
+    let files = [(read(BRIDGE_FILE)?, &places.bridge, false), (native(read(LAUNCHER_FILE)?), &places.launcher, true)];
     let mut replaced = false;
     for (bytes, place, program) in files {
         if std::fs::read(place).is_ok_and(|now| now == bytes) {
@@ -234,6 +244,48 @@ pub fn refresh(places: &Places, from: &Path) -> Result<bool, SetupError> {
 /// Whether the bridge library and its launcher are in place.
 fn installed(places: &Places) -> bool {
     places.bridge.is_file() && places.launcher.is_file()
+}
+
+/// The launcher to install, from the app's: the part of a universal file for this Mac's own
+/// architecture, which Steam starts without Rosetta; any other file whole.
+fn native(launcher: Vec<u8>) -> Vec<u8> {
+    let cpu = if is_apple_silicon() { CPU_ARM64 } else { CPU_X86_64 };
+    match part(&launcher, cpu) {
+        Some(range) => launcher[range].to_vec(),
+        None => launcher,
+    }
+}
+
+/// Where the part for `cpu` is in a universal (fat) Mach-O file; nowhere in any other file.
+fn part(file: &[u8], cpu: u32) -> Option<std::ops::Range<usize>> {
+    // Each part is listed with its cputype, cpusubtype, offset, size and alignment; offset and
+    // size take 64 bits in the wide header.
+    let (wide, entry) = match be32(file, 0)? {
+        0xCAFE_BABE => (false, 20),
+        0xCAFE_BABF => (true, 32),
+        _ => return None,
+    };
+    let count = usize::try_from(be32(file, 4)?).ok()?;
+    file.get(8..)?.chunks_exact(entry).take(count).find_map(|arch| {
+        if be32(arch, 0)? != cpu {
+            return None;
+        }
+        let (offset, size) =
+            if wide { (be64(arch, 8)?, be64(arch, 16)?) } else { (be32(arch, 8)?.into(), be32(arch, 12)?.into()) };
+        let start = usize::try_from(offset).ok()?;
+        let end = start.checked_add(usize::try_from(size).ok()?)?;
+        (end <= file.len()).then_some(start..end)
+    })
+}
+
+/// The big-endian number at `at`, as a universal file's header holds them.
+fn be32(bytes: &[u8], at: usize) -> Option<u32> {
+    Some(u32::from_be_bytes(*bytes.get(at..)?.first_chunk()?))
+}
+
+/// The big-endian 64-bit number at `at`.
+fn be64(bytes: &[u8], at: usize) -> Option<u64> {
+    Some(u64::from_be_bytes(*bytes.get(at..)?.first_chunk()?))
 }
 
 /// Takes the launcher out of FM27's launch options, and removes the files once no launch
@@ -568,6 +620,49 @@ mod tests {
         )
     }
 
+    /// A universal file with an Intel part and an arm64 part, in the narrow or the wide header.
+    fn universal(wide: bool) -> Vec<u8> {
+        let parts: [(u32, &[u8]); 2] = [(CPU_X86_64, b"intel part"), (CPU_ARM64, b"arm64 part!")];
+        let mut file = [if wide { 0xCAFE_BABF_u32 } else { 0xCAFE_BABE }, 2].map(u32::to_be_bytes).concat();
+        let mut offset = 8 + parts.len() * if wide { 32 } else { 20 };
+        for (cpu, part) in parts {
+            file.extend([cpu, 0].map(u32::to_be_bytes).concat());
+            if wide {
+                file.extend([offset as u64, part.len() as u64].map(u64::to_be_bytes).concat());
+                file.extend([14, 0].map(u32::to_be_bytes).concat());
+            } else {
+                file.extend([offset as u32, part.len() as u32, 14].map(u32::to_be_bytes).concat());
+            }
+            offset += part.len();
+        }
+        file.extend(parts.iter().flat_map(|(_, part)| part.iter()));
+        file
+    }
+
+    #[test]
+    fn only_the_macs_own_part_of_the_launcher_is_installed() {
+        for wide in [false, true] {
+            let file = universal(wide);
+            assert_eq!(part(&file, CPU_X86_64).map(|range| &file[range]), Some(&b"intel part"[..]));
+            assert_eq!(part(&file, CPU_ARM64).map(|range| &file[range]), Some(&b"arm64 part!"[..]));
+        }
+        let own: &[u8] = if is_apple_silicon() { b"arm64 part!" } else { b"intel part" };
+        assert_eq!(native(universal(false)), own);
+        // A file of one architecture, or none, is installed whole.
+        assert_eq!(native(b"launcher".to_vec()), b"launcher");
+
+        // A part that goes past the end is not cut out, and a count larger than the list is
+        // read only as far as the file goes.
+        let mut short = universal(false);
+        short.pop();
+        assert_eq!(part(&short, CPU_ARM64), None);
+        assert_eq!(part(&short, CPU_X86_64).map(|range| &short[range]), Some(&b"intel part"[..]));
+        let mut counted = universal(false);
+        counted[4..8].copy_from_slice(&u32::MAX.to_be_bytes());
+        assert_eq!(part(&counted, CPU_ARM64).map(|range| &counted[range]), Some(&b"arm64 part!"[..]));
+        assert_eq!(part(&counted, 0x0100_0012), None);
+    }
+
     #[test]
     fn the_launch_option_starts_the_launcher() {
         let places = places();
@@ -652,7 +747,7 @@ mod tests {
         std::fs::create_dir_all(&bundle).expect("bundle folder");
         std::fs::write(bundle.join(BRIDGE_FILE), b"bridge").expect("library");
         assert!(matches!(set_up(&places, &bundle), Err(SetupError::NoLibrary(path)) if path.ends_with(LAUNCHER_FILE)));
-        std::fs::write(bundle.join(LAUNCHER_FILE), b"launcher").expect("launcher");
+        std::fs::write(bundle.join(LAUNCHER_FILE), universal(false)).expect("launcher");
 
         // These run only while Steam is closed, which the test cannot arrange.
         if !steam_running() {
@@ -661,6 +756,7 @@ mod tests {
             let status = set_up(&places, &bundle).expect("set up");
             assert!(status.ready(), "{status:?}");
             assert_eq!(std::fs::read(&places.bridge).expect("installed"), b"bridge");
+            assert_eq!(std::fs::read(&places.launcher).expect("launcher installed"), native(universal(false)));
             let mode = std::fs::metadata(&places.launcher).expect("launcher installed").permissions().mode();
             assert_eq!(mode & 0o777, 0o755);
             assert_eq!(status.accounts[0].launch_options.as_deref(), Some(status.launch_option.as_str()));
@@ -698,10 +794,10 @@ mod tests {
         assert!(matches!(refresh(&places, &bundle), Err(SetupError::NoLibrary(path)) if path.ends_with(LAUNCHER_FILE)));
         assert_eq!(std::fs::read(&places.bridge).expect("library"), b"old bridge");
 
-        std::fs::write(bundle.join(LAUNCHER_FILE), b"new launcher").expect("launcher");
+        std::fs::write(bundle.join(LAUNCHER_FILE), universal(false)).expect("launcher");
         assert!(refresh(&places, &bundle).expect("refresh"));
         assert_eq!(std::fs::read(&places.bridge).expect("library"), b"new bridge");
-        assert_eq!(std::fs::read(&places.launcher).expect("launcher"), b"new launcher");
+        assert_eq!(std::fs::read(&places.launcher).expect("launcher"), native(universal(false)));
         let mode = std::fs::metadata(&places.launcher).expect("launcher").permissions().mode();
         assert_eq!(mode & 0o777, 0o755);
         // Once they are the app's, nothing is written.

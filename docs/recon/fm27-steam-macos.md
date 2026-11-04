@@ -123,6 +123,25 @@ game with `posix_spawn`, `POSIX_SPAWN_SETEXEC` and the Mac's own architecture fi
 as Intel code itself, it brought a stand-in for the game up natively, with the bridge and the
 other inserted library.
 
+Why Intel code: `steamclient.dylib` (both halves) starts the program with `posix_spawn` and
+`posix_spawnattr_setbinpref_np` set to x86_64, then arm64. That function keeps only the pid,
+so when the start fails Steam shows errno, which `posix_spawn` leaves at 0. An M4 Mac, most
+likely without Rosetta, got "Failed to start process for this game: OS Error 0" with the
+universal launcher (November 2026). A stand-in for Steam's start on this Mac showed why:
+
+- a universal program ran as x86_64 under Rosetta, an arm64-only one natively;
+- a `#!/bin/sh` script ran under Rosetta too: `/bin/sh` and `/usr/bin/arch` still have an
+  x86_64 half on macOS 27;
+- a start the kernel refused returned 86 (`EBADARCH`), with errno still 0.
+
+So the editor installs only the launcher's half for the Mac's own architecture, cut out of the
+universal one as `lipo -thin` does; each half has its own signature. A stand-in for the game
+started through the universal launcher also kept `P_AFFINITY` (0x10000 in `ps -o flags`), the
+kernel's mark to prefer x86_64, as FM27 did (0x14004). Started through the arm64 half, it did
+not. On 2026-11-04 Steam started FM27 through the arm64 half of the 0.4.2 launcher (Developer
+ID, cut out by the probe's `bridge setup`): flags 0x4004, the arm64 `game_plugin`, the bridge
+and both of Steam's libraries loaded, and `health` passed all ten checks.
+
 The release build signs the launcher with the hardened runtime, which notarization requires.
 dyld then takes every `DYLD_*` variable out of the launcher's environment before it runs: a
 launcher signed that way (ad hoc, with `--options runtime`) passed only the bridge on, and a

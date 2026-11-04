@@ -61,6 +61,16 @@ pub fn is_current_process_elevated() -> bool {
     unsafe { libc::geteuid() == 0 }
 }
 
+/// Whether this Mac has Apple silicon, also when this process runs as Intel code under Rosetta.
+pub fn is_apple_silicon() -> bool {
+    let mut value: c_int = 0;
+    let mut size = size_of::<c_int>();
+    let read = unsafe {
+        libc::sysctlbyname(c"hw.optional.arm64".as_ptr(), (&raw mut value).cast(), &mut size, std::ptr::null_mut(), 0)
+    };
+    read == 0 && value == 1
+}
+
 /// How long the places of the modules are trusted before they are read again.
 const MODULES_FRESH: Duration = Duration::from_secs(30);
 
