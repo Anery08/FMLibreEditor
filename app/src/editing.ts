@@ -12,6 +12,7 @@ import type {
   FieldEdit,
   FieldValues,
   FmDate,
+  FreezeKind,
   LoggedChange,
   MassFilters,
   MassOperation,
@@ -22,6 +23,7 @@ import type {
   Nation,
   RoomMaker,
   TeamAction,
+  TeamFreeze,
   TieKind,
 } from "./types";
 
@@ -39,6 +41,22 @@ export const freezeAttributes = (uid: number, frozen: boolean) => call<number[]>
 
 /** The players whose attributes are frozen: while the app is connected, they do not get worse. */
 export const frozenPlayers = () => call<number[]>("frozen_players");
+
+/**
+ * Freezes the energy and match sharpness of the player `uid`, or unfreezes them; the players whose energy and match
+ * sharpness are frozen now.
+ */
+export const freezeFitness = (uid: number, frozen: boolean) => call<number[]>("freeze_fitness", { uid, frozen });
+
+/** The players whose energy and match sharpness are frozen: while the app is connected, they do not go down. */
+export const frozenFitness = () => call<number[]>("frozen_fitness");
+
+/**
+ * Freezes what `kind` names for every player of the team `team` of the club `club`, those out on loan too, or
+ * unfreezes it. Refused at once while those fields may not be written; a player who cannot be frozen is in `failed`.
+ */
+export const freezeTeam = (club: number, team: number, kind: FreezeKind, frozen: boolean) =>
+  call<TeamFreeze>("freeze_team", { club, team, kind, frozen });
 
 /**
  * Sets every attribute of the player `uid` to its best: 20, and 1 for injury proneness and dirtiness. The changes are

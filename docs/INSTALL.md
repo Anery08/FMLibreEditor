@@ -45,11 +45,14 @@ and order) to a CSV or JSON file in `Documents\FMLibreEditor\Exports`
 semicolon-separated** if Excel puts every value in one column, as it does where decimals are
 written with a comma. Exporting only reads the game.
 
-**Freeze attributes** (in a player's profile) and **Freeze money** (in a club's) hold what
-the game would take away while FMLibreEditor is open and connected. The app remembers them
-for that save: when you connect to it again, after a restart, they are frozen again and a
-notice says so. After an update of FM27 they wait, still remembered, until FMLibreEditor
-can write to the new version.
+**Freeze attributes** and **Freeze energy and sharpness** (in a player's profile) and
+**Freeze money** (in a club's) hold what the game would take away while FMLibreEditor is
+open and connected. A club's **Squad** tab has the same two boxes for a whole team: a box
+is ticked when every player of the team is frozen that way, and half ticked, with how many
+are, when some are. A frozen player stays at 100% energy once he gets there, so press
+**Refresh all** first to keep a team fresh. The app remembers them for that save: when you
+connect to it again, after a restart, they are frozen again and a notice says so. After an
+update of FM27 they wait, still remembered, until FMLibreEditor can write to the new version.
 
 ## Updating and removing
 

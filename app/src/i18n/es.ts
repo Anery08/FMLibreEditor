@@ -669,6 +669,11 @@ export const es: Strings = {
       "Mientras la aplicación esté abierta y conectada, sus atributos no empeoran: lo que el juego quita se devuelve, " +
       "y las mejoras siguen contando. La aplicación lo recuerda para esta partida y vuelve a congelarlos al " +
       "conectarse a ella.",
+    freezeFitness: "Congelar energía y ritmo",
+    freezeFitnessNote:
+      "Mientras la aplicación esté abierta y conectada, su energía y su ritmo de competición no bajan: lo que el " +
+      "juego quita se devuelve, y lo que gana sigue contando, así que al 100 % se queda ahí. La aplicación lo " +
+      "recuerda para esta partida.",
 
     // Personal
     you: "Tú",
@@ -945,6 +950,7 @@ export const es: Strings = {
       waitingTitle: "Lo congelado espera por ahora",
       players: (names) => `Atributos: ${names}`,
       clubs: (names) => `Dinero: ${names}`,
+      fitness: (names) => `Energía y ritmo: ${names}`,
       more: (count) => `y ${format(count)} más`,
       waiting: (count) =>
         `${count === 1 ? "1 sigue recordado" : `${format(count)} siguen recordados`}, pero no se congelan ahora: ` +
@@ -1589,6 +1595,32 @@ export const es: Strings = {
       "Las acciones abarcan a todos los jugadores de la lista, también a los cedidos. Se pueden deshacer también " +
       "en Cambios.",
 
+    // Congelar todo el equipo
+    freezeLabel: "Congelar todo el equipo",
+    freezeAttributes: "Congelar los atributos",
+    freezeAttributesTitle:
+      "Mientras la aplicación esté abierta y conectada, los atributos de todos los jugadores de este equipo no " +
+      "empeoran: lo que el juego quita se devuelve, y las mejoras siguen contando",
+    freezeFitness: "Congelar energía y ritmo",
+    freezeFitnessTitle:
+      "Mientras la aplicación esté abierta y conectada, la energía y el ritmo de competición de todos los jugadores " +
+      "de este equipo no bajan: lo que el juego quita se devuelve. Pulsa antes Recuperar a todos para mantenerlos al " +
+      "100 %",
+    frozenCount: (frozen, total) => `${format(frozen)} de ${format(total)}`,
+    freezeHint:
+      "Congelar abarca a todos los jugadores de la lista y acompaña a cada uno vaya donde vaya. La aplicación lo " +
+      "recuerda para esta partida.",
+    frozeAttributes: (count) =>
+      count === 0
+        ? "Sus atributos ya estaban congelados"
+        : `Se congelaron los atributos de ${entityCount("player", count)}`,
+    unfrozeAttributes: (count) => `Se descongelaron los atributos de ${entityCount("player", count)}`,
+    frozeFitness: (count) =>
+      count === 0
+        ? "Su energía y su ritmo ya estaban congelados"
+        : `Se congelaron la energía y el ritmo de ${entityCount("player", count)}`,
+    unfrozeFitness: (count) => `Se descongelaron la energía y el ritmo de ${entityCount("player", count)}`,
+
     // Lo que hizo una acción
     written: (count) =>
       count === 0
@@ -1651,6 +1683,13 @@ export const es: Strings = {
     loaneeTitle: "Aquí cedido por otro club",
     elsewhere: "En otro equipo",
     elsewhereTitle: "Juega en otro equipo del club",
+    frozen: "Congelado",
+    frozenTitle: (attributes, fitness) =>
+      attributes && fitness
+        ? "Sus atributos, su energía y su ritmo están congelados"
+        : attributes
+          ? "Sus atributos están congelados"
+          : "Su energía y su ritmo están congelados",
   },
 
   game: {

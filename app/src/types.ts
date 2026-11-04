@@ -121,14 +121,26 @@ export interface ExportReport {
 }
 
 /**
- * What connecting froze again of what the app remembers as frozen in this save: the players' attributes and the
- * clubs' money, by name, and how many it left for later, still remembered (FMLibreEditor cannot write to this version
- * of the game yet, or a check did not pass).
+ * What connecting froze again of what the app remembers as frozen in this save: the players' attributes, their energy
+ * and match sharpness (`fitness`), and the clubs' money, by name, and how many it left for later, still remembered
+ * (FMLibreEditor cannot write to this version of the game yet, or a check did not pass).
  */
 export interface Refrozen {
   players: string[];
   clubs: string[];
+  fitness: string[];
   waiting: number;
+}
+
+/** What freezing a player holds: his attributes, or his energy and match sharpness ("fitness"). */
+export type FreezeKind = "attributes" | "fitness";
+
+/** From `freeze_team`: what freezing or unfreezing a team came to. */
+export interface TeamFreeze {
+  /** How many of its players were frozen, or unfrozen, now: not those that already were. */
+  changed: number;
+  /** Its players who could not be frozen, and why (`field` is the `FreezeKind`). */
+  failed: { uid: number; name: string; field: string; error: Failure }[];
 }
 
 /**
@@ -685,6 +697,9 @@ export interface SquadPlayer extends PlayerSummary {
   injuries: number;
   /** How many current bans he has. */
   bans: number;
+  /** Whether his attributes are frozen, and his energy and match sharpness (see `freeze_team`). */
+  attributesFrozen: boolean;
+  fitnessFrozen: boolean;
 }
 
 /** A team's two captaincies. */

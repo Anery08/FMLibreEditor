@@ -6,6 +6,7 @@ import { changeLog, freezeAttributes, frozenPlayers, maxAttributes, undoBatch } 
 import { describeError } from "./format";
 import { fieldLabel, massEditText, profileText } from "./labels";
 import { undoFailureLines } from "./massDraft";
+import type { PlayerDetails } from "./types";
 import { EditorContext, useEditSession } from "./useProfileEditing";
 
 /** What the last Max attributes, or the undo of it, came to. */
@@ -27,7 +28,8 @@ const PROBLEMS_SHOWN = 5;
  * while it is on. Both wait while the game cannot be written to, and say why. Not there while the player is edited:
  * the inputs hold his attributes then.
  */
-export function AttributeActions({ uid }: { uid: number }) {
+export function AttributeActions({ details }: { details: PlayerDetails }) {
+  const uid = details.uid;
   const { editable, readOnlyNote, onEdited } = useContext(EditorContext);
   const editing = useEditSession() !== null;
   const [busy, setBusy] = useState(false);
@@ -53,6 +55,7 @@ export function AttributeActions({ uid }: { uid: number }) {
     }
   }, [outcome]);
 
+  // Asked again whenever the profile is read again: the squad tab of his club may have frozen him meanwhile.
   useEffect(() => {
     let current = true;
     frozenPlayers()
@@ -61,7 +64,7 @@ export function AttributeActions({ uid }: { uid: number }) {
     return () => {
       current = false;
     };
-  }, [uid]);
+  }, [uid, details]);
 
   if (editing) {
     return null;
@@ -126,6 +129,8 @@ export function AttributeActions({ uid }: { uid: number }) {
       if (alive.current) {
         setFrozen(players.includes(uid));
       }
+      // Nothing in the game has changed, but the squad tab of his club says who is frozen: it reads again.
+      onEdited();
     } catch (e) {
       if (alive.current) {
         setFreezeError(describeError(e));

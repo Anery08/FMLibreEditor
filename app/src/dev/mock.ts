@@ -14,6 +14,8 @@ import type {
   ClubTeam,
   SquadPlayer,
   TeamAction,
+  TeamFreeze,
+  FreezeKind,
   ClubDetails,
   ClubFilter,
   ClubPage,
@@ -1696,9 +1698,39 @@ function clubSquads(clubUid: number): ClubTeam[] {
         morale: d.morale,
         injuries: d.injuries.length,
         bans: d.bans.length,
+        attributesFrozen: frozenAttributes.has(uid),
+        fitnessFrozen: frozenFitness.has(uid),
       };
     }),
   }));
+}
+
+/**
+ * `freeze_team`: what `kind` names frozen, or unfrozen, for every player of the fixture team. Under `?failedchecks`
+ * the attributes do not check out, so freezing them is refused at once, as the real command refuses it.
+ */
+function freezeTeam(clubUid: number, index: number, kind: FreezeKind, frozen: boolean): TeamFreeze {
+  const team = fixtureTeam(clubUid, index);
+  if (frozen && kind === "attributes" && failedChecks) {
+    throw failure(
+      "guard.failed",
+      "attribute.corners is left unchanged: attributes did not check out in this version of the game",
+      { field: "attribute.corners", check: "attributes" },
+    );
+  }
+  const held = kind === "attributes" ? frozenAttributes : frozenFitness;
+  let changed = 0;
+  for (const player of team.players) {
+    if (held.has(player.uid) !== frozen) {
+      if (frozen) {
+        held.add(player.uid);
+      } else {
+        held.delete(player.uid);
+      }
+      changed += 1;
+    }
+  }
+  return { changed, failed: [] };
 }
 
 /** The team at `index` of the fixture club, or the real command's failure. */
@@ -2149,6 +2181,9 @@ const frozenMoney = new Set<number>();
 /** The players whose attributes are frozen in this page, likewise. */
 const frozenAttributes = new Set<number>();
 
+/** The players whose energy and match sharpness are frozen in this page, likewise. */
+const frozenFitness = new Set<number>();
+
 /** The fixture connection, once `connect` has been called in this page. */
 let mockConnection: ConnectionInfo | null = null;
 
@@ -2267,13 +2302,21 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       if (!refrozen) {
         return info as T;
       }
-      // What a restart of the app finds frozen in this save: the first two players and the first club, with one more
-      // that waits.
+      // What a restart of the app finds frozen in this save: the attributes of the first two players, the energy and
+      // sharpness of the first seven, and the first club, with one more that waits.
       for (const player of players.slice(0, 2)) {
         frozenAttributes.add(player.uid);
       }
+      for (const player of players.slice(0, 7)) {
+        frozenFitness.add(player.uid);
+      }
       frozenMoney.add(clubs[0].uid);
-      const again: Refrozen = { players: players.slice(0, 2).map((p) => p.name), clubs: [clubs[0].name], waiting: 1 };
+      const again: Refrozen = {
+        players: players.slice(0, 2).map((p) => p.name),
+        clubs: [clubs[0].name],
+        fitness: players.slice(0, 7).map((p) => p.name),
+        waiting: 1,
+      };
       return { ...info, refrozen: again } as T;
     }
     case "graphics_info":
@@ -2393,6 +2436,19 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
     }
     case "frozen_players":
       return [...frozenAttributes] as T;
+    case "freeze_fitness": {
+      const uid = Number(args?.uid);
+      if (args?.frozen) {
+        frozenFitness.add(uid);
+      } else {
+        frozenFitness.delete(uid);
+      }
+      return [...frozenFitness] as T;
+    }
+    case "frozen_fitness":
+      return [...frozenFitness] as T;
+    case "freeze_team":
+      return freezeTeam(Number(args?.club), Number(args?.team), args?.kind as FreezeKind, Boolean(args?.frozen)) as T;
     case "export_players": {
       // Nothing is written in a browser: the report names the file a real export would have.
       const selected = selectTargets("player", String(args?.query ?? ""), {

@@ -115,7 +115,7 @@ function ProfileBody({ details }: { details: PlayerDetails }) {
   const goalkeeper = isGoalkeeper(details);
   return (
     <>
-      <AttributeActions uid={details.uid} />
+      <AttributeActions details={details} />
 
       <div className="profile-pair">
         <div className="profile-columns">
