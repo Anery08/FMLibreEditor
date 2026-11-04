@@ -2769,7 +2769,7 @@ pub fn run() {
             app.manage(ExportsFolder(exports));
             // macOS: after an update, the game is to load the bridge that came with this version.
             bridge::refresh(app.handle());
-            // Frozen money and attributes: every little while, what the game took from them is put back.
+            // Frozen money, attributes, energy and sharpness: every little while, what the game took is put back.
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 loop {
