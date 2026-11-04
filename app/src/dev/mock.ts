@@ -286,7 +286,7 @@ function details(player: PlayerSummary): PlayerDetails {
           }),
         }
       : null,
-    // As stored: energy and match sharpness 0–10000 (the game keeps sharpness at 35% or more), and jadedness
+    // As stored: energy and match sharpness 0–10000 (sharpness mostly 35% or more), and jadedness
     // from -500, fully rested, to a little above 0 early in a season.
     condition: Math.round(7000 + next() * 3000),
     matchSharpness: Math.round(3500 + next() * 6500),

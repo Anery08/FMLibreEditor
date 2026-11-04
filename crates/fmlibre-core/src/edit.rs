@@ -399,11 +399,12 @@ fn player_fields(layout: &Layout) -> Vec<Field> {
         field("international.u21_goals", p.u21_goals, Kind::U8, 0..=255),
         // What the game changes every day: energy, match fitness, jadedness and morale. No player on
         // the test save had less than 35% match sharpness, so the editor does not write less either;
-        // morale ran from 1 to 20. Jadedness is -500 for a rested player, the least the game keeps;
-        // the most seen was 252, early in a season, so the editor writes up to 1000 and accepts any
+        // it accepts less as it is, as players the game creates (youth intakes) start below that.
+        // Morale ran from 1 to 20. Jadedness is -500 for a rested player, the least the game keeps; the
+        // most seen was 252, early in a season, so the editor writes up to 1000 and accepts any
         // value of a worn-out player as it is.
         field("condition", p.condition, Kind::U16, 0..=10_000).percent(),
-        field("match_sharpness", p.match_sharpness, Kind::U16, 3_500..=10_000).percent(),
+        field("match_sharpness", p.match_sharpness, Kind::U16, 3_500..=10_000).plausible(0..=10_000).percent(),
         field("jadedness", p.jadedness, Kind::I16, -500..=1_000).plausible(-500..=i64::from(i16::MAX)),
         field("morale", p.morale, Kind::U8, 1..=20),
     ];
@@ -1120,6 +1121,10 @@ mod tests {
         // Rested is -500, the least the game keeps.
         let jaded = field("jadedness");
         assert!(jaded.takes(-500) && jaded.takes(252) && !jaded.takes(-501) && jaded.kind == Kind::I16);
+        // Sharpness is written from 35%; a player the game created below that can still be edited.
+        let sharpness = field("match_sharpness");
+        assert!(sharpness.takes(3_500) && !sharpness.takes(3_499) && sharpness.is_plausible(1_200));
+        assert!(!sharpness.is_plausible(10_001));
     }
 
     #[test]

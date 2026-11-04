@@ -42,8 +42,9 @@ pub enum Check {
     Attributes,
     /// The eight personality ratings go up to 20.
     Personality,
-    /// Energy, match sharpness, jadedness and morale stay in the ranges the game keeps them in: no one below 35%
-    /// sharpness, and most players fresh.
+    /// Energy, match sharpness, jadedness and morale stay in the ranges the game keeps them in, and most players are
+    /// fresh. Nearly all are at 35% sharpness or more, or else some are rested: players the game creates, such as its
+    /// youth intakes, start below 35%.
     LiveValues,
     /// Players' contracts point back at them, and some were signed after the player joined. Guards the contract
     /// fields; with [`Check::Teams`], [`Check::Staff`] and [`Check::Clubs`], every change to the game's lists and
@@ -239,6 +240,39 @@ impl Mean {
     }
 }
 
+/// Players' live values: whether they are in the ranges the game keeps them in, and how many players are fresh, at 35%
+/// sharpness or more, and rested.
+#[derive(Debug, Default, Clone, Copy)]
+struct LiveTally {
+    in_range: Tally,
+    fresh: Tally,
+    sharp: Tally,
+    rested: Tally,
+}
+
+impl LiveTally {
+    fn add(&mut self, sharpness: u16, jadedness: i16, condition: u16, morale: u8) {
+        self.in_range
+            .add(condition <= 10_000 && sharpness <= 10_000 && (-500..=10_000).contains(&jadedness) && morale <= 20);
+        self.fresh.add(condition >= 5_000);
+        self.sharp.add(sharpness >= 3_500);
+        self.rested.add(jadedness < 0);
+    }
+
+    /// Most players are fresh on any day. The game keeps match sharpness at 35% or above, but not for the players it
+    /// creates: on the Mac test save on 2 July 2027, 2,796 of 40,378 players were below it, 2,716 of them created by
+    /// the game, its youth intake among them. Then some players have to be rested (jadedness below zero) instead.
+    fn result(self) -> CheckResult {
+        let mut result = self.in_range.result(Check::LiveValues, 0.99, String::new());
+        result.passed &= self.fresh.holds(0.6) && (self.sharp.holds(0.99) || self.rested.holds(0.01));
+        result.note = format!(
+            "{} of {} at 35% sharpness or more, {} at 50% energy or more, {} rested",
+            self.sharp.fit, self.sharp.sampled, self.fresh.fit, self.rested.fit
+        );
+        result
+    }
+}
+
 /// `count` indices spread evenly over an array of `len` elements, at most [`SAMPLES`] of them.
 fn sample(len: u64) -> impl Iterator<Item = u64> {
     let count = len.min(SAMPLES);
@@ -348,10 +382,7 @@ pub(crate) fn check(session: &Session, date: Option<FmDate>) -> Health {
     let mut natural = Tally::default();
     let mut attributes = Tally::default();
     let mut personality = Tally::default();
-    let mut live = Tally::default();
-    // The game keeps match sharpness at 35% or above, and most players are fresh on any day.
-    let mut sharp = Tally::default();
-    let mut fresh = Tally::default();
+    let mut live = LiveTally::default();
     let mut contracts = Tally::default();
     // Contracts signed after the player joined: renewals, which a date read in place of the other cannot show.
     let mut renewed = Tally::default();
@@ -406,16 +437,12 @@ pub(crate) fn check(session: &Session, date: Option<FmDate>) -> Health {
 
         personality.add((0..crate::PERSONALITY.len() as u64).all(|i| player.u8(layout, p.personality + i) <= 20));
 
-        let jadedness = player.u16(layout, p.jadedness) as i16;
-        let (condition, sharpness) = (player.u16(layout, p.condition), player.u16(layout, p.match_sharpness));
         live.add(
-            condition <= 10_000
-                && sharpness <= 10_000
-                && (-500..=10_000).contains(&jadedness)
-                && player.u8(layout, p.morale) <= 20,
+            player.u16(layout, p.match_sharpness),
+            player.u16(layout, p.jadedness) as i16,
+            player.u16(layout, p.condition),
+            player.u8(layout, p.morale),
         );
-        sharp.add(sharpness >= 3_500);
-        fresh.add(condition >= 5_000);
 
         // His contract, when he has one, points back at him; and its dates.
         let contract = player.u64(layout, p.contract);
@@ -461,10 +488,6 @@ pub(crate) fn check(session: &Session, date: Option<FmDate>) -> Health {
     let mut own = own.result(Check::Players, 0.97, String::new());
     own.passed &= within.holds(0.95) && same.fit * 2 <= same.sampled;
     own.note = format!("{} of {} within their potential, {} of them at it", within.fit, within.sampled, same.fit);
-    let mut live = live.result(Check::LiveValues, 0.99, String::new());
-    live.passed &= sharp.holds(0.99) && fresh.holds(0.6);
-    live.note =
-        format!("{} of {} at 35% sharpness or more, {} at 50% energy or more", sharp.fit, sharp.sampled, fresh.fit);
     let mut contracts = contracts.result(Check::Contracts, 0.95, String::new());
     contracts.passed &= renewed.sampled >= LEAST_SAMPLED && renewed.fit * 20 >= renewed.sampled;
     contracts.note = format!("{} of {} signed after the player joined", renewed.fit, renewed.sampled);
@@ -482,7 +505,7 @@ pub(crate) fn check(session: &Session, date: Option<FmDate>) -> Health {
             positions,
             attributes,
             personality.result(Check::Personality, 0.99, String::new()),
-            live,
+            live.result(),
             contracts,
             teams.result(Check::Teams, 0.95, String::new()),
             staff,
@@ -726,6 +749,37 @@ mod tests {
         assert!(!date_fits(Some(today), &early).0);
         // Too few contracts tell nothing.
         assert!(!date_fits(Some(today), &signed[..10]).0);
+    }
+
+    #[test]
+    fn live_values_check_out_after_a_youth_intake() {
+        let passes = |values: &[(u16, i16, u16, u8)]| {
+            let mut live = LiveTally::default();
+            for &(sharpness, jadedness, condition, morale) in values {
+                live.add(sharpness, jadedness, condition, morale);
+            }
+            live.result().passed
+        };
+        // Before the youth intake: no one below 35% sharpness, nearly all fresh, a third rested.
+        let season: Vec<_> =
+            (0..300).map(|k| (3_500 + k * 20, if k % 3 == 0 { -500 } else { 90 }, 9_000 + k, 12)).collect();
+        assert!(passes(&season));
+        // After it, one in fourteen below 35%, as on the test save on 2 July 2027.
+        let intake: Vec<_> = season
+            .iter()
+            .enumerate()
+            .map(|(k, &(sharpness, jadedness, condition, morale))| {
+                (if k % 14 == 0 { 3_000 } else { sharpness }, jadedness, condition, morale)
+            })
+            .collect();
+        assert!(passes(&intake));
+        // Read from the wrong place: no one rested where some are below 35% sharpness, or no one fresh.
+        let restless: Vec<_> =
+            intake.iter().map(|&(sharpness, _, condition, morale)| (sharpness, 90, condition, morale)).collect();
+        assert!(!passes(&restless));
+        let tired: Vec<_> =
+            season.iter().map(|&(sharpness, jadedness, _, morale)| (sharpness, jadedness, 150, morale)).collect();
+        assert!(!passes(&tired));
     }
 
     #[test]

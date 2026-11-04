@@ -29,7 +29,7 @@ height = 0x22E            # u16, centimetres
 # Live values, 0..10000 (100.00%). Checked against the game's own words on the test save:
 # Matthijs de Ligt, injured, 3500 sharpness ("lacking match fitness"); Bruno Fernandes 6700
 # ("gaining match fitness"); both "fresh" at 8980 and 10000 condition.
-match_sharpness = 0x258   # u16; the game keeps it at 3500 or above
+match_sharpness = 0x258   # u16; 3500 or above, but players the game creates start lower
 condition = 0x25C         # u16, the energy the game shows
 # i16, how worn out he is by playing, which rest takes away; FMRTE calls it jadedness. Found from
 # FMRTE's readings on the Game Pass save (27 July 2026): Kylian Mbappé -500, Arda Güler -274,
