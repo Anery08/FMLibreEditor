@@ -1,12 +1,12 @@
 // The Squad tab of a club's profile: the players of each of its teams with the values a squad screen shows, the actions
-// on a whole team (heal everyone, lift every ban, give everyone the best morale, rest everyone) and the captains. What it writes is
-// logged like any change, and undone from the Changes view, or at once from the line under the buttons. A player's name
-// opens his profile in the player list.
+// on a whole team (heal everyone, lift every ban, give everyone the best morale, rest everyone), the boxes that freeze
+// the whole team, and the captains. What it writes is logged like any change, and undone from the Changes view, or at
+// once from the line under the buttons. A player's name opens his profile in the player list.
 
 import { useContext, useEffect, useMemo, useRef, useState, type Ref } from "react";
 import { Ability } from "./Ability";
 import { CaptainMenu } from "./CaptainMenu";
-import { changeLog, clubSquads, setCaptain, teamAction, undoBatch, undoChange } from "./editing";
+import { changeLog, clubSquads, freezeTeam, setCaptain, teamAction, undoBatch, undoChange } from "./editing";
 import { describeError, formatNumber } from "./format";
 import { intlLocale } from "./i18n";
 import {
@@ -27,6 +27,7 @@ import type {
   BatchUndo,
   CaptainRole,
   ClubTeam,
+  FreezeKind,
   LoggedChange,
   MassReport,
   SquadPlayer,
@@ -258,6 +259,27 @@ export function SquadTab({ clubUid, version, panel }: SquadTabProps) {
       };
     });
 
+  // Freezing writes nothing to the game itself, but the squad is read again all the same, for its rows to say so.
+  const freeze = (target: ClubTeam, kind: FreezeKind, on: boolean) =>
+    write(target.index, async () => {
+      const done = await freezeTeam(clubUid, target.index, kind, on);
+      const said =
+        kind === "attributes"
+          ? on
+            ? text.frozeAttributes
+            : text.unfrozeAttributes
+          : on
+            ? text.frozeFitness
+            : text.unfrozeFitness;
+      return {
+        team: target.index,
+        message: said(done.changed),
+        failed: false,
+        problems: refusalLines(done.failed),
+        undo: null,
+      };
+    });
+
   const undo = (forTeam: number, take: Undo) =>
     write(forTeam, async () => {
       const done = await take();
@@ -327,6 +349,16 @@ export function SquadTab({ clubUid, version, panel }: SquadTabProps) {
           <div className="squad-actions">
             <TeamActions team={team} editable={editable} busy={busy} onAction={(action) => void act(team, action)} />
             <p className="note squad-hint">{text.hint}</p>
+          </div>
+
+          <div className="squad-actions">
+            <TeamFreezes
+              team={team}
+              editable={editable}
+              busy={busy}
+              onFreeze={(kind, on) => void freeze(team, kind, on)}
+            />
+            <p className="note squad-hint">{text.freezeHint}</p>
           </div>
 
           <ResultLine
@@ -480,6 +512,98 @@ function TeamActions({ team, editable, busy, onAction }: TeamActionsProps) {
   );
 }
 
+interface TeamFreezesProps {
+  team: ClubTeam;
+  /** Whether the game can be written to. */
+  editable: boolean;
+  /** Whether a write is under way. */
+  busy: boolean;
+  onFreeze: (kind: FreezeKind, on: boolean) => void;
+}
+
+/**
+ * The boxes that freeze the attributes, and the energy and match sharpness, of every player in the shown team. A box
+ * is ticked when all of them are frozen that way, and half ticked, with how many are, when some are; ticking it then
+ * freezes the others too. Both wait while the game cannot be written to, and say why.
+ */
+function TeamFreezes({ team, editable, busy, onFreeze }: TeamFreezesProps) {
+  const { readOnlyNote } = useContext(EditorContext);
+  const total = team.players.length;
+  const boxes: { kind: FreezeKind; label: string; title: string; frozen: number }[] = [
+    {
+      kind: "attributes",
+      label: text.freezeAttributes,
+      title: text.freezeAttributesTitle,
+      frozen: team.players.filter((player) => player.attributesFrozen).length,
+    },
+    {
+      kind: "fitness",
+      label: text.freezeFitness,
+      title: text.freezeFitnessTitle,
+      frozen: team.players.filter((player) => player.fitnessFrozen).length,
+    },
+  ];
+
+  return (
+    <div className="squad-freezes" role="group" aria-label={text.freezeLabel}>
+      {boxes.map(({ kind, label, title, frozen }) => (
+        <FreezeBox
+          key={kind}
+          label={label}
+          title={!editable ? readOnlyNote : total === 0 ? text.empty : title}
+          frozen={frozen}
+          total={total}
+          waiting={!editable || total === 0}
+          busy={busy}
+          onChange={(on) => onFreeze(kind, on)}
+        />
+      ))}
+    </div>
+  );
+}
+
+interface FreezeBoxProps {
+  label: string;
+  /** Hover text. */
+  title: string;
+  /** How many of the team's `total` players are frozen this way. */
+  frozen: number;
+  total: number;
+  /** Whether it can do nothing now: the box is disabled. */
+  waiting: boolean;
+  /** Whether a write is under way: the box is only dimmed (aria-disabled), so that it keeps focus. */
+  busy: boolean;
+  onChange: (on: boolean) => void;
+}
+
+/** One of the boxes that freeze the whole team: ticked, half ticked with a count, or empty. */
+function FreezeBox({ label, title, frozen, total, waiting, busy, onChange }: FreezeBoxProps) {
+  const box = useRef<HTMLInputElement>(null);
+  const some = frozen > 0 && frozen < total;
+
+  // A box is half ticked only through the DOM.
+  useEffect(() => {
+    if (box.current) {
+      box.current.indeterminate = some;
+    }
+  }, [some]);
+
+  return (
+    <label className="freeze-toggle" title={title}>
+      <input
+        ref={box}
+        type="checkbox"
+        checked={total > 0 && frozen === total}
+        disabled={waiting}
+        aria-disabled={busy || undefined}
+        onChange={(e) => !busy && onChange(e.currentTarget.checked)}
+      />
+      <span>{label}</span>
+      {some && <span className="freeze-count">{text.frozenCount(frozen, total)}</span>}
+    </label>
+  );
+}
+
 interface ActionButtonProps {
   label: string;
   /** Hover text. */
@@ -622,7 +746,10 @@ function SquadRow({ player, role, editable, busy, onCaptain }: SquadRowProps) {
   );
 }
 
-/** What is out of the ordinary about a player: his injuries, bans, a loan, or playing for another team of the club. */
+/**
+ * What is out of the ordinary about a player: his injuries, bans, a loan, playing for another team of the club, or
+ * being frozen.
+ */
 function Tags({ player }: { player: SquadPlayer }) {
   return (
     <>
@@ -650,6 +777,11 @@ function Tags({ player }: { player: SquadPlayer }) {
             {text.elsewhere}
           </span>
         )
+      )}
+      {(player.attributesFrozen || player.fitnessFrozen) && (
+        <span className="tag frozen" title={text.frozenTitle(player.attributesFrozen, player.fitnessFrozen)}>
+          {text.frozen}
+        </span>
       )}
     </>
   );

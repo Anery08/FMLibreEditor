@@ -4278,6 +4278,38 @@ button.danger:hover:not(:disabled) {
   margin: 0;
 }
 
+/* The boxes that freeze the whole team, in a row under its actions; beside them what freezing covers. */
+.squad-freezes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+}
+
+.squad-freezes .freeze-toggle {
+  margin: 0;
+}
+
+/* How many of the team are frozen, after a box that is half ticked. */
+.freeze-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* The box that freezes a player's energy and sharpness, under them in the Medical group, and what it does while on. */
+.fitness-freeze {
+  margin: 2px 0 10px;
+}
+
+.fitness-freeze .freeze-toggle {
+  margin: 0;
+}
+
+.fitness-freeze .note {
+  margin: 6px 0 0;
+}
+
 /* What the last action did: a live region that is always there, and takes no room while it is empty. It takes focus
    when the button that had it is gone. */
 .squad-result {
@@ -4393,6 +4425,11 @@ button.danger:hover:not(:disabled) {
 .tag.loan {
   border-color: var(--tier-2);
   color: var(--tier-2);
+}
+
+.tag.frozen {
+  border-color: var(--accent-text);
+  color: var(--accent-text);
 }
 
 /* C and VC after a name: the captain's is filled in the accent colour, the vice-captain's outlined. */

@@ -642,6 +642,10 @@ export const tr: Strings = {
     freezeAttributesNote:
       "Uygulama açık ve oyuna bağlıyken özellikleri düşmez: oyunun düşürdüğü geri konur, gelişmeler yine sayılır. " +
       "Uygulama bunu bu kayıt için hatırlar ve kayda yeniden bağlandığında onları yine dondurur.",
+    freezeFitness: "Enerji ve maç kondisyonunu dondur",
+    freezeFitnessNote:
+      "Uygulama açık ve oyuna bağlıyken enerjisi ve maç kondisyonu düşmez: oyunun düşürdüğü geri konur, artışlar " +
+      "yine sayılır; %100'deyse orada kalır. Uygulama bunu bu kayıt için hatırlar.",
 
     // Staff
     you: "Siz",
@@ -914,6 +918,7 @@ export const tr: Strings = {
       waitingTitle: "Dondurulanlar şimdilik bekliyor",
       players: (names) => `Özellikler: ${names}`,
       clubs: (names) => `Para: ${names}`,
+      fitness: (names) => `Enerji ve maç kondisyonu: ${names}`,
       more: (count) => `ve ${format(count)} tane daha`,
       waiting: (count) =>
         `${format(count)} tanesi hatırlanıyor ama şu an dondurulmadı: FMLibreEditor oyunun bu sürümüne henüz yazamıyor.`,
@@ -1527,6 +1532,30 @@ export const tr: Strings = {
       "İşlemler listedeki her oyuncuyu kapsar, kiralık gönderilenler de dahil. " +
       "Geri alma işlemi Değişiklikler bölümünde de yapılabilir.",
 
+    // Freezing the whole team
+    freezeLabel: "Tüm takımı dondur",
+    freezeAttributes: "Özellikleri dondur",
+    freezeAttributesTitle:
+      "Uygulama açık ve oyuna bağlıyken bu takımdaki her oyuncunun özellikleri düşmez: oyunun düşürdüğü geri konur, " +
+      "gelişmeler yine sayılır",
+    freezeFitness: "Enerji ve maç kondisyonunu dondur",
+    freezeFitnessTitle:
+      "Uygulama açık ve oyuna bağlıyken bu takımdaki her oyuncunun enerjisi ve maç kondisyonu düşmez: oyunun " +
+      "düşürdüğü geri konur. Hepsini %100'de tutmak için önce Hepsini dinlendir'e basın",
+    // "5 / 26": no ending to put on a figure.
+    frozenCount: (frozen, total) => `${format(frozen)} / ${format(total)}`,
+    freezeHint:
+      "Dondurma listedeki her oyuncuyu kapsar ve oyuncu nereye giderse gitsin onunla kalır. Uygulama bunu bu kayıt " +
+      "için hatırlar.",
+    frozeAttributes: (count) =>
+      count === 0 ? "Özellikleri zaten donduruluydu" : `${format(count)} oyuncunun özellikleri donduruldu`,
+    unfrozeAttributes: (count) => `${format(count)} oyuncunun özelliklerindeki dondurma kaldırıldı`,
+    frozeFitness: (count) =>
+      count === 0
+        ? "Enerji ve maç kondisyonu zaten donduruluydu"
+        : `${format(count)} oyuncunun enerjisi ve maç kondisyonu donduruldu`,
+    unfrozeFitness: (count) => `${format(count)} oyuncunun enerjisindeki ve maç kondisyonundaki dondurma kaldırıldı`,
+
     // What an action did, under the buttons
     written: (count) => (count === 0 ? "Hiçbir değişiklik yazılmadı" : `${changes(count)} yazıldı`),
     refused: (name, reason) => `${name}: ${reason}`,
@@ -1585,6 +1614,13 @@ export const tr: Strings = {
     loaneeTitle: "Başka bir kulüpten kiralık geldi",
     elsewhere: "Başka takımda",
     elsewhereTitle: "Kulübün başka bir takımında oynuyor",
+    frozen: "Donduruldu",
+    frozenTitle: (attributes, fitness) =>
+      attributes && fitness
+        ? "Özellikleri, enerjisi ve maç kondisyonu donduruldu"
+        : attributes
+          ? "Özellikleri donduruldu"
+          : "Enerjisi ve maç kondisyonu donduruldu",
   },
 
   game: {

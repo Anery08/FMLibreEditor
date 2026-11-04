@@ -1,14 +1,14 @@
-// The Medical group of a player's profile: his energy, match sharpness and morale, his current injuries, and
-// the button that heals them; then his bans, and the button that lifts them.
+// The Medical group of a player's profile: his energy, match sharpness and morale, the box that freezes his energy and
+// sharpness, his current injuries, and the button that heals them; then his bans, and the button that lifts them.
 
 import { useContext, useEffect, useRef, useState } from "react";
 import { EditableValue } from "./EditControls";
-import { healPlayer, liftBans, wholePercent } from "./editing";
+import { freezeFitness, frozenFitness, healPlayer, liftBans, wholePercent } from "./editing";
 import { describeError, formatDate, formatDateRange, formatNumber, formatPercent } from "./format";
 import { fieldLabel, profileText } from "./labels";
 import { Fact } from "./ProfileParts";
 import type { Ban, Injury, PlayerDetails } from "./types";
-import { EditorContext } from "./useProfileEditing";
+import { EditorContext, useEditSession } from "./useProfileEditing";
 
 /** A stored percentage (0–10000) as the profile shows it: "87%". The squad table of a club shows them the same way. */
 export const percentText = (stored: number) => formatPercent(wholePercent(stored));
@@ -58,6 +58,7 @@ export function MedicalGroup({ details }: { details: PlayerDetails }) {
           <EditableValue field="morale">{profileText.morale(details.morale)}</EditableValue>
         </Fact>
       </dl>
+      <FitnessFreeze details={details} />
       {injured ? (
         <InjuryList uid={details.uid} injuries={details.injuries} />
       ) : (
@@ -73,6 +74,65 @@ export function MedicalGroup({ details }: { details: PlayerDetails }) {
         </p>
       )}
     </section>
+  );
+}
+
+/**
+ * The box that freezes a player's energy and match sharpness, with what freezing does while it is on. It waits while
+ * the game cannot be written to, and says why. Not there while the player is edited: the inputs hold them then.
+ */
+function FitnessFreeze({ details }: { details: PlayerDetails }) {
+  const uid = details.uid;
+  const { editable, readOnlyNote, onEdited } = useContext(EditorContext);
+  const editing = useEditSession() !== null;
+  // Whether they are frozen; null until the app has said.
+  const [frozen, setFrozen] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Asked again whenever the profile is read again: the squad tab of his club may have frozen him meanwhile.
+  useEffect(() => {
+    let current = true;
+    frozenFitness()
+      .then((players) => current && setFrozen(players.includes(uid)))
+      .catch(() => current && setFrozen(false));
+    return () => {
+      current = false;
+    };
+  }, [uid, details]);
+
+  if (editing || frozen === null) {
+    return null;
+  }
+
+  const freeze = async (on: boolean) => {
+    setError(null);
+    try {
+      setFrozen((await freezeFitness(uid, on)).includes(uid));
+      // Nothing in the game has changed, but the squad tab of his club says who is frozen: it reads again.
+      onEdited();
+    } catch (e) {
+      setError(describeError(e));
+    }
+  };
+
+  return (
+    <div className="fitness-freeze">
+      <label className="freeze-toggle" title={editable ? profileText.freezeFitnessNote : readOnlyNote}>
+        <input
+          type="checkbox"
+          checked={frozen}
+          disabled={!editable}
+          onChange={(e) => void freeze(e.currentTarget.checked)}
+        />
+        <span>{profileText.freezeFitness}</span>
+      </label>
+      {frozen && <p className="note">{profileText.freezeFitnessNote}</p>}
+      {error && (
+        <p className="note error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 

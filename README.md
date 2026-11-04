@@ -28,8 +28,9 @@ How to install and use it: [docs/INSTALL.md](docs/INSTALL.md).
   clauses, reputation, finances, stadiums and more.
 - Heal injuries, lift bans, remove unhappiness, prevent retirement, raise morale and fitness,
   max out attributes, set captains, for one player or a whole team.
-- Freeze a player's attributes or a club's money: while the app runs, they do not go down,
-  and the app freezes them again when you connect to that save another time.
+- Freeze a player's attributes, energy and match sharpness, a whole team's from its squad
+  tab, or a club's money: while the app runs, they do not go down, and the app freezes them
+  again when you connect to that save another time.
 - Transfer, swap or release players, and move staff between clubs.
 - Mass edit many at once, with a preview; undo any change.
 - Export the player list, with its search and filters, to CSV or JSON for a spreadsheet or
