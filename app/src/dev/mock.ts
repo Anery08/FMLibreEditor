@@ -1273,12 +1273,6 @@ function planMove(uid: number, clubUid: number, terms: MoveTerms, fee?: number):
   if (player.clubUid === clubUid) {
     throw failure("move.sameClub", "the player is at this club already");
   }
-  if (staff.some((s) => s.isHuman && s.clubUid === player.clubUid)) {
-    throw failure(
-      "move.humanClub",
-      "the player is at a club a human manager runs; its tactics and training point at him too, so he leaves it in the game itself",
-    );
-  }
   if (to.women) {
     throw failure("move.menAndWomen", "one club is a men's club and the other a women's club");
   }
@@ -1351,12 +1345,6 @@ function planRelease(uid: number): MovePreview["from"] {
   if (player.clubUid === null) {
     throw failure("move.freeAgent", "the player has no club; free agents cannot be moved yet");
   }
-  if (staff.some((s) => s.isHuman && s.clubUid === player.clubUid)) {
-    throw failure(
-      "move.humanClub",
-      "the player is at a club a human manager runs; its tactics and training point at him too, so he leaves it in the game itself",
-    );
-  }
   const from = clubs.find((c) => c.uid === player.clubUid)!;
   return { uid: from.uid, name: from.name };
 }
@@ -1401,12 +1389,6 @@ function planSwap(uid: number, otherUid: number): MovePreview {
   for (const p of [player, other]) {
     if (p.clubUid === null) {
       throw failure("move.freeAgent", "the player has no club; free agents cannot be moved yet");
-    }
-    if (staff.some((s) => s.isHuman && s.clubUid === p.clubUid)) {
-      throw failure(
-        "move.humanClub",
-        "the player is at a club a human manager runs; its tactics and training point at him too, so he leaves it in the game itself",
-      );
     }
   }
   if (player.clubUid === other.clubUid) {
@@ -2190,10 +2172,12 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       const query = String(args?.query ?? "");
       const limit = Number(args?.limit ?? 200);
       const filter = (args?.filter ?? {}) as ClubFilter;
+      const kindOf = clubs.find((c) => c.uid === args?.kindOf);
+      const women = kindOf ? kindOf.women : filter.women;
       const words = fold(query).split(/\s+/).filter(Boolean);
       const hits = clubs
         .filter((c) => String(c.uid) === query.trim() || words.every((w) => fold(`${c.name} ${c.shortName ?? ""}`).includes(w)))
-        .filter((c) => filter.women === undefined || c.women === filter.women)
+        .filter((c) => women === undefined || c.women === women)
         .sort((a, b) => (b.reputation ?? -1) - (a.reputation ?? -1) || a.name.localeCompare(b.name));
       const page: ClubPage = { total: hits.length, rows: hits.slice(0, limit) };
       return page as T;

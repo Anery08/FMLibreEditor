@@ -236,6 +236,22 @@ person = 0x00
 date = 0x0C
 player_person = 0x390     # in the identity block, 8 bytes in, as on Windows
 
+# What a human manager has picked for his club. The match engine keeps it, for each tactic, as prepared tactics: 26
+# slots of the game's person ids (a player's `player_person`), the starting eleven in the order of the formation's
+# positions, then the substitutes; an empty slot holds 0xFFFFFFFF. Measured on the Arsenal save on
+# 3 January 2027: when the game released Remy Mitchell, whom the manager had put in goal, it emptied his slot in one of
+# the three copies it keeps (the tactics screen showed "None" in goal) and left him in the other two; putting Kepa in
+# goal from the bench filled the slot in all three and emptied his substitute's slot. Only these 26 slots of an
+# object hold person ids. Each object also keeps a list (begin, end, capacity) at `list`: of the 38 objects of the
+# class on that save, one read 0 there and had no player in its slots, as a block the game's allocator has taken
+# back; the editor leaves a copy without a sound list alone.
+[selection]
+class = "simatch::PREPARED_TACTICS_CREATOR_ARRAY"
+list = 0x08
+slots = 0x28
+count = 26
+player_person = 0x390
+
 [team]
 club = 0x30
 kind = 0x28

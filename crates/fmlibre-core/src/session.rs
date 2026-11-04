@@ -124,6 +124,9 @@ pub struct Session {
     stadium_class: OnceLock<Option<u64>>,
     /// The vtable of the retirement manager, once its class name has been checked.
     pub(crate) retirement_class: OnceLock<u64>,
+    /// The vtables of the class that holds a human manager's selections, found by its name the first time they are
+    /// needed: none when the layout does not place them or the game does not name that class.
+    pub(crate) selection_class: OnceLock<Vec<u64>>,
     /// What the checks found: worked out the first time it is needed, and again by [`Session::recheck`].
     health: Mutex<Option<Arc<Health>>>,
     /// Whether editing a build without a profile was allowed.
@@ -158,6 +161,7 @@ impl Session {
             finance_class: OnceLock::new(),
             stadium_class: OnceLock::new(),
             retirement_class: OnceLock::new(),
+            selection_class: OnceLock::new(),
             health: Mutex::new(None),
             unknown_build_allowed: AtomicBool::new(false),
         })

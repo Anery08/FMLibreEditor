@@ -96,8 +96,8 @@ const errors: ErrorTexts = {
   "move.playerCoach": () => "Oyuncu-antrenörler taşınamıyor: aynı zamanda personel olarak da çalışıyorlar.",
   "move.unusualContract": () => "Oyuncunun sözleşmesi olağan bir oyuncu sözleşmesi değil.",
   "move.humanClub": () =>
-    "Oyuncu, bir insan menajerin yönettiği kulüpte. Kulübün taktikleri ve antrenmanı da ona bağlı; bu yüzden " +
-    "kulüpten ancak oyunun içinden ayrılabilir.",
+    "Oyuncu, bir insan menajerin yönettiği kulüpte. Editör oyunun bu sürümünde o kulübün ilk 11 ve yedek " +
+    "seçimlerini henüz bulamıyor; bu yüzden kulüpten ancak oyunun içinden ayrılabilir.",
   "move.menAndWomen": () => "Kulüplerden biri erkek, diğeri kadın kulübü.",
   "move.notListed": () => "Kadro listeleri oyuncuyu olması gereken yerde tutmuyor.",
   "move.noRoom": (p) =>

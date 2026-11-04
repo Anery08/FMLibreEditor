@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use fmlibre_mem::{Module, Process, regions};
+use fmlibre_mem::{Module, Process, Region, regions};
 
 /// Bytes read at a time.
 const CHUNK: u64 = 16 << 20;
@@ -76,13 +76,14 @@ pub fn class_of(process: &Process, plugin: &Module, object: u64) -> Option<Strin
 }
 
 /// The objects on the game's heap whose first word is one of `vtables`, by vtable. One pass over every page of data
-/// the game has allocated, which takes a second or two.
+/// the game has allocated, which takes a second or two. The threads' stacks are left out: they hold only copies a
+/// function made for a while.
 pub fn objects(process: &Process, plugin: &Module, vtables: &[u64]) -> HashMap<u64, Vec<u64>> {
     let mut found: HashMap<u64, Vec<u64>> = vtables.iter().map(|&vtable| (vtable, Vec::new())).collect();
     if vtables.is_empty() {
         return found;
     }
-    for region in regions(process, 0x1_0000, 0x7FFF_FFFF_0000).into_iter().filter(|r| r.holds_data()) {
+    for region in regions(process, 0x1_0000, 0x7FFF_FFFF_0000).into_iter().filter(|r| r.holds_data() && !is_stack(r)) {
         if plugin.contains(region.base) {
             continue;
         }
@@ -101,6 +102,19 @@ pub fn objects(process: &Process, plugin: &Module, vtables: &[u64]) -> HashMap<u
         }
     }
     found
+}
+
+/// Whether `region` is a thread's stack, which macOS tags as such.
+#[cfg(target_os = "macos")]
+fn is_stack(region: &Region) -> bool {
+    const VM_MEMORY_STACK: u32 = 30;
+    region.user_tag == VM_MEMORY_STACK
+}
+
+/// Windows does not tag a stack; its builds name no class this module reads, so it never looks for objects there.
+#[cfg(windows)]
+fn is_stack(_region: &Region) -> bool {
+    false
 }
 
 /// Calls `visit` with each readable stretch of `[start, end)`, `overlap` bytes longer than the part it should look at

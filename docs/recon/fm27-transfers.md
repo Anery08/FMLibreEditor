@@ -115,6 +115,68 @@ club before as his last one; that belongs with the transfer history.
 Checked on the Mac Steam build with `release --restore`: while released, Wolfsburg had no
 captain and one player fewer, and both came back.
 
+## A club a human manager runs
+
+Read on the Mac Steam build (27.0.0, arm64), on the Arsenal save in January 2027, with the probe and a scratch tool
+that names the class of whatever points at a player (the nearest vtable before the pointer, and the `(begin, end)`
+lists that hold it).
+
+**What points at a player there.** Gabriel, a regular starter, had about 250 pointers into his object; Micky van de
+Ven, a starter at Tottenham, 22. The extra ones:
+
+- about 160 objects of the assistant's advice (`backroom_advice_*::*_ADVICE_SUGGESTION`): the assistant's identity
+  block at `+0x08`, the player's at `+0x10`;
+- inbox items, team meeting records and match records, which players who have left keep too;
+- a list of 16-byte entries (an identity block, then flags) at `+0x100` of `CLUB_HUMAN_MANAGER_DETAILS`, which held
+  nine players;
+- `TRAINING_EDIT_SESSION+0xc8`, the senior players at the club. It is the training screen's: once the manager went
+  to another screen, its memory held something else.
+
+**What the game does when a player leaves.** The manager put Remy Mitchell in goal and released him (both in the
+game, then reloaded without saving). From one game day to the next, the game:
+
+- took him out of the senior team's list, the later players moving up one;
+- freed his contract, whose block another player's contract took at once;
+- set his last club (`+0x350`) and the day he left (`+0x364`);
+- emptied his slot in the team selection (below), which the tactics screen then showed as "None" in goal.
+
+It left the advice objects and the manager's details pointing at him.
+
+**The team selections.** The match engine keeps what the manager picked, for each tactic, as objects of
+`simatch::PREPARED_TACTICS_CREATOR_ARRAY`:
+
+| Offset | Field |
+| --- | --- |
+| `+0x00` | vtable |
+| `+0x08` | a list `(begin, end, capacity)` |
+| `+0x20` | flags: their low 16 bits read `0xff01` in the manager's, `0xff00` in other clubs' |
+| `+0x28` | 26 `u32` slots of the game's person ids (a player's identity block `+0x08`): the eleven in the order of the formation's positions, then the substitutes; `0xFFFFFFFF` is empty |
+
+- The save had 38 such objects. Three held the manager's current selection. The game emptied Mitchell's slot in one
+  of them and left him in the other two.
+- When the manager moved Kepa from the bench into goal, all three changed: the goal slot got Kepa's id, the first
+  substitute's slot `0xFFFFFFFF`. Other copies were made for the screen and on a thread's stack.
+- Nothing else in an object holds person ids: the set pieces are not among them.
+- One object read 0 for the list's begin and had no player in its slots, as a block the allocator has taken back. All
+  the others held a sound list.
+
+**What the editor does.** A move, release or swap out of such a club first empties the player's slot in every copy
+that holds him and whose filled slots are mostly players of the club's teams. A national team's selection, which
+holds him among players of other clubs, is left alone. It finds the copies by their class, in one pass over the
+game's memory: 3 to 4 seconds in a release build. It leaves the stacks out, and any object without a sound list. An
+undo writes a copy's slots back only while they are what the move left there.
+
+Checked on that save:
+
+- Ezri Konsa was moved to Ipswich and held there for five minutes. The tactics screen showed "None" in his place, and
+  he was not in the squad. He came back to all nine copies that had held him, with his squad number.
+- Declan Rice, Arsenal's captain and a starter, was moved to Ipswich from the app. The next match and the following
+  days went as usual. No copy held him afterwards, and Arsenal's captaincy stayed empty for the manager to fill.
+
+**On Windows.** The editor reads only the Itanium type info of the Mac build, so on Windows it does not find the
+class, and still refuses to move a player out of a club a human manager runs. The probe already finds vtables there
+from MSVC's type descriptors (`class_vtables`); the layout of the objects is to be checked.
+
 ## Still to find
 
 - Where the game keeps the fee it shows in a player's transfer history. The surest way: watch
