@@ -1321,10 +1321,8 @@ export const tr: Strings = {
     noRoom: (club) => `${club} kadrosunda boş yer yok.`,
     noRoomInfoLabel: "Neden?",
     noRoomInfo:
-      "Oyun her takımın oyuncu listesini bellekte tam ölçüsünde tutar ve listeyi kendisi büyütür. Editör oyunun " +
-      "içinde bellek ayırmaz, çünkü oyunun kendisinin vermediği bir bellek alanı oyunu sonradan çökertebilir. Bu " +
-      "yüzden şimdilik yer açmak en güvenli yol; listeyi oyunun kendi yöntemiyle büyütmenin bir yolu üzerinde " +
-      "çalışıyoruz.",
+      "Editör, kadro listesini oyunu riske atmadan büyütemiyor. Yer açmak şimdilik geçici ama güvenli bir çözüm; " +
+      "listeyi büyütmenin bir yolu üzerinde çalışılıyor.",
     noRoomNeed: (player) => `${player} transferi için kadrodan bir oyuncunun ayrılması gerekiyor.`,
     releaseChoice: "Serbest bırak:",
     releasePickLabel: "Serbest bırakılacak oyuncu",

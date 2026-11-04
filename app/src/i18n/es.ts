@@ -1375,10 +1375,8 @@ export const es: Strings = {
     noRoom: (club) => `${club} no tiene sitio en su plantilla.`,
     noRoomInfoLabel: "¿Por qué?",
     noRoomInfo:
-      "El juego guarda en memoria la lista de jugadores de cada equipo con su tamaño justo, y la amplía él mismo. El " +
-      "editor no reserva memoria dentro del juego, porque una memoria que el juego no ha repartido él mismo podría " +
-      "hacer que se cerrara más adelante. Por ahora, hacer sitio es lo más seguro; estamos trabajando en una forma " +
-      "de ampliar la lista como lo hace el juego.",
+      "El editor no puede ampliar la lista de la plantilla sin poner el juego en riesgo. Por ahora, hacer sitio es " +
+      "una solución temporal pero segura; se está trabajando en una forma de ampliar la lista.",
     noRoomNeed: (player) => `Para que llegue ${player}, tiene que salir un jugador de la plantilla.`,
     releaseChoice: "Rescindir:",
     releasePickLabel: "Jugador cuyo contrato se rescinde",

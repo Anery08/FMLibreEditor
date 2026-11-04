@@ -1470,9 +1470,8 @@ export const en = {
     /** The name of the (i) button after the first line, for assistive technology, and the note it shows. */
     noRoomInfoLabel: "Why?",
     noRoomInfo:
-      "The game keeps each team's player list in memory at its exact size and grows it itself. The editor " +
-      "allocates no memory in the game, since memory the game did not hand out itself could crash it later. Making " +
-      "room is the safe way for now; a way to grow the list as the game does is being worked on.",
+      "The editor cannot grow a squad list without putting the game at risk. Making room is a temporary but safe " +
+      "solution for now; a way to grow the list is being worked on.",
     /** The second line, which also names the choices under it; `player` is the player transferred. */
     noRoomNeed: (player: string, club: string) => `For ${player} to join, a player has to leave ${club}.`,
     /** The first choice: a player of the club picked from a list, who becomes a free agent. */
