@@ -4205,9 +4205,30 @@ button.danger:hover:not(:disabled) {
   border-top: 1px solid var(--border);
 }
 
-/* The players are read, not picked: no row is a link. The cells are tighter than a list's: there are more of them. */
+/* The players are read, not picked: no row is a link, only a player's name (see below). The cells are tighter than a
+   list's: there are more of them. */
 .squad-grid tbody tr {
   cursor: default;
+}
+
+/* A player's name leads to his profile in the player list: it reads as the other names do until the pointer or the
+   keyboard is on it, then as a link. */
+.squad-grid button.name-link {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  line-height: inherit;
+  text-align: left;
+  text-decoration: underline transparent;
+  text-underline-offset: 3px;
+}
+
+.squad-grid button.name-link:is(:hover, :focus-visible):not(:disabled) {
+  background: none;
+  color: var(--accent-text);
+  text-decoration-color: currentColor;
 }
 
 .squad-grid :is(th, td) {

@@ -1,6 +1,7 @@
 // The Squad tab of a club's profile: the players of each of its teams with the values a squad screen shows, the actions
 // on a whole team (heal everyone, lift every ban, give everyone the best morale, rest everyone) and the captains. What it writes is
-// logged like any change, and undone from the Changes view, or at once from the line under the buttons.
+// logged like any change, and undone from the Changes view, or at once from the line under the buttons. A player's name
+// opens his profile in the player list.
 
 import { useContext, useEffect, useMemo, useRef, useState, type Ref } from "react";
 import { Ability } from "./Ability";
@@ -19,6 +20,7 @@ import {
 } from "./labels";
 import { undoFailureLines } from "./massDraft";
 import { percentText } from "./MedicalGroup";
+import { OpenPlayerContext } from "./openPlayer";
 import type { Loaded, PanelIds } from "./ProfileParts";
 import type {
   BatchUndo,
@@ -576,8 +578,12 @@ interface SquadRowProps {
   onCaptain: (role: CaptainRole) => void;
 }
 
-/** One player: his tags and badge by his name, his values, and the menu that makes him captain. */
+/**
+ * One player: his name, which leads to his profile in the player list, with his tags and badge by it, his values, and
+ * the menu that makes him captain.
+ */
 function SquadRow({ player, role, editable, busy, onCaptain }: SquadRowProps) {
+  const openPlayer = useContext(OpenPlayerContext);
   const positions = player.positions.map(positionLabel);
   const fullName = player.fullName !== null && player.fullName !== player.name ? player.fullName : null;
   return (
@@ -585,7 +591,18 @@ function SquadRow({ player, role, editable, busy, onCaptain }: SquadRowProps) {
     <tr className={player.playsHere ? undefined : "away"}>
       <td className="col-name" title={fullName === null ? player.name : `${player.name}\n${fullName}`}>
         <div className="squad-name">
-          <span className="name">{player.name}</span>
+          {openPlayer ? (
+            <button
+              type="button"
+              className="name name-link"
+              title={text.openProfile}
+              onClick={() => openPlayer(player)}
+            >
+              {player.name}
+            </button>
+          ) : (
+            <span className="name">{player.name}</span>
+          )}
           {role !== null && (
             <abbr className={`role-badge ${role}`} title={fieldLabel("club", ROLE_FIELD[role])}>
               {role === "captain" ? text.captainShort : text.viceCaptainShort}

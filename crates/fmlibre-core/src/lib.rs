@@ -53,7 +53,7 @@ pub use health::{Check, CheckResult, Health, Lock, STRUCTURE};
 pub use index::{Listed, SearchIndex};
 pub use mass::{Operation, Plan, Planned, Skipped};
 pub use medical::{Ban, HealPlan, Healed, Injury, LiftPlan, Lifted};
-pub use players::{Nation, PLAYABLE_RATING, PlayerIndex, PlayerSummary, nations, read_players};
+pub use players::{Nation, PLAYABLE_RATING, PlayerIndex, PlayerSummary, is_woman, nations, read_players};
 pub use profile::{
     ArrayRvas, BuildProfile, ContractLayout, Layout, PlayerLayout, PluginFingerprint, StaffLayout, layout_for,
     profile_for,

@@ -738,6 +738,9 @@ export const es: Strings = {
       clear: "Borrar",
       any: "Cualquiera",
       position: "Posición",
+      gender: "Género",
+      men: "Masculino",
+      women: "Femenino",
       age: "Edad",
       minAge: "Edad mínima",
       maxAge: "Edad máxima",
@@ -1568,6 +1571,7 @@ export const es: Strings = {
 
     // La tabla
     tableLabel: (team) => `Jugadores del equipo: ${team}`,
+    openProfile: "Abrir el perfil",
     columns: {
       name: "Nombre",
       position: "Pos.",

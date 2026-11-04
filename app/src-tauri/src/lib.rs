@@ -295,6 +295,7 @@ impl Connection {
             editable: self.session.process.can_write() && self.session.writes_allowed(),
             writable: self.session.process.can_write(),
             known_build: self.session.known_build(),
+            gender_known: self.session.layout.player.gender.is_some() && self.session.layout.staff.gender.is_some(),
             health: Health::clone(&self.session.health()),
             refrozen: None,
         }
@@ -1370,6 +1371,8 @@ struct ConnectionInfo {
     writable: bool,
     /// Whether the editor has a profile for this build of the game: one it was checked with.
     known_build: bool,
+    /// Whether the layout tells women from men, players and staff alike: the lists offer that filter only then.
+    gender_known: bool,
     /// What the checks the editor makes before it writes found on this game.
     health: Health,
     /// Only from `connect`: what it froze again of what was frozen in this save before, when there was any.

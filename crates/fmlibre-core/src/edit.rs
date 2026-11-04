@@ -561,6 +561,7 @@ impl StaffSummary {
         match field {
             "current_ability" => self.current_ability = value as u16,
             "potential_ability" => self.potential_ability = value as i16,
+            "contract.expires" => self.contract_expires = FmDate::from_number(value),
             "nation" => self.nation_address = value as u64,
             _ => {}
         }
@@ -1204,6 +1205,7 @@ mod tests {
             attributes: vec![10; crate::ATTRIBUTE_GROUPS.iter().map(|(_, keys)| keys.len()).sum()],
             transfer_listed: false,
             loan_listed: false,
+            woman: None,
             address: 0,
             shift: 0,
         };

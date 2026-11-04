@@ -426,6 +426,7 @@ mod tests {
             attributes: Vec::new(),
             transfer_listed: false,
             loan_listed: false,
+            woman: Some(false),
             address: 0,
             shift: 0,
         };

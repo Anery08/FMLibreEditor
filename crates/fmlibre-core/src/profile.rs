@@ -171,6 +171,10 @@ pub struct PlayerLayout {
     pub identity: Option<u64>,
     /// Shifts of the person block seen across player classes (player-coaches use 0xF8).
     pub person_block_shifts: Vec<u64>,
+    /// `u8` of flags in the identity block, one of which is set for a woman (see [`crate::is_woman`]); unset where the
+    /// layout has not placed them yet.
+    #[serde(default)]
+    pub gender: Option<u64>,
     pub height: u64,
     pub asking_price: u64,
     pub home_reputation: u64,
@@ -239,8 +243,8 @@ impl PlayerLayout {
             self.positions + crate::POSITIONS.len() as u64,
             self.personality + crate::PERSONALITY.len() as u64,
         ];
-        let attributes = self.attributes.values().map(|offset| offset + 1);
-        fields.into_iter().chain(attributes).max().unwrap_or(0)
+        let single_bytes = self.attributes.values().chain(&self.gender).map(|offset| offset + 1);
+        fields.into_iter().chain(single_bytes).max().unwrap_or(0)
     }
 
     /// The largest person-block shift.
@@ -337,6 +341,9 @@ pub struct StaffLayout {
     pub identity: Option<u64>,
     /// Shifts of the person block seen across staff classes (the human manager uses 0x340).
     pub person_block_shifts: Vec<u64>,
+    /// `u8` of flags in the identity block, as for players; unset where the layout has not placed them yet.
+    #[serde(default)]
+    pub gender: Option<u64>,
     /// Attributes stored raw (0..100) by key; see [`crate::STAFF_ATTRIBUTE_GROUPS`].
     pub attributes: BTreeMap<String, u64>,
     /// Ratings stored as shown (1..20) by key.
@@ -369,7 +376,8 @@ impl StaffLayout {
             self.world_reputation + 2,
             self.potential_ability + 2,
         ];
-        let single_bytes = self.attributes.values().chain(self.ratings.values()).map(|offset| offset + 1);
+        let single_bytes =
+            self.attributes.values().chain(self.ratings.values()).chain(&self.gender).map(|offset| offset + 1);
         fields.into_iter().chain(single_bytes).max().unwrap_or(0)
     }
 

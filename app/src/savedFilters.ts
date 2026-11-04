@@ -3,7 +3,8 @@
 // data): every access is guarded, and every entry is checked field by field, with a default for what is wrong.
 
 import { useState } from "react";
-import { PLAYER_ATTRIBUTES, readAttributeRows } from "./AttributeFilters";
+import { PLAYER_ATTRIBUTES } from "./AttributeFilters";
+import { readPersonFields, textOr } from "./FilterBar";
 import { intlLocale } from "./i18n";
 import { NO_PLAYER_FILTERS, POSITION_ORDER, type PlayerFilterFields } from "./PlayerFilters";
 import { isRecord } from "./restore";
@@ -25,9 +26,6 @@ export interface SavedPlayerFilter {
   order: PlayerOrder | null;
 }
 
-/** What the filter bar's inputs can hold at the most, however a stored value got there. */
-const MAX_TEXT_LENGTH = 200;
-
 /** Every sort there is; the type makes the table fail to compile when a sort is added without being listed here. */
 const SORTS: Record<PlayerSort, true> = {
   currentAbility: true,
@@ -41,17 +39,6 @@ const SORTS: Record<PlayerSort, true> = {
 
 const POSITION_KEYS: ReadonlySet<string> = new Set(POSITION_ORDER);
 
-/** A date input's `YYYY-MM-DD`. */
-const DATE_TEXT = /^\d{4}-\d{2}-\d{2}$/;
-
-/** A number as a number input holds it: empty, or something `Number` reads. */
-const isNumberText = (text: string) => text.trim() === "" || Number.isFinite(Number(text));
-
-/** `value` when it is a text that `fits`, `fallback` otherwise. */
-function textOr(value: unknown, fallback: string, fits: (text: string) => boolean = () => true): string {
-  return typeof value === "string" && value.length <= MAX_TEXT_LENGTH && fits(value) ? value : fallback;
-}
-
 /**
  * The fields of the filter bar from a stored value; a field that is missing or is not what the bar holds is empty. It
  * also brings the bar back after the language was switched (see `restore.ts`).
@@ -60,22 +47,11 @@ export function readFields(value: unknown): PlayerFilterFields {
   const given = isRecord(value) ? value : {};
   const none = NO_PLAYER_FILTERS;
   return {
+    ...readPersonFields(given, PLAYER_ATTRIBUTES),
     position: textOr(given.position, none.position, (text) => text === "" || POSITION_KEYS.has(text)),
-    minAge: textOr(given.minAge, none.minAge, isNumberText),
-    maxAge: textOr(given.maxAge, none.maxAge, isNumberText),
-    minCurrentAbility: textOr(given.minCurrentAbility, none.minCurrentAbility, isNumberText),
-    minPotentialAbility: textOr(given.minPotentialAbility, none.minPotentialAbility, isNumberText),
-    nation: textOr(given.nation, none.nation),
-    club: textOr(given.club, none.club),
     freeAgents: typeof given.freeAgents === "boolean" ? given.freeAgents : none.freeAgents,
-    contractExpiresBy: textOr(
-      given.contractExpiresBy,
-      none.contractExpiresBy,
-      (text) => text === "" || DATE_TEXT.test(text),
-    ),
     transferListed: typeof given.transferListed === "boolean" ? given.transferListed : none.transferListed,
     loanListed: typeof given.loanListed === "boolean" ? given.loanListed : none.loanListed,
-    attributes: readAttributeRows(given.attributes, PLAYER_ATTRIBUTES),
   };
 }
 

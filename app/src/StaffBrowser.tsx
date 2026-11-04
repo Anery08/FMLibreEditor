@@ -1,39 +1,32 @@
 import { useState } from "react";
 import { Ability } from "./Ability";
-import { AttributeFilters, readAttributeRows, STAFF_ATTRIBUTES, toAttributeBounds } from "./AttributeFilters";
 import { formatDate } from "./format";
-import { JOB_FILTER_OPTIONS, jobLabel, profileText, staffListText } from "./labels";
+import { jobLabel, profileText, staffListText } from "./labels";
 import { ListBrowser } from "./ListBrowser";
 import { MassEditButton } from "./MassEditDialog";
 import { ClubLogo, NationFlag, PICTURE_SIZE, WithPicture } from "./Picture";
 import { restored, useSnapshot } from "./restore";
+import { countStaffFilters, readStaffFields, StaffFilterBar, toStaffFilter } from "./StaffFilters";
 import { employerOf, HumanBadge, StaffProfile } from "./StaffProfile";
-import type { StaffFilter, StaffSummary } from "./types";
+import type { StaffSummary } from "./types";
 
 const columns = staffListText.columns;
-const filters = staffListText.filters;
 
-/** The job filter saved before the language was switched: a job the select offers, or "" for any. */
-const readJob = (value: unknown) =>
-  typeof value === "string" && JOB_FILTER_OPTIONS.some(({ code }) => String(code) === value) ? value : "";
+interface StaffBrowserProps {
+  version: number;
+  active: boolean;
+  /** Whether the game's layout tells women from men, for the filter that keeps to one of them. */
+  genderKnown: boolean;
+}
 
 /** The staff table with the profile of the selected member of staff beside it. */
-export function StaffBrowser({ version, active }: { version: number; active: boolean }) {
+export function StaffBrowser({ version, active, genderKnown }: StaffBrowserProps) {
   // The filters start as they were before the language was switched, if it was (see `restore.ts`).
-  // The job as the select holds it: a job code, or "" for any.
-  const [job, setJob] = useState(() => restored("staffJob", readJob));
-  const [unemployed, setUnemployed] = useState(() => restored("staffUnemployed", (value) => value === true));
-  const [attributes, setAttributes] = useState(() =>
-    restored("staffAttributes", (value) => readAttributeRows(value, STAFF_ATTRIBUTES)),
-  );
-  useSnapshot("staffJob", () => job);
-  useSnapshot("staffUnemployed", () => unemployed);
-  useSnapshot("staffAttributes", () => attributes);
-  const bounds = toAttributeBounds(attributes);
-  const filter: StaffFilter | undefined =
-    job === "" && !unemployed && bounds === undefined
-      ? undefined
-      : { job: job === "" ? undefined : Number(job), unemployed: unemployed || undefined, attributes: bounds };
+  const [fields, setFields] = useState(() => restored("staffFields", readStaffFields));
+  useSnapshot("staffFields", () => fields);
+  // Where the layout cannot tell women from men, the bar offers no such choice and none is asked for.
+  const filter = toStaffFilter(genderKnown ? fields : { ...fields, gender: "" });
+  const filterCount = countStaffFilters(filter);
 
   return (
     <ListBrowser<StaffSummary>
@@ -44,28 +37,9 @@ export function StaffBrowser({ version, active }: { version: number; active: boo
       active={active}
       placeholder={staffListText.search}
       summary={staffListText.summary}
-      empty={(query) => staffListText.empty(query, filter !== undefined)}
+      empty={(query) => staffListText.empty(query, filterCount > 0)}
       filterBar={
-        <div className="filter-bar">
-          <div className="filter-fields">
-            <label className="filter-field">
-              <span>{filters.job}</span>
-              <select value={job} onChange={(e) => setJob(e.currentTarget.value)}>
-                <option value="">{filters.anyJob}</option>
-                {JOB_FILTER_OPTIONS.map(({ code, label }) => (
-                  <option key={code} value={code}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="filter-field">
-              <input type="checkbox" checked={unemployed} onChange={(e) => setUnemployed(e.currentTarget.checked)} />
-              <span>{filters.unemployedOnly}</span>
-            </label>
-            <AttributeFilters rows={attributes} choices={STAFF_ATTRIBUTES} onChange={setAttributes} />
-          </div>
-        </div>
+        <StaffFilterBar fields={fields} onChange={setFields} active={filterCount} genderKnown={genderKnown} />
       }
       toolbarActions={(list) => <MassEditButton entity="staff" filters={{ staffFilter: filter }} list={list} />}
       tableClass="staff-grid"

@@ -82,6 +82,8 @@ export interface ConnectionInfo {
   writable: boolean;
   /** Whether the editor has a profile for this build of the game: one it was checked with. */
   knownBuild: boolean;
+  /** Whether the game's layout tells women from men, players and staff alike: the lists offer that filter only then. */
+  genderKnown: boolean;
   /** What the checks the editor makes before it writes found on this game. */
   health: Health;
   /** Only from `connect`: what it froze again of what was frozen in this save before, when there was any. */
@@ -311,29 +313,35 @@ export interface AttributeBound {
   max?: number;
 }
 
-/** Filters for `search_players`; omitted fields match everyone. */
-export interface PlayerFilter {
-  /** A position key (gk, sw, dl, dc, dr, dm, ml, mc, mr, aml, amc, amr, st, wbl, wbr); rated 15+ there. */
-  position?: string;
+/** The filters `search_players` and `search_staff` both take; omitted fields match everyone. */
+export interface PersonFilter {
+  /** true: women only; false: men only. Whom the game's layout cannot tell apart matches neither. */
+  women?: boolean;
   minAge?: number;
   maxAge?: number;
   minCurrentAbility?: number;
   minPotentialAbility?: number;
   /** Part of the nation's name; accents and case ignored. */
   nation?: string;
-  /** Part of the club's name; accents and case ignored. */
+  /** Part of the club's name (the employer's, for staff); accents and case ignored. */
   club?: string;
+  /** Only contracts ending on or before this date. */
+  contractExpiresBy?: FmDate;
+  /** Bounds on attributes, every one of which must hold. */
+  attributes?: AttributeBound[];
+}
+
+/** Filters for `search_players`; omitted fields match everyone. */
+export interface PlayerFilter extends PersonFilter {
+  /** A position key (gk, sw, dl, dc, dr, dm, ml, mc, mr, aml, amc, amr, st, wbl, wbr); rated 15+ there. */
+  position?: string;
   /** Only players of the club with this UID, e.g. those a player can swap with. */
   clubUid?: number;
   /** Only players without a club. */
   freeAgents?: boolean;
-  /** Only contracts ending on or before this date. */
-  contractExpiresBy?: FmDate;
   /** Only players their club has put on the transfer list, and on the loan list. */
   transferListed?: boolean;
   loanListed?: boolean;
-  /** Bounds on attributes, every one of which must hold. */
-  attributes?: AttributeBound[];
 }
 
 export type PlayerSort =
@@ -351,14 +359,12 @@ export interface PlayerOrder {
   ascending: boolean;
 }
 
-/** Filters for `search_staff`. */
-export interface StaffFilter {
+/** Filters for `search_staff`; omitted fields match everyone. */
+export interface StaffFilter extends PersonFilter {
   /** Job code (see `jobLabel`); its player-coach variant matches too. */
   job?: number;
   /** Only staff without a contract. */
   unemployed?: boolean;
-  /** Bounds on attributes, every one of which must hold. */
-  attributes?: AttributeBound[];
 }
 
 /** Filters for `search_clubs`. */

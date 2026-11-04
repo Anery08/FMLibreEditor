@@ -76,6 +76,8 @@ const game: GameInfo = {
 };
 
 const FIRST = ["Arda", "Mateo", "Lukas", "Kerem", "Jonas", "Rafael", "Emre", "Noah", "Tiago", "Søren", "Ilkay", "Bruno"];
+/** The first names of the fixture women; the other names are shared. */
+const FIRST_WOMEN = ["Aitana", "Elif", "Lena", "Ebru", "Sofia", "Marta", "Ingrid", "Chloé", "Zehra", "Pernille"];
 const LAST = ["Yılmaz", "Fernández", "Hoffmann", "Aydın", "Lindqvist", "Moreau", "Çelik", "Kowalski", "Silva", "Novák"];
 const NATIONS = ["Türkiye", "Spain", "Germany", "Brazil", "Denmark", "France", "Poland", "Portugal", "Czechia"];
 const CLUBS = ["Northbridge FC", "Atlético Riverside", "Sporting Harbour", "FC Lindenau", "Kuzey Spor", "Old Mill United"];
@@ -86,13 +88,17 @@ const nationAddress = (nation: string) => 0x7f00_0000 + NATIONS.indexOf(nation) 
 /** The fixture nation a nation field's value stands for. */
 const nationAt = (address: number) => NATIONS.find((nation) => nationAddress(nation) === address);
 
-/** A fixture person's nation and club with their UIDs, as the real rows have them; the clubs are the men's ones below. */
-function withUids(nation: string, club: string | null) {
+/**
+ * A fixture person's nation and club with their UIDs, as the real rows have them: the men's club of that name (see
+ * `clubs` below), or for a woman the women's club.
+ */
+function withUids(nation: string, club: string | null, woman = false) {
+  const at = club === null ? -1 : CLUBS.indexOf(club);
   return {
     nation,
     nationUid: 1000 + NATIONS.indexOf(nation),
     club,
-    clubUid: club === null ? null : 500 + CLUBS.indexOf(club) * 7,
+    clubUid: club === null ? null : woman ? 2_000_100_000 + at : 500 + at * 7,
   };
 }
 
@@ -137,8 +143,11 @@ function contractEnd(next: () => number): FmDate {
   return roll < 0.8 ? { year, month: 6, day: 30 } : { year, month: 12, day: 31 };
 }
 
-/** The fixture players, and how well each plays every position (by UID): the list and the profile both read the ratings. */
-const { players, ratings } = (() => {
+/**
+ * The fixture players, and how well each plays every position (by UID): the list and the profile both read the ratings.
+ * The men come first; the women after them, who play for the women's clubs or none, are in `women` too.
+ */
+const { players, ratings, women } = (() => {
   const next = random(27);
   const pick = <T,>(items: T[]) => items[Math.floor(next() * items.length)];
   const ratings: Record<number, Record<string, number>> = {};
@@ -167,7 +176,35 @@ const { players, ratings } = (() => {
       potentialAbility,
     };
   });
-  return { players, ratings };
+  // The women are drawn from a generator of their own, so the men come out as before.
+  const nextWoman = random(1971);
+  const pickWoman = <T,>(items: T[]) => items[Math.floor(nextWoman() * items.length)];
+  const womenPlayers = Array.from({ length: 120 }, (_, i): PlayerSummary => {
+    const uid = 3_000_000 + i * 41;
+    const ca = Math.round(40 + nextWoman() * 140);
+    const born: FmDate = {
+      year: 1990 + Math.floor(nextWoman() * 18),
+      month: 1 + Math.floor(nextWoman() * 12),
+      day: 1 + Math.floor(nextWoman() * 28),
+    };
+    const club = nextWoman() < 0.85 ? pickWoman(CLUBS) : null;
+    const own = random(uid ^ 0x5a5a5a);
+    ratings[uid] = positionRatings(own, isKeeper(uid));
+    return {
+      uid,
+      name: `${pickWoman(FIRST_WOMEN)} ${pickWoman(LAST)}`,
+      fullName: null,
+      dateOfBirth: born,
+      age: ageOn(born, GAME_DATE),
+      ...withUids(pickWoman(NATIONS), club, true),
+      positions: playablePositions(ratings[uid]),
+      contractExpires: club === null ? null : contractEnd(own),
+      currentAbility: ca,
+      potentialAbility: Math.min(200, ca + Math.round(nextWoman() * 40)),
+    };
+  });
+  const women = new Set(womenPlayers.map((p) => p.uid));
+  return { players: [...players, ...womenPlayers], ratings, women };
 })();
 
 const ATTRIBUTES = [
@@ -575,6 +612,9 @@ const STAFF_ATTRIBUTES = [
 ];
 const STAFF_RATINGS = ["working_with_youngsters", "authority"];
 
+/** Every sixth member of the fixture staff is a woman, who works for a women's club if she has a job. */
+const isStaffWoman = (index: number) => index % 6 === 3;
+
 const staff: StaffSummary[] = (() => {
   const next = random(1984);
   const pick = <T,>(items: T[]) => items[Math.floor(next() * items.length)];
@@ -582,13 +622,15 @@ const staff: StaffSummary[] = (() => {
     const born: FmDate = { year: 1955 + Math.floor(next() * 40), month: 1 + Math.floor(next() * 12), day: 1 + Math.floor(next() * 28) };
     const ca = Math.round(40 + next() * 140);
     const employed = i === 0 || next() < 0.85;
+    // A woman's first name takes the place of the one drawn, so the other fields come out as before.
+    const first = pick(FIRST);
     return {
       uid: 2_000_000 + i * 53,
-      name: `${pick(FIRST)} ${pick(LAST)}`,
+      name: `${isStaffWoman(i) ? FIRST_WOMEN[i % FIRST_WOMEN.length] : first} ${pick(LAST)}`,
       fullName: null,
       dateOfBirth: born,
       age: ageOn(born, GAME_DATE),
-      ...withUids(pick(NATIONS), employed ? pick(CLUBS) : null),
+      ...withUids(pick(NATIONS), employed ? pick(CLUBS) : null, isStaffWoman(i)),
       job: i === 0 ? 16 : employed ? pick(JOBS) : null,
       currentAbility: ca,
       potentialAbility: Math.min(200, ca + Math.round(next() * 30)),
@@ -596,6 +638,10 @@ const staff: StaffSummary[] = (() => {
     };
   });
 })();
+
+/** Whether the fixture player or member of staff is a woman, as the real rows know it from the game's gender flags. */
+const womenStaff = new Set(staff.filter((_, i) => isStaffWoman(i)).map((s) => s.uid));
+const isWoman = (uid: number) => women.has(uid) || womenStaff.has(uid);
 
 /** Made-up but self-consistent profile for a fixture member of staff. */
 function staffDetails(member: StaffSummary): StaffDetails {
@@ -1087,10 +1133,10 @@ function planStaffMove(uid: number, clubUid: number): MovePreview {
   if (member.clubUid === clubUid) {
     throw failure("move.sameClub", "the player is at this club already");
   }
-  if (to.women) {
+  const from = clubs.find((c) => c.uid === member.clubUid)!;
+  if (to.women !== from.women) {
     throw failure("move.menAndWomen", "one club is a men's club and the other a women's club");
   }
-  const from = clubs.find((c) => c.uid === member.clubUid)!;
   return { from: { uid: from.uid, name: from.name }, to: { uid: to.uid, name: to.name } };
 }
 
@@ -1279,7 +1325,7 @@ function planMove(uid: number, clubUid: number, terms: MoveTerms, fee?: number):
       "the player is at a club a human manager runs; its tactics and training point at him too, so he leaves it in the game itself",
     );
   }
-  if (to.women) {
+  if (to.women !== clubs.find((c) => c.uid === player.clubUid)?.women) {
     throw failure("move.menAndWomen", "one club is a men's club and the other a women's club");
   }
   if (clubUid === FULL_CLUB) {
@@ -1561,8 +1607,7 @@ type CaptainPair = { captain: number | null; viceCaptain: number | null };
 
 /**
  * The teams of a fixture club, as UIDs: the senior team holds the players over 21 and the best youngsters, the
- * under-21s and under-18s the other youngsters. The weakest senior player is out on loan. Women's clubs have no
- * fixture players, so their one team is empty.
+ * under-21s and under-18s the other youngsters. The weakest senior player is out on loan.
  */
 function fixtureTeams(clubUid: number): { kind: number; ageLimit: number | null; uids: number[]; out: number | null }[] {
   const own = players.filter((p) => p.clubUid === clubUid).sort((a, b) => b.currentAbility - a.currentAbility);
@@ -1963,6 +2008,7 @@ function matchesPlayerFilter(p: PlayerSummary, f: PlayerFilter): boolean {
       (p.contractExpires !== null && dayNumber(p.contractExpires) <= dayNumber(f.contractExpiresBy))) &&
     (!f.transferListed || d?.contract?.transferListed === true) &&
     (!f.loanListed || d?.contract?.loanListed === true) &&
+    (f.women === undefined || isWoman(p.uid) === f.women) &&
     (f.attributes ?? []).every((bound) => holds(bound, d?.attributes[bound.key]?.value))
   );
 }
@@ -2009,10 +2055,20 @@ function playerComparator({ by, ascending }: PlayerOrder): (a: PlayerSummary, b:
 
 /** The staff filter of the real command: a player-coach has the code of the coaching job plus one, and matches it too. */
 function matchesStaffFilter(s: StaffSummary, f: StaffFilter): boolean {
-  const d = (f.attributes?.length ?? 0) > 0 ? staffDetails(s) : null;
+  // The contract and the attributes are in the profile, made only when a filter asks for them.
+  const d = f.contractExpiresBy !== undefined || (f.attributes?.length ?? 0) > 0 ? staffDetails(s) : null;
+  const expires = d?.contract?.expires ?? null;
   return (
     (f.job === undefined || (s.job !== null && (s.job === f.job || s.job === f.job + 1))) &&
+    (f.minAge === undefined || (s.age !== null && s.age >= f.minAge)) &&
+    (f.maxAge === undefined || (s.age !== null && s.age <= f.maxAge)) &&
+    (f.minCurrentAbility === undefined || s.currentAbility >= f.minCurrentAbility) &&
+    (f.minPotentialAbility === undefined || s.potentialAbility >= f.minPotentialAbility) &&
+    contains(s.nation, f.nation) &&
+    contains(s.club, f.club) &&
     (!f.unemployed || s.job === null) &&
+    (f.contractExpiresBy === undefined || (expires !== null && dayNumber(expires) <= dayNumber(f.contractExpiresBy))) &&
+    (f.women === undefined || isWoman(s.uid) === f.women) &&
     (f.attributes ?? []).every((bound) => holds(bound, d?.attributes[bound.key]?.value))
   );
 }
@@ -2133,6 +2189,8 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         editable: !unknownBuild,
         writable: true,
         knownBuild: !unknownBuild,
+        // The fixtures know who is a woman, as a layout that places the gender flags does.
+        genderKnown: true,
         health: mockHealth(),
       };
       mockConnection = info;

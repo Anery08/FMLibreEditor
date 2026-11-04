@@ -711,6 +711,9 @@ export const tr: Strings = {
       clear: "Temizle",
       any: "Tümü",
       position: "Pozisyon",
+      gender: "Cinsiyet",
+      men: "Erkek",
+      women: "Kadın",
       age: "Yaş",
       minAge: "En düşük yaş",
       maxAge: "En yüksek yaş",
@@ -1501,6 +1504,7 @@ export const tr: Strings = {
 
     // The table
     tableLabel: (team) => `Oyuncular: ${team}`,
+    openProfile: "Oyuncunun profilini aç",
     columns: {
       name: "İsim",
       position: "Poz",

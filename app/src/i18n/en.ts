@@ -680,6 +680,7 @@ export const en = {
       club: "club",
       contractExpires: "contract end",
     } satisfies Record<PlayerSort, string>,
+    /** The filters; the staff list has those that are not about players too (see FilterBar.tsx). */
     filters: {
       /** The button that shows or hides the filters. */
       toggle: "Filters",
@@ -689,6 +690,10 @@ export const en = {
       /** The entry of the position select that is no filter. */
       any: "Any",
       position: "Position",
+      /** Whom the list shows: the select's name, and its choices after `any`. */
+      gender: "Gender",
+      men: "Men",
+      women: "Women",
       age: "Age",
       minAge: "Minimum age",
       maxAge: "Maximum age",
@@ -774,6 +779,7 @@ export const en = {
       potentialAbility: "PA",
       id: "ID",
     },
+    /** The filters only the staff list has; the others are the player list's (`playerList.filters`). */
     filters: {
       job: "Job",
       /** The entry of the job select that is no filter. */
@@ -1704,6 +1710,8 @@ export const en = {
     // The table
     /** The table's name for assistive technology; `team` is the name of the team. */
     tableLabel: (team: string) => `Players of ${team}`,
+    /** Hover text of a player's name, which opens his profile in the player list. */
+    openProfile: "Open the player's profile",
     columns: {
       name: "Name",
       position: "Pos",
