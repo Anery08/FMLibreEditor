@@ -37,6 +37,11 @@ const PLAY_ON: u32 = 49;
 /// Bytes per entry of the index by person id: the `u32` id, 4 spare bytes and the pointer to the entry.
 const INDEX_ENTRY: usize = 16;
 
+/// The most pointers the block of the list of planned retirements may hold. The game plans them for the whole
+/// database and doubles the block as the list grows, so late in a season it is far past a squad's 2,000; the index
+/// by person id must still list as many.
+const LONGEST_PLANNED: u64 = 1 << 17;
+
 /// One retirement the game has planned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -282,10 +287,13 @@ impl Session {
         };
         // A list the game has not needed yet has no block.
         let list_header = manager + r.planned;
-        let [_, list_end, list_capacity] = header(list_header)?;
-        let list = match header(list_header)? {
+        let [list_begin, list_end, list_capacity] = header(list_header)?;
+        let list = match [list_begin, list_end, list_capacity] {
             [0, 0, 0] => None,
-            _ => Some(PointerList::read(&self.process, list_header)?.ok_or(MoveError::NoRetirements)?),
+            _ => {
+                let list = PointerList::read_up_to(&self.process, list_header, LONGEST_PLANNED)?;
+                Some(list.ok_or(MoveError::NoRetirements)?)
+            }
         };
         let entries = list.as_ref().map(|list| list.elements(&self.process)).transpose()?.unwrap_or_default();
         let index_header = manager + r.by_person;
