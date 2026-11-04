@@ -412,6 +412,11 @@ pub(crate) struct PointerList {
 impl PointerList {
     /// The list whose header is at `header`, or `None` when the header does not hold one.
     pub(crate) fn read(process: &Process, header: u64) -> Result<Option<Self>, MoveError> {
+        Self::read_up_to(process, header, LONGEST_LIST)
+    }
+
+    /// [`PointerList::read`] for a list whose block may hold up to `longest` pointers.
+    pub(crate) fn read_up_to(process: &Process, header: u64, longest: u64) -> Result<Option<Self>, MoveError> {
         let bytes = process.read_bytes(header, 24)?;
         let word = |i: usize| u64::from_le_bytes(bytes[i * 8..i * 8 + 8].try_into().expect("8 bytes"));
         let (begin, end, capacity) = (word(0), word(1), word(2));
@@ -420,7 +425,7 @@ impl PointerList {
             && end <= capacity
             && (end - begin).is_multiple_of(8)
             && (capacity - begin).is_multiple_of(8)
-            && capacity - begin <= 8 * LONGEST_LIST;
+            && capacity - begin <= 8 * longest;
         Ok(sane.then_some(Self { header, begin, end, capacity }))
     }
 
