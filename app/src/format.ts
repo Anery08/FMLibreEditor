@@ -85,6 +85,11 @@ export function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** The code of a failed call (see `Failure`), such as "move.noRoom"; null for any other error. */
+export function errorCode(error: unknown): string | null {
+  return isFailure(error) ? error.code : null;
+}
+
 function isFailure(value: unknown): value is Failure {
   return typeof value === "object" && value !== null && "code" in value && "params" in value && "message" in value;
 }

@@ -3884,6 +3884,122 @@ button.danger:hover:not(:disabled) {
   color: var(--danger);
 }
 
+/* A full squad list: the box that offers to make room, where the refusal would be. A notice, as the update's is: a
+   hairline in the accent, and its wash. */
+.room-notice {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-text);
+  border-radius: var(--radius);
+  background: var(--accent-faint);
+}
+
+/* The first line, and the (i) after it. Its note opens under the line, as wide as the box's text. */
+.room-head {
+  position: relative;
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* The second line names the choices under it. */
+.room-choices {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.room-choices legend {
+  padding: 0 0 4px;
+}
+
+/* A choice: its radio and name, then what it picks and what it does, which go under them when the box is narrow. */
+.room-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.room-choice input[type="radio"] {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.room-choice label {
+  font-weight: 600;
+}
+
+.room-pick {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+/* The players to release: a native list, as wide as its longest line allows. */
+.room-select {
+  max-width: 100%;
+  appearance: auto;
+}
+
+.room-outcome {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* An (i) button: the icon alone, in the accent, sitting on the line of the text it follows. */
+.info-tip-button {
+  display: inline-flex;
+  min-height: 0;
+  padding: 1px;
+  border: 0;
+  border-radius: 50%;
+  color: var(--accent-text);
+  vertical-align: -4px;
+  cursor: help;
+}
+
+.info-tip-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.info-tip-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+/* Its note: printed in reverse, over what follows, under the positioned element the button sits in. */
+.info-tip-note {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 2;
+  display: none;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--text);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.25);
+  color: var(--panel);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.info-tip-note.shown {
+  display: block;
+}
+
 .move-facts {
   margin: 0;
   padding-left: 20px;

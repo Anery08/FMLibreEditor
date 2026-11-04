@@ -73,4 +73,4 @@ pub use staff::{
 };
 pub use staff_move::{Department, STAFF_JOBS, StaffChange, StaffPlan, department_of};
 pub use text::{fold, is_name_like, read_fm_string, read_name_entry};
-pub use transfer::{Amounts, ClubMoney, ClubMove, FeePlan, MAX_FEE, MoveError, MovePlan, MoveTerms, Paid};
+pub use transfer::{Amounts, ClubMoney, ClubMove, FeePlan, MAX_FEE, MoveError, MovePlan, MoveTerms, Paid, RoomMaker};

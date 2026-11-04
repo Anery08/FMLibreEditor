@@ -225,6 +225,10 @@ fmlibre-probe fields player                          # what the editor can chang
 fmlibre-probe get player 7458500                     # those fields' values for one player
 fmlibre-probe set player 7458500 attribute.finishing 18 --shown   # change one: this writes to the game
 fmlibre-probe move 13200568 1139 --restore           # move a player to a club and back: this writes too
+fmlibre-probe room                                   # the clubs whose senior squad list is full, best known first
+fmlibre-probe room 597                               # how full one is, and whom a move there can release to make room
+fmlibre-probe plan 28106491 597 --release 2000031611 # whether a move can be made, as the app's dialog asks; no writes
+fmlibre-probe move 28106491 597 --release 2000031611 --restore   # move him there in that player's place, and back
 fmlibre-probe swap 13200568 72048035 --restore       # two players swap clubs and back: this writes too
 fmlibre-probe release 91100466 --restore             # release a player from his club and back: this writes too
 fmlibre-probe staff-move 4000571 1139 --restore      # move a member of staff to a club and back: this writes too

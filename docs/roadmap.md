@@ -133,6 +133,11 @@ before trusting them.
   with undo. Nothing is allocated in the game, so the new club's squad list must
   have room in its block. Loans and free agents are refused; so are players at a human
   manager's club, except on macOS (see Transfers in Phase 7).
+- [x] Make room in a full squad list: the dialog offers to release one of the club's
+  players in the same transfer (the weakest who is neither injured nor a captain, by
+  default), who leaves his place in the list to the player who joins; or to make it a
+  swap with him. One change, one undo. Growing the list the way the game does is left
+  for later.
 - [x] The rough edges of what shipped:
   - opening a mass edit asks about unapplied profile edits;
   - the Changes view pages and folds mass edits;

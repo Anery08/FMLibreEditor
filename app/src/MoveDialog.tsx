@@ -5,6 +5,10 @@
 //
 // A switch at the top of the dialog makes it a swap instead: after the club it picks one of the club's players, who
 // goes the other way, and each keeps his own contract.
+//
+// A club whose squad list is full cannot take one more player: the editor allocates no memory in the game. The dialog
+// then offers to make room, in a box where the refusal would be: one of the club's players is released in the same
+// transfer, logged and undone with it, or the transfer becomes a swap with him.
 
 import { useContext, useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -19,11 +23,21 @@ import {
   planClubMove,
   planClubSwap,
   planStaffMove,
+  roomMakers,
   swapPlayers,
 } from "./editing";
 import { toPounds, toShown } from "./currency";
-import { currencySymbol, describeError, formatAmount, formatDate, formatMoney } from "./format";
-import { clubListText, editText, fieldLabel, moveText as text, positionLabel, profileText } from "./labels";
+import { currencySymbol, describeError, errorCode, formatAmount, formatDate, formatMoney } from "./format";
+import { InfoTip } from "./InfoTip";
+import {
+  clubListText,
+  editText,
+  fieldLabel,
+  moveText as text,
+  positionLabel,
+  profileText,
+  releaseText,
+} from "./labels";
 import { ClubLogo, PersonFace, PICTURE_SIZE, WithPicture } from "./Picture";
 import { ReputationMeter } from "./ProfileParts";
 import type {
@@ -35,6 +49,7 @@ import type {
   MoveTerms,
   PlayerPage,
   PlayerSummary,
+  RoomMaker,
 } from "./types";
 import { useModal } from "./useModal";
 import { EditorContext } from "./useProfileEditing";
@@ -142,6 +157,9 @@ type Found = { query: string; page: ClubPage } | { query: string; error: string 
 /** The same for the players of a club. */
 type FoundPlayers = { query: string; page: PlayerPage } | { query: string; error: string };
 
+/** The players a club with a full squad list can release to make room, as the game listed them, or why it could not. */
+type Makers = { club: number; outcome: { rows: RoomMaker[] } | { error: string } };
+
 /** What the game said to the plan of a move or a swap, for the club and terms or the player it was asked about. */
 interface Planned {
   key: string;
@@ -211,9 +229,23 @@ function termsOf(wage: number | undefined, expires: number | undefined): MoveTer
   return { ...(wage !== undefined && { wage }), ...(expires !== undefined && { expires }) };
 }
 
-/** What a plan is for. A plan is the dialog's only while the club, the terms and the fee are those it was asked about. */
-const planKey = (club: number, terms: MoveTerms, fee: number | undefined) =>
-  `${club}:${terms.wage ?? ""}:${terms.expires ?? ""}:${fee ?? ""}`;
+/**
+ * What a plan is for. A plan is the dialog's only while the club, the terms, the fee and the player released to make
+ * room are those it was asked about.
+ */
+const planKey = (club: number, terms: MoveTerms, fee: number | undefined, release: number | undefined) =>
+  `${club}:${terms.wage ?? ""}:${terms.expires ?? ""}:${fee ?? ""}:${release ?? ""}`;
+
+/** A player the club can release, as one line of the list to pick from: his name, his ability, and what speaks against. */
+const makerLabel = (row: RoomMaker) =>
+  [
+    row.name,
+    `${profileText.currentAbilityShort} ${row.currentAbility}`,
+    row.injured && text.injuredTag,
+    row.captain && text.captainTag,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
 /** What a fee does to one club's money, a line for the plan: what it pays or gets, and its money before and after. */
 function moneyLine(money: ClubMoney | null, club: string, fee: string, paying: boolean): string {
@@ -501,10 +533,11 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
   const changeButton = useRef<HTMLButtonElement>(null);
   const moveButton = useRef<HTMLButtonElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
+  const swapModeButton = useRef<HTMLButtonElement>(null);
   const alive = useRef(true);
   const running = useRef(false);
   // The control that takes focus once the next render is on screen: one that is not there yet, or was disabled.
-  const pendingFocus = useRef<"search" | "change" | "partner" | "move" | null>(null);
+  const pendingFocus = useRef<"search" | "change" | "partner" | "move" | "swapMode" | null>(null);
   // Set when a key moved the highlight, so that the row it reached scrolls into view; the mouse is not followed.
   const keyboardMoved = useRef(false);
 
@@ -529,6 +562,12 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
   const [replans, setReplans] = useState(0);
   const [moving, setMoving] = useState(false);
   const [moveError, setMoveError] = useState<{ key: string; message: string } | null>(null);
+  // A club whose squad list the plan found full, and the game's refusal, which stands when none of its players can be
+  // released: the dialog offers to make room instead.
+  const [full, setFull] = useState<{ club: number; message: string } | null>(null);
+  const [makers, setMakers] = useState<Makers | null>(null);
+  // The player picked to release; the one suggested (the first) until another is picked.
+  const [releasePick, setReleasePick] = useState<number | null>(null);
 
   useModal(dialog, !moving, onClose);
 
@@ -546,6 +585,17 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
 
   const swap = mode === "swap";
 
+  // Making room: the club picked for a move has a full squad list. Its players that can be released are listed, and
+  // the one picked (at first, the one suggested) is released in the same move. While none is picked yet, there is no
+  // plan to ask.
+  const fullClub = !swap && !staff && club !== null && full?.club === club.uid ? club.uid : null;
+  const makersHere = fullClub !== null && makers?.club === fullClub ? makers.outcome : null;
+  const makerRows = makersHere !== null && "rows" in makersHere ? makersHere.rows : null;
+  const leaver = makerRows && (makerRows.find((row) => row.uid === releasePick) ?? makerRows[0] ?? null);
+  const release = leaver?.uid;
+  // The box is there while the players are listed, and once some can be released; with none, the refusal stands.
+  const offerRoom = fullClub !== null && (makersHere === null || (makerRows !== null && makerRows.length > 0));
+
   // What the plan is for: for a move, null while there is no club, or an input cannot be sent; for a swap, null while
   // no player is picked. Move or Swap is offered only for a plan the game made for what is picked now, so a change
   // takes it back at once, before the new plan is asked.
@@ -553,17 +603,19 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
     ? partner !== null
       ? swapKey(partner.uid)
       : null
-    : club !== null && valid
-      ? planKey(club.uid, terms, fee)
+    : club !== null && valid && (fullClub === null || release !== undefined)
+      ? planKey(club.uid, terms, fee, release)
       : null;
   const outcome = key !== null && planned?.key === key ? planned.outcome : null;
   const preview = outcome !== null && "preview" in outcome ? outcome.preview : null;
   const canMove = preview !== null && !moving;
 
-  // What the button makes, for the plan it is offered for: the swap with the player picked, or the move to the club.
+  // What the button makes, for the plan it is offered for: the swap with the player picked, or the move to the club
+  // (releasing the player picked, to make room).
   const make = swap
     ? partner && (() => swapPlayers(player.uid, partner.uid))
-    : club && (() => (staff ? moveStaff(player.uid, club.uid) : movePlayer(player.uid, club.uid, terms, fee)));
+    : club &&
+      (() => (staff ? moveStaff(player.uid, club.uid) : movePlayer(player.uid, club.uid, terms, fee, release)));
 
   // The clubs on show. Until the search has answered for what is typed they are the last ones: Enter leaves them alone.
   const rows = found !== null && "page" in found ? found.page.rows : [];
@@ -609,29 +661,52 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
   }, [choosing, query]);
 
   // The game works out the move a moment after the club and the terms stop changing. An answer that comes after they
-  // changed again is dropped: the cleanup says so.
+  // changed again is dropped: the cleanup says so. A full squad list is not the end of it: the dialog then lists the
+  // players the club can release, and asks again with the one picked.
+  const waitingForLeaver = fullClub !== null && release === undefined;
   useEffect(() => {
-    if (swap || club === null || !valid) {
+    if (swap || club === null || !valid || waitingForLeaver) {
       return;
     }
     let cancelled = false;
     const asked = termsOf(wage, expires);
     const answer = (result: Planned["outcome"]) => {
       if (!cancelled) {
-        setPlanned({ key: planKey(club.uid, asked, fee), outcome: result });
+        setPlanned({ key: planKey(club.uid, asked, fee, release), outcome: result });
       }
     };
     const timer = setTimeout(() => {
-      (staff ? planStaffMove(player.uid, club.uid) : planClubMove(player.uid, club.uid, asked, fee)).then(
+      (staff ? planStaffMove(player.uid, club.uid) : planClubMove(player.uid, club.uid, asked, fee, release)).then(
         (made) => answer({ preview: made }),
-        (e) => answer({ error: describeError(e) }),
+        (e) => {
+          if (!cancelled && !staff && release === undefined && errorCode(e) === "move.noRoom") {
+            setFull({ club: club.uid, message: describeError(e) });
+          }
+          answer({ error: describeError(e) });
+        },
       );
     }, PLAN_DELAY);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [swap, staff, player.uid, club, valid, wage, expires, fee, replans]);
+  }, [swap, staff, player.uid, club, valid, wage, expires, fee, release, waitingForLeaver, replans]);
+
+  // The players a club with a full squad list can release, asked once the plan found it full, and again after a move
+  // the game refused.
+  useEffect(() => {
+    if (fullClub === null) {
+      return;
+    }
+    let cancelled = false;
+    roomMakers(fullClub).then(
+      (rows) => !cancelled && setMakers({ club: fullClub, outcome: { rows } }),
+      (e) => !cancelled && setMakers({ club: fullClub, outcome: { error: describeError(e) } }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [fullClub, replans]);
 
   // The same for a swap, a moment after the player to swap with is picked.
   useEffect(() => {
@@ -672,6 +747,8 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
       changeButton.current?.focus();
     } else if (target === "partner") {
       partnerInput.current?.focus();
+    } else if (target === "swapMode") {
+      swapModeButton.current?.focus();
     } else {
       (moveButton.current && !moveButton.current.disabled ? moveButton : cancelButton).current?.focus();
     }
@@ -692,9 +769,19 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
 
   const searchAgain = () => {
     setClub(null);
-    // The player was one of the club's.
+    // The player was one of the club's, and so were those it could release.
     setPartner(null);
+    setFull(null);
+    setMakers(null);
+    setReleasePick(null);
     pendingFocus.current = "search";
+  };
+
+  // Making room by a swap instead: the dialog becomes the swap with the player picked to release.
+  const swapWith = (other: PlayerSummary) => {
+    setMode("swap");
+    setPartner(other);
+    pendingFocus.current = "swapMode";
   };
 
   const searchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -770,12 +857,16 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
   const feeNote =
     feeVerdict.status === "invalid" ? { message: text.feeInvalid(formatAmount(MAX_FEE_SHOWN)), invalid: true } : null;
 
-  // Where the clubs of a move that can be made lead, and what its fee does to their money; for a swap, who goes where.
+  // Where the clubs of a move that can be made lead, who is released to make room, and what its fee does to their
+  // money; for a swap, who goes where.
   const route = (made: MovePreview) => {
     if (swap && partner !== null) {
       return text.swapRoute(player.name, made.from.name, made.to.name, partner.name);
     }
     const lines = [text.route(made.from.name, made.to.name)];
+    if (leaver !== null) {
+      lines.push(`${leaver.name}: ${releaseText.ready(made.to.name)}`);
+    }
     if (made.fee) {
       const amount = formatMoney(made.fee.fee);
       lines.push(moneyLine(made.fee.buyer, made.to.name, amount, true));
@@ -785,6 +876,15 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
   };
 
   // What the move or the swap comes to, or why it cannot be made. The plan line is a live region that is always there.
+  // For a full squad list it says why no player can be released, when none can: the game's refusal.
+  const noLeaver =
+    makersHere === null
+      ? null
+      : "error" in makersHere
+        ? text.playersSearchFailed(makersHere.error)
+        : makersHere.rows.length === 0 && full !== null
+          ? full.message
+          : null;
   const plan: { tone: "pending" | "ok" | "refused"; message: string } =
     club === null
       ? { tone: "pending", message: swap ? text.swapChooseClub : staff ? text.staffChooseClub : text.chooseClub }
@@ -792,11 +892,13 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
         ? { tone: "pending", message: text.swapChoosePlayer }
         : !swap && !valid
           ? { tone: "pending", message: text.fixTerms }
-          : outcome === null
-            ? { tone: "pending", message: swap ? text.swapChecking : text.checking }
-            : "error" in outcome
-              ? { tone: "refused", message: outcome.error }
-              : { tone: "ok", message: route(outcome.preview) };
+          : noLeaver !== null
+            ? { tone: "refused", message: noLeaver }
+            : outcome === null
+              ? { tone: "pending", message: swap ? text.swapChecking : text.checking }
+              : "error" in outcome
+                ? { tone: "refused", message: outcome.error }
+                : { tone: "ok", message: route(outcome.preview) };
   // A failed move is told for the club and terms it was tried with only (a swap: for the player picked).
   const failure = moveError !== null && moveError.key === key ? moveError.message : null;
 
@@ -833,6 +935,7 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
               {MODES.map(({ id: kindOfMove, label }) => (
                 <button
                   key={kindOfMove}
+                  ref={kindOfMove === "swap" ? swapModeButton : undefined}
                   type="button"
                   aria-pressed={kindOfMove === mode}
                   disabled={moving}
@@ -1028,6 +1131,53 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
             )}
           </section>
 
+          {offerRoom && club !== null && (
+            <div className="room-notice">
+              <p className="room-head">
+                {text.noRoom(club.name)} <InfoTip label={text.noRoomInfoLabel} note={text.noRoomInfo} />
+              </p>
+              <fieldset className="room-choices" disabled={moving}>
+                <legend>{text.noRoomNeed(player.name, club.name)}</legend>
+                <div className="room-choice">
+                  <input type="radio" id={id("room-release")} name={id("room")} checked readOnly />
+                  <label htmlFor={id("room-release")}>{text.releaseChoice}</label>
+                  <span className="room-pick">
+                    <select
+                      className="move-input room-select"
+                      aria-label={text.releasePickLabel}
+                      value={leaver?.uid ?? ""}
+                      disabled={leaver === null}
+                      onChange={(e) => setReleasePick(Number(e.currentTarget.value))}
+                    >
+                      {makerRows === null ? (
+                        <option value="">{text.playersSearching}</option>
+                      ) : (
+                        makerRows.map((row) => (
+                          <option key={row.uid} value={row.uid}>
+                            {makerLabel(row)}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    <span className="room-outcome">{text.releaseOutcome}</span>
+                  </span>
+                </div>
+                <div className="room-choice">
+                  <input
+                    type="radio"
+                    id={id("room-swap")}
+                    name={id("room")}
+                    checked={false}
+                    disabled={leaver === null}
+                    onChange={() => leaver && swapWith(leaver)}
+                  />
+                  <label htmlFor={id("room-swap")}>{text.swapChoice}</label>
+                  <span className="room-outcome">{text.swapChoiceOutcome(player.club)}</span>
+                </div>
+              </fieldset>
+            </div>
+          )}
+
           <p className={`move-plan ${plan.tone}`} role="status">
             {plan.message}
           </p>
@@ -1035,9 +1185,11 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
           <section className="move-section" aria-labelledby={id("does")}>
             <h3 id={id("does")}>{swap ? text.swapDoesHeading : text.doesHeading}</h3>
             <ul className="move-facts">
-              {(swap ? text.swapDoes : staff ? text.staffDoes : text.does).map((line) => (
-                <li key={line}>{line}</li>
-              ))}
+              {(swap ? text.swapDoes : staff ? text.staffDoes : offerRoom ? text.makeRoomDoes : text.does).map(
+                (line) => (
+                  <li key={line}>{line}</li>
+                ),
+              )}
             </ul>
           </section>
         </div>
@@ -1051,7 +1203,15 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
         <footer className="modal-foot">
           <span className="move-foot-note">{swap ? text.swapHint : text.hint}</span>
           <button ref={moveButton} type="button" className="primary" disabled={!canMove} onClick={() => void move()}>
-            {moving ? (swap ? text.swapping : text.moving) : swap ? text.swap : text.move}
+            {moving
+              ? swap
+                ? text.swapping
+                : text.moving
+              : swap
+                ? text.swap
+                : leaver !== null
+                  ? text.moveAndRelease(leaver.name)
+                  : text.move}
           </button>
           <button ref={cancelButton} type="button" disabled={moving} onClick={onClose}>
             {text.cancel}
