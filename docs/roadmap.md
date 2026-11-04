@@ -195,7 +195,8 @@ changes many at once, and undo.
     the players' attributes and one for their energy and match sharpness, which a player's profile also has for
     him alone. A box is half ticked, with a count, while some of the team are frozen; frozen players are tagged in
     the table. Energy and sharpness are held from what they were, and rise with the player: one frozen at 100%
-    stays there. Injuries are not held: healing them the moment they happen needs looking into first.
+    stays there. Injuries are not held: healing them the moment they happen needs looking into first. Checked on
+    the Mac Steam build and both Windows builds, each change restored.
   - [x] Export the player list ([#71](https://github.com/tozmoz/FMLibreEditor/issues/71)): what its search, filters
     and order select, to CSV (commas, or semicolons for Excel where decimals take a comma; UTF-8 with a byte order
     mark) or JSON, in `Documents\FMLibreEditor\Exports`, named after the in-game date. A row or object per player:
