@@ -1606,17 +1606,22 @@ fn search_staff(
     Ok(page(&connection.staff, &query, limit, |s| filter.matches(s), |_| {}))
 }
 
-/// Clubs matching `query`, highest reputation first; at most `limit` rows.
+/// Clubs matching `query`, highest reputation first; at most `limit` rows. `kind_of` keeps to the clubs of the same kind
+/// as the club with that UID, men's or women's: those its players and staff can move to.
 #[tauri::command]
 fn search_clubs(
     state: State<'_, AppState>,
     query: String,
     limit: usize,
     filter: Option<ClubFilter>,
+    kind_of: Option<u32>,
 ) -> Result<Page<fmlibre_core::ClubSummary>, Failure> {
     let guard = state.0.lock()?;
     let connection = guard.as_ref().ok_or_else(not_connected)?;
-    let filter = filter.unwrap_or_default();
+    let mut filter = filter.unwrap_or_default();
+    if let Some(club) = kind_of.and_then(|uid| connection.clubs.get(uid)) {
+        filter.women = Some(club.women);
+    }
     Ok(page(&connection.clubs, &query, limit, |c| filter.matches(c), |_| {}))
 }
 

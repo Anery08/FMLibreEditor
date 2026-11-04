@@ -2172,10 +2172,12 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       const query = String(args?.query ?? "");
       const limit = Number(args?.limit ?? 200);
       const filter = (args?.filter ?? {}) as ClubFilter;
+      const kindOf = clubs.find((c) => c.uid === args?.kindOf);
+      const women = kindOf ? kindOf.women : filter.women;
       const words = fold(query).split(/\s+/).filter(Boolean);
       const hits = clubs
         .filter((c) => String(c.uid) === query.trim() || words.every((w) => fold(`${c.name} ${c.shortName ?? ""}`).includes(w)))
-        .filter((c) => filter.women === undefined || c.women === filter.women)
+        .filter((c) => women === undefined || c.women === women)
         .sort((a, b) => (b.reputation ?? -1) - (a.reputation ?? -1) || a.name.localeCompare(b.name));
       const page: ClubPage = { total: hits.length, rows: hits.slice(0, limit) };
       return page as T;

@@ -577,8 +577,9 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
     };
   }, []);
 
-  // The search asks for the clubs a moment after the last key, while no club is picked. An answer that comes after
-  // the text changed, or after a club was picked, is dropped: the cleanup says so.
+  // The search asks for the clubs a moment after the last key, while no club is picked: only those of his club's kind,
+  // men's or women's, which the game refuses to mix. An answer that comes after the text changed, or after a club was
+  // picked, is dropped: the cleanup says so.
   const choosing = club === null;
   useEffect(() => {
     if (!choosing) {
@@ -593,7 +594,7 @@ function MoveDialog({ player, kind, contract, onMoved, onClose }: MoveDialogProp
     };
     const timer = setTimeout(
       () => {
-        call<ClubPage>("search_clubs", { query, limit: RESULT_LIMIT, filter: {} }).then(
+        call<ClubPage>("search_clubs", { query, limit: RESULT_LIMIT, filter: {}, kindOf: player.clubUid }).then(
           (page) => answer({ query, page }),
           (e) => answer({ query, error: describeError(e) }),
         );
