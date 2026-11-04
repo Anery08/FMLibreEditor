@@ -1676,6 +1676,24 @@ input::placeholder {
   flex-basis: 880px;
 }
 
+/* A player's profile opened from a club's squad: a dialog over the window (in a `.modal-backdrop`), as tall as the
+   window and wide enough for its blocks to stand side by side where the window has room for that. */
+.profile.popup {
+  flex: none;
+  width: min(1160px, 100%);
+  min-width: 0;
+  height: 100%;
+  border-top: 3px solid var(--text);
+  border-left: none;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.3);
+  animation: none;
+}
+
+/* Focus goes to the box itself when it opens: no ring around the whole dialog. */
+.profile.popup:focus {
+  outline: none;
+}
+
 /* The left edge of a profile is a handle (see PanelResizer): drag it to make the panel wider, the list narrower. A
    short grip marks it at mid-height; under the pointer, while dragged and when focused, the whole edge takes the
    link colour. The handle is wider than the rule, so it is easy to catch. */

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Ability } from "./Ability";
 import { call } from "./api";
 import { EditableValue, EditBar, EditButton, EditInput } from "./EditControls";
@@ -7,6 +7,7 @@ import { formatDate, formatMoney, formatNumber } from "./format";
 import { PERSONALITY_LABELS, profileText, type PersonalityKey } from "./labels";
 import { PanelResizer, usePanelWidth } from "./PanelResizer";
 import type { Attribute, FmDate, Reputation } from "./types";
+import { useModal } from "./useModal";
 import { SessionContext, useEditableField, type ProfileEditing } from "./useProfileEditing";
 
 // What the player, staff and club profiles have in common: the panel frame, loading, rating rows and
@@ -76,6 +77,11 @@ interface ProfileFrameProps {
   tabs?: ReactNode;
   /** For a body that holds a table, such as a club's squad: the panel takes more of the window than a profile does. */
   wide?: boolean;
+  /**
+   * A dialog over the window instead of a panel beside a list, as a player opened from a club's squad is: Tab and
+   * Escape stay in it (see `useModal`), and it has no handle to resize it.
+   */
+  modal?: boolean;
   loaded: Loaded<unknown> | null;
   onClose: () => void;
   /**
@@ -88,18 +94,30 @@ interface ProfileFrameProps {
 }
 
 /**
- * The panel beside a list: header with the abilities (or another summary, as `side`) and a close
- * button, and a scrolling body that shows the loading state or error. Mount it with `key={uid}` so
+ * The panel beside a list, or a dialog over the window (`modal`): header with the abilities (or another summary, as
+ * `side`) and a close button, and a scrolling body that shows the loading state or error. Mount it with `key={uid}` so
  * a new person starts at the top.
  */
 export function ProfileFrame(props: ProfileFrameProps) {
   const { picture, name, fullName, badge, meta, vitals, currentAbility, potentialAbility } = props;
-  const { side, actions, tabs, wide, loaded, onClose, editing, children } = props;
+  const { side, actions, tabs, wide, modal = false, loaded, onClose, editing, children } = props;
   const closeProfile = editing ? () => editing.guardClose(onClose) : onClose;
   const onEscape = editing ? () => editing.escape(onClose) : onClose;
   const panelWidth = usePanelWidth(wide ? "wide" : "profile");
+  const section = useRef<HTMLElement>(null);
+
+  // A dialog keeps Escape from the profile behind it, which would close too, and takes focus when it opens.
+  useModal(section, true, onEscape, modal);
+  useEffect(() => {
+    if (modal) {
+      section.current?.focus();
+    }
+  }, [modal]);
 
   useEffect(() => {
+    if (modal) {
+      return;
+    }
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !event.isComposing) {
         onEscape();
@@ -107,19 +125,24 @@ export function ProfileFrame(props: ProfileFrameProps) {
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onEscape]);
+  }, [onEscape, modal]);
 
   // The inputs reach the whole panel, so `side` can hold one too (a club's reputation is in the header).
   return (
     <SessionContext.Provider value={editing?.session ?? null}>
       <section
-        className={["profile", editing?.stage === "edit" && "editing", wide && "wide"].filter(Boolean).join(" ")}
+        ref={section}
+        className={["profile", editing?.stage === "edit" && "editing", wide && "wide", modal && "popup"]
+          .filter(Boolean)
+          .join(" ")}
         role="dialog"
+        aria-modal={modal || undefined}
         aria-label={name}
         aria-busy={!loaded}
-        style={panelWidth.style}
+        tabIndex={modal ? -1 : undefined}
+        style={modal ? undefined : panelWidth.style}
       >
-        <PanelResizer panelWidth={panelWidth} />
+        {!modal && <PanelResizer panelWidth={panelWidth} />}
         <header className="profile-head">
           {picture}
           <div className="profile-id">

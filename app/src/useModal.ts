@@ -2,6 +2,12 @@
 
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 
+/**
+ * The dialogs that are up, the one opened last at the end. A dialog can open another (a player's profile over a club's
+ * squad, then his Transfer dialog over it): only the last one hears the keys and holds focus.
+ */
+const openDialogs: object[] = [];
+
 /** The elements of `box` that Tab stops at, in order. */
 function tabbable(box: HTMLElement): HTMLElement[] {
   const found = box.querySelectorAll<HTMLElement>("a[href], button, input, select, textarea, summary, [tabindex]");
@@ -37,9 +43,15 @@ function keepTabInside(event: KeyboardEvent, box: HTMLElement): void {
  * Makes `box` a modal dialog while it is mounted: Tab and focus stay inside it, and Escape closes it when `canClose`
  * (and does nothing while a call runs). Escape is answered here and goes no further, so the profile behind the dialog,
  * which closes on Escape too, stays open. While a note of the dialog shows (see `InfoTip`), Escape is the note's: it
- * hides that, and stops the key itself.
+ * hides that, and stops the key itself. With `active` false it does none of this, for a box that is a dialog only
+ * sometimes (see `ProfileFrame`).
  */
-export function useModal(box: RefObject<HTMLElement | null>, canClose: boolean, onClose: () => void): void {
+export function useModal(
+  box: RefObject<HTMLElement | null>,
+  canClose: boolean,
+  onClose: () => void,
+  active = true,
+): void {
   // Kept up to date as soon as a render is on screen, so that a key pressed right after (say) Preview was pressed
   // already finds the dialog busy.
   const latest = useRef({ canClose, onClose });
@@ -48,9 +60,15 @@ export function useModal(box: RefObject<HTMLElement | null>, canClose: boolean, 
   });
 
   useEffect(() => {
+    if (!active) {
+      return;
+    }
+    const self = {};
+    openDialogs.push(self);
+    const onTop = () => openDialogs[openDialogs.length - 1] === self;
     const onKeyDown = (event: KeyboardEvent) => {
       const dialog = box.current;
-      if (!dialog || event.isComposing) {
+      if (!dialog || event.isComposing || !onTop()) {
         return;
       }
       if (event.key === "Escape") {
@@ -68,7 +86,7 @@ export function useModal(box: RefObject<HTMLElement | null>, canClose: boolean, 
     };
     const onFocusIn = (event: FocusEvent) => {
       const dialog = box.current;
-      if (dialog && event.target instanceof Node && !dialog.contains(event.target)) {
+      if (dialog && onTop() && event.target instanceof Node && !dialog.contains(event.target)) {
         (tabbable(dialog)[0] ?? dialog).focus();
       }
     };
@@ -78,6 +96,7 @@ export function useModal(box: RefObject<HTMLElement | null>, canClose: boolean, 
     return () => {
       window.removeEventListener("keydown", onKeyDown, true);
       document.removeEventListener("focusin", onFocusIn);
+      openDialogs.splice(openDialogs.indexOf(self), 1);
     };
-  }, [box]);
+  }, [box, active]);
 }
