@@ -1101,7 +1101,7 @@ dependencies = [
 
 [[package]]
 name = "fmlibre-app"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "fmlibre-core",
  "fmlibre-mem",
@@ -1115,7 +1115,7 @@ dependencies = [
 
 [[package]]
 name = "fmlibre-bridge"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "fmlibre-mem",
  "libc",
@@ -1124,7 +1124,7 @@ dependencies = [
 
 [[package]]
 name = "fmlibre-core"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "fmlibre-mem",
  "memchr",
@@ -1136,7 +1136,7 @@ dependencies = [
 
 [[package]]
 name = "fmlibre-mem"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "libc",
  "mach2",
@@ -1145,7 +1145,7 @@ dependencies = [
 
 [[package]]
 name = "fmlibre-probe"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "clap",
