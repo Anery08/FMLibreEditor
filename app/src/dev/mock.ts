@@ -39,6 +39,7 @@ import type {
   ReloadInfo,
   StaffDetails,
   StaffFilter,
+  StaffOrder,
   StaffPage,
   StaffSummary,
   EditField,
@@ -2053,6 +2054,34 @@ function playerComparator({ by, ascending }: PlayerOrder): (a: PlayerSummary, b:
   };
 }
 
+/** The sort of the real staff command, like `playerComparator`: unknowns last, text without accents or case. */
+function staffComparator({ by, ascending }: StaffOrder): (a: StaffSummary, b: StaffSummary) => number {
+  const value = (s: StaffSummary): string | number | null => {
+    switch (by) {
+      case "currentAbility":
+        return s.currentAbility;
+      case "potentialAbility":
+        return s.potentialAbility;
+      case "age":
+        return s.age;
+      case "name":
+        return fold(s.name);
+      case "nation":
+        return s.nation && fold(s.nation);
+      case "club":
+        return s.club && fold(s.club);
+    }
+  };
+  return (a, b) => {
+    const x = value(a);
+    const y = value(b);
+    if (x === null || y === null) {
+      return x === y ? 0 : x === null ? 1 : -1;
+    }
+    return x === y ? 0 : (x < y ? -1 : 1) * (ascending ? 1 : -1);
+  };
+}
+
 /** The staff filter of the real command: a player-coach has the code of the coaching job plus one, and matches it too. */
 function matchesStaffFilter(s: StaffSummary, f: StaffFilter): boolean {
   // The contract and the attributes are in the profile, made only when a filter asks for them.
@@ -2268,11 +2297,16 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       const query = String(args?.query ?? "");
       const limit = Number(args?.limit ?? 200);
       const filter = (args?.filter ?? {}) as StaffFilter;
+      // Without an order the human manager comes first, then the best current ability, as with the real command.
+      const order = args?.order as StaffOrder | undefined;
       const words = fold(query).split(/\s+/).filter(Boolean);
       const hits = staff
         .filter((s) => String(s.uid) === query.trim() || words.every((w) => fold(`${s.name} ${s.fullName ?? ""}`).includes(w)))
         .filter((s) => matchesStaffFilter(s, filter))
         .sort((a, b) => Number(b.isHuman) - Number(a.isHuman) || b.currentAbility - a.currentAbility || a.name.localeCompare(b.name));
+      if (order) {
+        hits.sort(staffComparator(order));
+      }
       const page: StaffPage = { total: hits.length, rows: hits.slice(0, limit) };
       return page as T;
     }

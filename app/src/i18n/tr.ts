@@ -763,10 +763,15 @@ export const tr: Strings = {
     nav: "Personel",
     count: (total) => `${format(total)} personel`,
     search: "İsim veya ID ile personel ara",
-    summary: (total, shown) =>
-      total > shown
-        ? `${format(total)} personel · mevcut yeteneğe göre ilk ${shown} gösteriliyor`
-        : `${format(total)} personel`,
+    summary: (total, shown, sorted) => {
+      const count = `${format(total)} personel`;
+      if (total <= shown) {
+        return count;
+      }
+      return sorted === null
+        ? `${count} · mevcut yeteneğe göre ilk ${shown} gösteriliyor`
+        : `${count} · ilk ${shown} gösteriliyor, sıralama: ${sorted.by} (${sorted.ascending ? "artan" : "azalan"})`;
+    },
     empty: (query, filtered) => {
       if (query === "") {
         return filtered ? "Bu filtrelere uyan personel yok." : "Personel bulunamadı.";
@@ -785,6 +790,15 @@ export const tr: Strings = {
       currentAbility: "MY",
       potentialAbility: "PY",
       id: "ID",
+    },
+    sortBy: (by) => `Sırala: ${by}`,
+    sortNames: {
+      currentAbility: "mevcut yetenek",
+      potentialAbility: "potansiyel yetenek",
+      age: "yaş",
+      name: "isim",
+      nation: "uyruk",
+      club: "kulüp",
     },
     filters: {
       job: "Görev",

@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
@@ -144,55 +143,52 @@ pub struct PlayerOrder {
 /// accents or case. The sort is stable: equal players keep their order, which after a
 /// search is best first.
 pub fn sort_players(players: &mut [&PlayerSummary], order: PlayerOrder) {
+    sort_rows(players, order.ascending, |p| match order.by {
+        PlayerSort::CurrentAbility => Some(SortKey::Number(p.current_ability.into())),
+        PlayerSort::PotentialAbility => Some(SortKey::Number(p.potential_ability.into())),
+        PlayerSort::Age => p.age.map(|age| SortKey::Number(age.into())),
+        PlayerSort::Name => Some(SortKey::Text(&p.name)),
+        PlayerSort::Nation => p.nation.as_deref().map(SortKey::Text),
+        PlayerSort::Club => p.club.as_deref().map(SortKey::Text),
+        PlayerSort::ContractExpires => p.contract_expires.map(|end| SortKey::Number(end.to_number())),
+    });
+}
+
+/// What a row of a list is sorted by: a number, or a text, which compares without accents or case.
+enum SortKey<'a> {
+    Number(i64),
+    Text(&'a str),
+}
+
+/// Sorts `rows` by what `key` gives each, the lowest first when `ascending`; the rows it gives nothing for go last
+/// either way. The sort is stable: equal rows keep their order.
+fn sort_rows<'a, T>(rows: &mut [&'a T], ascending: bool, key: impl Fn(&'a T) -> Option<SortKey<'a>>) {
+    /// A key as it is compared.
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
+    enum Compared {
+        Number(i64),
+        Text(String),
+    }
     // Fold each distinct text once rather than on every comparison.
     let mut folded: HashMap<&str, String> = HashMap::new();
-    let mut keyed: Vec<(Option<String>, &PlayerSummary)> = players
+    let mut keyed: Vec<(Option<Compared>, &'a T)> = rows
         .iter()
-        .map(|&p| (sort_text(p, order.by).map(|text| folded.entry(text).or_insert_with(|| fold(text)).clone()), p))
+        .map(|&row| {
+            let compared = key(row).map(|key| match key {
+                SortKey::Number(number) => Compared::Number(number),
+                SortKey::Text(text) => Compared::Text(folded.entry(text).or_insert_with(|| fold(text)).clone()),
+            });
+            (compared, row)
+        })
         .collect();
-    keyed.sort_by(|(a_text, a), (b_text, b)| {
-        let primary = match order.by {
-            PlayerSort::CurrentAbility => Some(a.current_ability.cmp(&b.current_ability)),
-            PlayerSort::PotentialAbility => Some(a.potential_ability.cmp(&b.potential_ability)),
-            PlayerSort::Age => known(a.age, b.age),
-            PlayerSort::Name | PlayerSort::Nation | PlayerSort::Club => known(a_text.as_ref(), b_text.as_ref()),
-            PlayerSort::ContractExpires => known(a.contract_expires, b.contract_expires),
-        };
-        match primary {
-            Some(ordering) if order.ascending => ordering,
-            Some(ordering) => ordering.reverse(),
-            None => unknown_last(a, b, order.by),
-        }
+    keyed.sort_by(|(a, _), (b, _)| match (a, b) {
+        (Some(a), Some(b)) if ascending => a.cmp(b),
+        (Some(a), Some(b)) => b.cmp(a),
+        _ => b.is_some().cmp(&a.is_some()),
     });
-    for (slot, (_, player)) in players.iter_mut().zip(keyed) {
-        *slot = player;
+    for (slot, (_, row)) in rows.iter_mut().zip(keyed) {
+        *slot = row;
     }
-}
-
-/// The text a player is sorted by, for the text columns.
-fn sort_text(p: &PlayerSummary, by: PlayerSort) -> Option<&str> {
-    match by {
-        PlayerSort::Name => Some(&p.name),
-        PlayerSort::Nation => p.nation.as_deref(),
-        PlayerSort::Club => p.club.as_deref(),
-        _ => None,
-    }
-}
-
-/// Compares two optional values, or `None` when either is unknown.
-fn known<T: Ord>(a: Option<T>, b: Option<T>) -> Option<Ordering> {
-    Some(a.as_ref()?.cmp(b.as_ref()?))
-}
-
-fn unknown_last(a: &PlayerSummary, b: &PlayerSummary, by: PlayerSort) -> Ordering {
-    let has = |p: &PlayerSummary| match by {
-        PlayerSort::Age => p.age.is_some(),
-        PlayerSort::Nation => p.nation.is_some(),
-        PlayerSort::Club => p.club.is_some(),
-        PlayerSort::ContractExpires => p.contract_expires.is_some(),
-        _ => true,
-    };
-    has(b).cmp(&has(a))
 }
 
 /// Filters for the staff list, the player list's where they apply to staff. Unset fields match everyone.
@@ -233,6 +229,39 @@ impl StaffFilter {
             && self.women.is_none_or(|women| s.woman == Some(women))
             && self.attributes.iter().all(|bound| bound.holds(&STAFF_ATTRIBUTES, &s.attributes))
     }
+}
+
+/// Columns the staff list can be sorted by.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StaffSort {
+    #[default]
+    CurrentAbility,
+    PotentialAbility,
+    Age,
+    Name,
+    Nation,
+    Club,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct StaffOrder {
+    pub by: StaffSort,
+    pub ascending: bool,
+}
+
+/// Sorts `staff` by `order` as [`sort_players`] sorts players. Unlike the search's own order, it does not put the
+/// human manager first.
+pub fn sort_staff(staff: &mut [&StaffSummary], order: StaffOrder) {
+    sort_rows(staff, order.ascending, |s| match order.by {
+        StaffSort::CurrentAbility => Some(SortKey::Number(s.current_ability.into())),
+        StaffSort::PotentialAbility => Some(SortKey::Number(s.potential_ability.into())),
+        StaffSort::Age => s.age.map(|age| SortKey::Number(age.into())),
+        StaffSort::Name => Some(SortKey::Text(&s.name)),
+        StaffSort::Nation => s.nation.as_deref().map(SortKey::Text),
+        StaffSort::Club => s.club.as_deref().map(SortKey::Text),
+    });
 }
 
 /// Filters for the club list.
@@ -415,6 +444,28 @@ mod tests {
         assert_eq!(list.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["A", "C", "B"]);
         sort_players(&mut list, PlayerOrder { by: PlayerSort::CurrentAbility, ascending: false });
         assert_eq!(list.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["B", "C", "A"]);
+    }
+
+    #[test]
+    fn staff_sorting() {
+        let mut human = staff("Zeki", Some(40), 120, Some("Arsenal"), Some(16));
+        human.is_human = true;
+        let free = staff("Ünal", None, 160, None, None);
+        let coach = staff("Ali", Some(55), 140, Some("Beşiktaş"), Some(2));
+        let mut list = vec![&human, &free, &coach];
+        let by = |by, ascending| StaffOrder { by, ascending };
+        let names = |list: &[&StaffSummary]| list.iter().map(|s| s.name.clone()).collect::<Vec<_>>();
+        sort_staff(&mut list, by(StaffSort::Name, true));
+        assert_eq!(names(&list), ["Ali", "Ünal", "Zeki"]);
+        sort_staff(&mut list, by(StaffSort::CurrentAbility, false));
+        assert_eq!(names(&list), ["Ünal", "Ali", "Zeki"]);
+        // No age and no club go last, whichever way.
+        sort_staff(&mut list, by(StaffSort::Age, false));
+        assert_eq!(names(&list), ["Ali", "Zeki", "Ünal"]);
+        sort_staff(&mut list, by(StaffSort::Club, true));
+        assert_eq!(names(&list), ["Zeki", "Ali", "Ünal"]);
+        sort_staff(&mut list, by(StaffSort::Club, false));
+        assert_eq!(names(&list), ["Ali", "Zeki", "Ünal"]);
     }
 
     #[test]

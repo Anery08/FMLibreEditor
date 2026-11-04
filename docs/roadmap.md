@@ -209,7 +209,8 @@ changes many at once, and undo.
   - [x] The staff list filters as the player list does
     ([#80](https://github.com/tozmoz/FMLibreEditor/issues/80)): age, current and potential ability, nation, club,
     contract end and men or women, besides the job, the unemployed and the attributes, behind the same Filters
-    button. The mass edit follows them.
+    button. The mass edit follows them. As in the player list, they can be saved under a name, with the sort a
+    column header was clicked for (name, age, club, nation, CA or PA).
 - Transfers, which users asked for next:
   - [x] A move with a fee: the buying club pays it out of its balance and transfer budget, the selling
     club's balance takes it, and one undo takes back the move and the fee (the money by what it changed, as

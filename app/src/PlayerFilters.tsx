@@ -98,7 +98,11 @@ export function PlayerFilterBar({ fields, onChange, active, genderKnown, actions
       </label>
       {genderKnown && <GenderInput {...input("gender")} />}
       <AgeInputs min={input("minAge")} max={input("maxAge")} />
-      <AbilityInput label={text.minCurrentAbility} title={text.minCurrentAbilityTitle} {...input("minCurrentAbility")} />
+      <AbilityInput
+        label={text.minCurrentAbility}
+        title={text.minCurrentAbilityTitle}
+        {...input("minCurrentAbility")}
+      />
       <AbilityInput
         label={text.minPotentialAbility}
         title={text.minPotentialAbilityTitle}

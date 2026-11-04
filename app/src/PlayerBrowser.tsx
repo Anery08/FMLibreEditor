@@ -11,7 +11,8 @@ import { countFilters, PlayerFilterBar, toPlayerFilter, type PlayerFilterFields 
 import { PlayerProfile } from "./PlayerProfile";
 import { restored, useSnapshot } from "./restore";
 import { SavedFilterControls } from "./SavedFilterControls";
-import { readFields, readOrder } from "./savedFilters";
+import { PLAYER_FILTERS, readFields, readOrder } from "./savedFilters";
+import { SortHeader } from "./SortHeader";
 import type { PlayerOrder, PlayerSort, PlayerSummary } from "./types";
 import { useComparison } from "./useComparison";
 
@@ -55,7 +56,14 @@ export function PlayerBrowser({ version, active, genderKnown, open }: PlayerBrow
   const sortBy = (by: PlayerSort) =>
     setOrder({ by, ascending: sorted.by === by ? !sorted.ascending : FIRST_ASCENDING.has(by) });
   const sortHeader = (by: PlayerSort, className?: string) => (
-    <SortHeader by={by} order={sorted} onSort={sortBy} className={className} />
+    <SortHeader
+      by={by}
+      order={sorted}
+      onSort={sortBy}
+      label={text.columns[by]}
+      title={text.sortBy(text.sortNames[by])}
+      className={className}
+    />
   );
 
   return (
@@ -78,6 +86,7 @@ export function PlayerBrowser({ version, active, genderKnown, open }: PlayerBrow
           genderKnown={genderKnown}
           actions={
             <SavedFilterControls
+              kind={PLAYER_FILTERS}
               fields={fields}
               order={order}
               filtered={filterCount > 0}
@@ -144,30 +153,6 @@ export function PlayerBrowser({ version, active, genderKnown, open }: PlayerBrow
         <PlayerProfile player={p} version={panel.version} onClose={panel.onClose} comparison={comparison} />
       )}
     />
-  );
-}
-
-interface SortHeaderProps {
-  /** The column; it is also what the list is sorted by. */
-  by: PlayerSort;
-  /** How the list is sorted now. */
-  order: PlayerOrder;
-  onSort: (by: PlayerSort) => void;
-  className?: string;
-}
-
-/** A column header that sorts the list; the sorted column shows an arrow and says which way in `aria-sort`. */
-function SortHeader({ by, order, onSort, className }: SortHeaderProps) {
-  const direction = order.by !== by ? undefined : order.ascending ? "ascending" : "descending";
-  return (
-    <th className={className} aria-sort={direction}>
-      <button type="button" className="sort" title={text.sortBy(text.sortNames[by])} onClick={() => onSort(by)}>
-        {text.columns[by]}
-        <svg className="sort-arrow" viewBox="0 0 10 10" aria-hidden="true">
-          <path d="M5 8.5v-7M2 4.5l3-3 3 3" />
-        </svg>
-      </button>
-    </th>
   );
 }
 

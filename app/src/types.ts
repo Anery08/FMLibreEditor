@@ -367,6 +367,14 @@ export interface StaffFilter extends PersonFilter {
   unemployed?: boolean;
 }
 
+export type StaffSort = "currentAbility" | "potentialAbility" | "age" | "name" | "nation" | "club";
+
+/** Sort order for `search_staff`; without one, the human manager comes first, then the highest current ability. */
+export interface StaffOrder {
+  by: StaffSort;
+  ascending: boolean;
+}
+
 /** Filters for `search_clubs`. */
 export interface ClubFilter {
   /** true: women's clubs only; false: men's clubs only. */

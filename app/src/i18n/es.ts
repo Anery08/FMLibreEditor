@@ -789,10 +789,16 @@ export const es: Strings = {
     nav: "Personal",
     count: (total) => entityCount("staff", total),
     search: "Buscar personal por nombre o ID",
-    summary: (total, shown) =>
-      total > shown
-        ? `${entityCount("staff", total)} · se muestran los ${shown} mejores por habilidad actual`
-        : entityCount("staff", total),
+    summary: (total, shown, sorted) => {
+      const count = entityCount("staff", total);
+      if (total <= shown) {
+        return count;
+      }
+      return sorted === null
+        ? `${count} · se muestran los ${shown} mejores por habilidad actual`
+        : `${count} · se muestran los ${shown} primeros por ${sorted.by}, en orden ` +
+            (sorted.ascending ? "ascendente" : "descendente");
+    },
     empty: (query, filtered) => {
       if (query === "") {
         return filtered ? "Ningún empleado coincide con estos filtros." : "No se ha encontrado personal.";
@@ -811,6 +817,15 @@ export const es: Strings = {
       currentAbility: "HA",
       potentialAbility: "HP",
       id: "ID",
+    },
+    sortBy: (by) => `Ordenar por ${by}`,
+    sortNames: {
+      currentAbility: "habilidad actual",
+      potentialAbility: "habilidad potencial",
+      age: "edad",
+      name: "nombre",
+      nation: "país",
+      club: "club",
     },
     filters: {
       job: "Puesto",

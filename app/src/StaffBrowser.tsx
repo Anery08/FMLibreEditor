@@ -6,11 +6,21 @@ import { ListBrowser } from "./ListBrowser";
 import { MassEditButton } from "./MassEditDialog";
 import { ClubLogo, NationFlag, PICTURE_SIZE, WithPicture } from "./Picture";
 import { restored, useSnapshot } from "./restore";
+import { SavedFilterControls } from "./SavedFilterControls";
+import { readStaffOrder, STAFF_FILTERS } from "./savedFilters";
+import { SortHeader } from "./SortHeader";
 import { countStaffFilters, readStaffFields, StaffFilterBar, toStaffFilter } from "./StaffFilters";
 import { employerOf, HumanBadge, StaffProfile } from "./StaffProfile";
-import type { StaffSummary } from "./types";
+import type { StaffOrder, StaffSort, StaffSummary } from "./types";
 
-const columns = staffListText.columns;
+const text = staffListText;
+const columns = text.columns;
+
+/** The order the headers show until one is clicked: the best first, as the search has them (the manager first). */
+const DEFAULT_ORDER: StaffOrder = { by: "currentAbility", ascending: false };
+
+/** The columns whose first click sorts from A to Z; the numbers start with the highest. */
+const FIRST_ASCENDING: ReadonlySet<StaffSort> = new Set<StaffSort>(["name", "nation", "club"]);
 
 interface StaffBrowserProps {
   version: number;
@@ -21,38 +31,74 @@ interface StaffBrowserProps {
 
 /** The staff table with the profile of the selected member of staff beside it. */
 export function StaffBrowser({ version, active, genderKnown }: StaffBrowserProps) {
-  // The filters start as they were before the language was switched, if it was (see `restore.ts`).
+  // The filters and the sort start as they were before the language was switched, if it was (see `restore.ts`).
   const [fields, setFields] = useState(() => restored("staffFields", readStaffFields));
+  // Null until a header is clicked: no order is asked for, and the search answers with the human manager first.
+  const [order, setOrder] = useState<StaffOrder | null>(() => restored("staffOrder", readStaffOrder));
   useSnapshot("staffFields", () => fields);
-  // Where the layout cannot tell women from men, the bar offers no such choice and none is asked for.
+  useSnapshot("staffOrder", () => order);
+  // Where the layout cannot tell women from men, the bar offers no such choice, and a saved filter that made one is
+  // taken without it.
   const filter = toStaffFilter(genderKnown ? fields : { ...fields, gender: "" });
   const filterCount = countStaffFilters(filter);
+  const sorted = order ?? DEFAULT_ORDER;
+  const sortBy = (by: StaffSort) =>
+    setOrder({ by, ascending: sorted.by === by ? !sorted.ascending : FIRST_ASCENDING.has(by) });
+  const sortHeader = (by: StaffSort, className: string) => (
+    <SortHeader
+      by={by}
+      order={sorted}
+      onSort={sortBy}
+      label={columns[by]}
+      title={text.sortBy(text.sortNames[by])}
+      className={className}
+    />
+  );
 
   return (
     <ListBrowser<StaffSummary>
       name="staff"
       command="search_staff"
-      requestArgs={{ filter }}
+      requestArgs={{ filter, order: order ?? undefined }}
       version={version}
       active={active}
-      placeholder={staffListText.search}
-      summary={staffListText.summary}
-      empty={(query) => staffListText.empty(query, filterCount > 0)}
+      placeholder={text.search}
+      summary={(total, shown) =>
+        text.summary(total, shown, order && { by: text.sortNames[order.by], ascending: order.ascending })
+      }
+      empty={(query) => text.empty(query, filterCount > 0)}
       filterBar={
-        <StaffFilterBar fields={fields} onChange={setFields} active={filterCount} genderKnown={genderKnown} />
+        <StaffFilterBar
+          fields={fields}
+          onChange={setFields}
+          active={filterCount}
+          genderKnown={genderKnown}
+          actions={
+            <SavedFilterControls
+              kind={STAFF_FILTERS}
+              fields={fields}
+              order={order}
+              filtered={filterCount > 0}
+              onApply={(savedFields, savedOrder) => {
+                setFields(savedFields);
+                setOrder(savedOrder);
+              }}
+            />
+          }
+        />
       }
       toolbarActions={(list) => <MassEditButton entity="staff" filters={{ staffFilter: filter }} list={list} />}
       tableClass="staff-grid"
       header={
         <>
-          <th className="col-name">{columns.name}</th>
-          <th className="num col-age">{columns.age}</th>
+          {sortHeader("name", "col-name")}
+          {sortHeader("age", "num col-age")}
           <th className="col-job">{columns.job}</th>
-          <th className="col-club">{columns.club}</th>
-          <th className="col-nation">{columns.nation}</th>
+          {sortHeader("club", "col-club")}
+          {sortHeader("nation", "col-nation")}
           <th className="col-born">{columns.born}</th>
-          <th className="num col-ca">{columns.currentAbility}</th>
-          <th className="num col-pa">{columns.potentialAbility}</th>
+          {sortHeader("currentAbility", "num col-ca")}
+          {sortHeader("potentialAbility", "num col-pa")}
           <th className="num col-uid">{columns.id}</th>
         </>
       }

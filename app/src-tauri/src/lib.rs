@@ -11,8 +11,8 @@ use fmlibre_core::{
     GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind, Lifted, Listed, Loan, MoveError,
     MovePlan, MoveTerms, Nation, Operation, Paid, Picture, Planned, PlayerDetails, PlayerFilter, PlayerIndex,
     PlayerOrder, PlayerSummary, RelationSet, RetirementSet, STAFF_JOBS, SearchIndex, Session, SessionError, Skipped,
-    StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffPlan, Target, Tie, TieTarget, find_game, nations,
-    sort_players,
+    StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffOrder, StaffPlan, Target, Tie, TieTarget, find_game,
+    nations, sort_players, sort_staff,
 };
 use fmlibre_mem::{Process, find_processes, is_current_process_elevated, list_modules};
 use serde::{Deserialize, Serialize};
@@ -1595,18 +1595,30 @@ fn search_players(
     ))
 }
 
-/// Staff matching `query`, the human manager first, then by current ability; at most `limit` rows.
+/// Staff matching `query`, the human manager first, then by current ability, unless `order` sorts them otherwise; at
+/// most `limit` rows.
 #[tauri::command]
 fn search_staff(
     state: State<'_, AppState>,
     query: String,
     limit: usize,
     filter: Option<StaffFilter>,
+    order: Option<StaffOrder>,
 ) -> Result<Page<fmlibre_core::StaffSummary>, Failure> {
     let guard = state.0.lock()?;
     let connection = guard.as_ref().ok_or_else(not_connected)?;
     let filter = filter.unwrap_or_default();
-    Ok(page(&connection.staff, &query, limit, |s| filter.matches(s), |_| {}))
+    Ok(page(
+        &connection.staff,
+        &query,
+        limit,
+        |s| filter.matches(s),
+        |hits| {
+            if let Some(order) = order {
+                sort_staff(hits, order);
+            }
+        },
+    ))
 }
 
 /// Clubs matching `query`, highest reputation first; at most `limit` rows.

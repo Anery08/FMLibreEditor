@@ -22,6 +22,7 @@ import { undoFailureLines } from "./massDraft";
 import { percentText } from "./MedicalGroup";
 import { OpenPlayerContext } from "./openPlayer";
 import type { Loaded, PanelIds } from "./ProfileParts";
+import { SortHeader } from "./SortHeader";
 import type {
   BatchUndo,
   CaptainRole,
@@ -288,6 +289,16 @@ export function SquadTab({ clubUid, version, panel }: SquadTabProps) {
 
   const sortBy = (by: SquadSort) =>
     setOrder({ by, ascending: order.by === by ? !order.ascending : FIRST_ASCENDING.has(by) });
+  const sortHeader = (by: SquadSort, className?: string) => (
+    <SortHeader
+      by={by}
+      order={order}
+      onSort={sortBy}
+      label={text.columns[by]}
+      title={text.sortBy(text.sortNames[by])}
+      className={className}
+    />
+  );
 
   return (
     <div
@@ -329,15 +340,15 @@ export function SquadTab({ clubUid, version, panel }: SquadTabProps) {
             <table className="grid squad-grid" aria-label={text.tableLabel(teamLabel(team))}>
               <thead>
                 <tr>
-                  <SortHeader by="name" order={order} onSort={sortBy} className="col-name" />
-                  <SortHeader by="position" order={order} onSort={sortBy} />
-                  <SortHeader by="age" order={order} onSort={sortBy} className="num" />
-                  <SortHeader by="currentAbility" order={order} onSort={sortBy} className="num" />
-                  <SortHeader by="potentialAbility" order={order} onSort={sortBy} className="num" />
-                  <SortHeader by="condition" order={order} onSort={sortBy} className="num" />
-                  <SortHeader by="matchSharpness" order={order} onSort={sortBy} className="num" />
-                  <SortHeader by="jadedness" order={order} onSort={sortBy} className="num" />
-                  <SortHeader by="morale" order={order} onSort={sortBy} className="num" />
+                  {sortHeader("name", "col-name")}
+                  {sortHeader("position")}
+                  {sortHeader("age", "num")}
+                  {sortHeader("currentAbility", "num")}
+                  {sortHeader("potentialAbility", "num")}
+                  {sortHeader("condition", "num")}
+                  {sortHeader("matchSharpness", "num")}
+                  {sortHeader("jadedness", "num")}
+                  {sortHeader("morale", "num")}
                   <th className="col-actions">
                     <span className="sr-only">{text.columns.actions}</span>
                   </th>
@@ -542,30 +553,6 @@ function ResultLine({ result, busy, onUndo, ref }: ResultLineProps) {
         </>
       )}
     </div>
-  );
-}
-
-interface SortHeaderProps {
-  /** The column; it is also what the table is sorted by. */
-  by: SquadSort;
-  /** How the table is sorted now. */
-  order: SquadOrder;
-  onSort: (by: SquadSort) => void;
-  className?: string;
-}
-
-/** A column header that sorts the table; the sorted column shows an arrow and says which way in `aria-sort`. */
-function SortHeader({ by, order, onSort, className }: SortHeaderProps) {
-  const direction = order.by !== by ? undefined : order.ascending ? "ascending" : "descending";
-  return (
-    <th className={className} aria-sort={direction}>
-      <button type="button" className="sort" title={text.sortBy(text.sortNames[by])} onClick={() => onSort(by)}>
-        {text.columns[by]}
-        <svg className="sort-arrow" viewBox="0 0 10 10" aria-hidden="true">
-          <path d="M5 8.5v-7M2 4.5l3-3 3 3" />
-        </svg>
-      </button>
-    </th>
   );
 }
 

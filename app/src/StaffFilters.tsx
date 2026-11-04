@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { AttributeFilters, STAFF_ATTRIBUTES } from "./AttributeFilters";
 import {
   AbilityInput,
@@ -70,10 +71,12 @@ interface StaffFilterBarProps {
   active: number;
   /** Whether the game's layout tells women from men: only then is there a choice between them. */
   genderKnown: boolean;
+  /** More controls after Clear in the head of the bar: those of the saved filters. */
+  actions?: ReactNode;
 }
 
 /** The filter bar of the staff list: the player list's, with the job instead of the position. */
-export function StaffFilterBar({ fields, onChange, active, genderKnown }: StaffFilterBarProps) {
+export function StaffFilterBar({ fields, onChange, active, genderKnown, actions }: StaffFilterBarProps) {
   const set = <K extends keyof StaffFilterFields>(key: K, value: StaffFilterFields[K]) =>
     onChange({ ...fields, [key]: value });
   const input = <K extends keyof StaffFilterFields>(key: K) => ({
@@ -82,7 +85,7 @@ export function StaffFilterBar({ fields, onChange, active, genderKnown }: StaffF
   });
 
   return (
-    <FilterBar active={active} onClear={() => onChange(NO_STAFF_FILTERS)}>
+    <FilterBar active={active} onClear={() => onChange(NO_STAFF_FILTERS)} actions={actions}>
       <label className="filter-field">
         <span>{staffText.job}</span>
         <select value={fields.job} onChange={(e) => set("job", e.currentTarget.value)}>
@@ -96,7 +99,11 @@ export function StaffFilterBar({ fields, onChange, active, genderKnown }: StaffF
       </label>
       {genderKnown && <GenderInput {...input("gender")} />}
       <AgeInputs min={input("minAge")} max={input("maxAge")} />
-      <AbilityInput label={text.minCurrentAbility} title={text.minCurrentAbilityTitle} {...input("minCurrentAbility")} />
+      <AbilityInput
+        label={text.minCurrentAbility}
+        title={text.minCurrentAbilityTitle}
+        {...input("minCurrentAbility")}
+      />
       <AbilityInput
         label={text.minPotentialAbility}
         title={text.minPotentialAbilityTitle}
@@ -106,7 +113,11 @@ export function StaffFilterBar({ fields, onChange, active, genderKnown }: StaffF
       <TextInput label={text.club} {...input("club")} />
       <CheckInput label={staffText.unemployedOnly} {...input("unemployed")} />
       <ContractEndInput {...input("contractExpiresBy")} />
-      <AttributeFilters rows={fields.attributes} choices={STAFF_ATTRIBUTES} onChange={(rows) => set("attributes", rows)} />
+      <AttributeFilters
+        rows={fields.attributes}
+        choices={STAFF_ATTRIBUTES}
+        onChange={(rows) => set("attributes", rows)}
+      />
     </FilterBar>
   );
 }
