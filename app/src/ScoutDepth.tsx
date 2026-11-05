@@ -126,7 +126,7 @@ function LineRow({
   return (
     <tr className="scout-line-card" data-line={line.key} data-status={line.status}>
       <td className="scout-depth-line">{name}</td>
-      <td>
+      <td className="scout-depth-status">
         <span className="scout-status" data-status={line.status} title={text.depth.statusHelp[line.status]}>
           {text.status[line.status]}
         </span>

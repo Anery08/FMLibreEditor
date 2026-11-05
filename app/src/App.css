@@ -4703,6 +4703,8 @@ button.danger:hover:not(:disabled) {
   min-height: 0;
   padding: 0 8px 18px 0;
   overflow-y: auto;
+  /* Where scroll bars take room (Windows, a Mac with a mouse), the column keeps its width when the filters open. */
+  scrollbar-gutter: stable;
 }
 
 .scout-heading {
@@ -4931,6 +4933,7 @@ button.danger:hover:not(:disabled) {
   min-height: 0;
   padding-bottom: 18px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .scout-ask {
@@ -5021,7 +5024,9 @@ button.danger:hover:not(:disabled) {
   text-align: right;
 }
 
+/* Positioned for the note of "How is this list made?". */
 .scout-toolbar {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -5059,7 +5064,6 @@ button.danger:hover:not(:disabled) {
 
 /* "How is this list made?": an (i) and its question, beside the summary. */
 .scout-how {
-  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -5067,10 +5071,11 @@ button.danger:hover:not(:disabled) {
   font-size: 12.5px;
 }
 
-/* Its note is longer than the question it hangs under. */
+/* Its note is longer than the question it hangs under: it hangs under the toolbar from its right edge, so that it
+   stays in the column however far a long summary (in Turkish, say) pushes the question. */
 .scout-how .info-tip-note {
-  right: auto;
-  width: min(460px, 70vw);
+  left: auto;
+  width: min(460px, 100%);
 }
 
 .scout-reset-order {
@@ -5244,6 +5249,14 @@ button.danger:hover:not(:disabled) {
   max-width: 180px;
 }
 
+/* In the advice the chips ask the column for no width of their own: it keeps the cell's width where the table has
+   room, and gives way first where it has not (the Spanish advice at 1280 pixels), rather than push the table past
+   its column. */
+.scout-recommend .scout-reasons {
+  width: 0;
+  min-width: 100%;
+}
+
 .scout-reason {
   overflow: hidden;
   max-width: 100%;
@@ -5310,6 +5323,22 @@ button.danger:hover:not(:disabled) {
   white-space: nowrap;
 }
 
+/* In the depth table's status column a flag that does not fit beside the status goes under it, and a long one
+   ("Por debajo del nivel de la plantilla") wraps, rather than run over the count. */
+.scout-depth-table td.scout-depth-status {
+  white-space: normal;
+}
+
+.scout-depth-table .scout-status {
+  margin-right: 6px;
+}
+
+.scout-depth-table .scout-flag {
+  max-width: 100%;
+  margin: 2px 6px 2px 0;
+  white-space: normal;
+}
+
 .scout-depth-table {
   width: 100%;
   table-layout: fixed;
@@ -5356,7 +5385,8 @@ button.danger:hover:not(:disabled) {
   font-size: 13.5px;
   font-weight: 800;
   text-align: left;
-  white-space: nowrap;
+  /* A long name ("Mediocentros defensivos") takes two lines rather than run into the status. */
+  white-space: normal;
 }
 
 .scout-depth-table tbody tr:is([data-status="missing"], [data-status="thin"], [data-status="crowded"]) td.scout-depth-line {
