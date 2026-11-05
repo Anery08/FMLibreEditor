@@ -1013,8 +1013,8 @@ impl Connection {
     }
 
     /// Keeps the balance of every frozen club, the attributes, energy and match sharpness of every frozen player and
-    /// the attributes of every frozen member of staff from getting worse: what the game took is put back, and what it gave raises what they are held at. These writes
-    /// are not logged; unfreezing ends them.
+    /// the attributes of every frozen member of staff from getting worse: what the game took is put back, and what it
+    /// gave raises what they are held at. These writes are not logged; unfreezing ends them.
     fn hold_frozen(&mut self) {
         self.hold_money();
         if !self.frozen.attributes.is_empty() {
