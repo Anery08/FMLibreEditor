@@ -4568,3 +4568,197 @@ button.danger:hover:not(:disabled) {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/* Scouting: the slots of a tactic in a column, the suggestions for the selected one beside it. */
+.workspace.scouting {
+  min-width: 0;
+}
+
+.scout-slots {
+  flex: none;
+  width: 250px;
+  padding: 14px 0 14px 18px;
+  overflow-y: auto;
+}
+
+.scout-slots ol {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scout-slot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.scout-slot:hover:not(.selected) {
+  background: var(--hover);
+}
+
+/* What is picked is printed in reverse, as elsewhere, under the pointer too. */
+.scout-slot.selected,
+.scout-slot.selected:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.scout-slot.selected .muted {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.scout-roles {
+  font-stretch: 88%;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+.scout-line {
+  font-size: 12px;
+  text-align: right;
+}
+
+.scout-slot-player {
+  grid-column: 1 / -1;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.scout-main {
+  overflow: hidden;
+}
+
+.scout-toolbar {
+  gap: 8px 18px;
+}
+
+.scout-club {
+  display: inline-flex;
+  font-weight: 800;
+}
+
+.scout-banner {
+  margin: 0 0 10px;
+}
+
+.scout-summary {
+  margin: 0 0 8px;
+}
+
+.scout-note {
+  margin: 12px 0 18px;
+  font-size: 12px;
+}
+
+.scout-grid td {
+  padding: 6px 10px;
+  vertical-align: middle;
+}
+
+.scout-grid td.col-name {
+  white-space: normal;
+}
+
+/* Long club names wrap rather than widen the table. */
+.scout-grid td.scout-club-cell {
+  max-width: 190px;
+  white-space: normal;
+}
+
+.scout-grid button.name-link {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-weight: 700;
+  text-align: left;
+  text-decoration: underline transparent;
+  text-underline-offset: 3px;
+}
+
+.scout-grid button.name-link:is(:hover, :focus-visible):not(:disabled) {
+  background: none;
+  color: var(--accent-text);
+  text-decoration-color: currentColor;
+}
+
+/* The player in the slot now, to measure the others against. */
+.scout-grid tr.scout-current td {
+  background: var(--accent-soft);
+  border-bottom: 2px solid var(--border-strong);
+}
+
+.scout-fit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scout-bar {
+  flex: none;
+  width: 64px;
+  height: 6px;
+  background: var(--raised);
+}
+
+.scout-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--tier-3);
+}
+
+.scout-realism {
+  font-weight: 800;
+}
+
+.scout-realism.good {
+  color: var(--tier-4);
+}
+
+.scout-realism.ok {
+  color: var(--tier-2);
+}
+
+.scout-realism.poor {
+  color: var(--tier-1);
+}
+
+.scout-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 160px;
+  max-width: 320px;
+}
+
+.scout-reason {
+  height: auto;
+  white-space: normal;
+  line-height: 1.3;
+  text-transform: none;
+  font-weight: 600;
+}
+
+.scout-reason.pos {
+  border-color: var(--tier-4);
+  color: var(--tier-4);
+}
+
+.scout-reason.neg {
+  border-color: var(--tier-1);
+  color: var(--tier-1);
+}

@@ -40,8 +40,8 @@ was in memory 39 times with Monza's exact eleven slots.
 | `+0x000` | 11 records of 16 bytes, one per slot, and a 12th at `+0xB0`: they follow the style template, not the roles (team and player instruction settings, not decoded) |
 | `+0x0E0` | 10 bytes of flags that change with the template |
 | `+0x100` | `u32` style tag, as text backwards: `CONT` (Control Possession), `TIKI` (Tiki-Taka), `DIRE` (Direct) |
-| `+0x158` | 11 in-possession slot entries, `0x48` bytes each |
-| `+0x478` | 11 out-of-possession slot entries, `0x48` bytes each |
+| `+0x148` | 11 in-possession slot entries, `0x48` bytes each (their role masks at `+0x158`, `+0x1A0`, …) |
+| `+0x468` | 11 out-of-possession slot entries, `0x48` bytes each (role masks from `+0x478`) |
 | `+0x798` | bytes `00 01 … 0a` after `1b`: a one-to-one slot table, probably in-possession to out-of-possession |
 | `+0x7D0` | a second copy of the records and entries (its slot entries changed with the first) |
 
@@ -83,6 +83,13 @@ Out of possession:
 The out-of-possession roles run in pitch order (goalkeepers, centre-backs, full-backs, wing-backs, defensive
 midfielders, midfielders, attacking midfielders, wingers, forwards), which leaves the gaps for the roles not seen
 yet. A role seen in two slots or moved between slots kept its mask (PFB, PCM, TW, OAM, CB).
+
+**On Game Pass** (0.9.2409.0, save of 17 September 2026, human club Manchester United) the block reads the same:
+three selections pointed at copies of one Gegenpress block (`GEGE`), whose eleven slots came out as BGK / SK, WB / FB,
+BCB / CB, CB / CB, FB / FB, AM / ?, DM / DM, ? / PDM, ? / ?, IF / ?, CFD / CFD with Lammens, Dalot, Yoro, Martínez,
+Shaw, Güler, Tielemans, Baleba, Mbeumo, Rashford and Šeško in them. Four masks there are not named yet:
+in possession `0x408000` (bit 15 / 22) and `0x2000000400000` (bit 49 / 22), out of possession `0x40400000`
+(bit 30 / 22) and `0x800400000` (bit 35 / 22, in two slots).
 
 ### Not found yet
 

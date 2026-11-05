@@ -49,6 +49,9 @@ pub struct PlayerSummary {
     pub transfer_listed: bool,
     #[serde(skip)]
     pub loan_listed: bool,
+    /// His transfer value in pounds, where the layout places it (see [`PlayerLayout::transfer_value`]).
+    #[serde(skip)]
+    pub transfer_value: Option<i32>,
     /// Whether this is a woman, for the list's filter; unknown where the layout does not place the gender flags.
     #[serde(skip)]
     pub woman: Option<bool>,
@@ -182,6 +185,7 @@ pub fn read_players(
             attributes,
             transfer_listed: listing & 1 != 0,
             loan_listed: listing & 2 != 0,
+            transfer_value: p.transfer_value.map(|offset| u32_at(offset) as i32),
             woman: p.gender.map(|offset| is_woman(buf[at(offset)])),
             address: object,
             shift,

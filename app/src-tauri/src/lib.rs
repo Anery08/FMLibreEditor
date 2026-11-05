@@ -6,13 +6,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use fmlibre_core::{
-    ArraySource, CaptainRole, CaptainSet, Change, Clause, ClauseSet, ClubDetails, ClubFilter, ClubIndex, ClubMove,
-    Coded, EditError, Entity, EntityArrays, ExportFormat, ExportHeader, FeePlan, Field, FmDate, GAME_EXE, GAME_PLUGIN,
-    GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind, Lifted, Listed, Loan, MoveError,
-    MovePlan, MoveTerms, Nation, Operation, Paid, Picture, Planned, PlayerDetails, PlayerFilter, PlayerIndex,
-    PlayerOrder, PlayerSummary, RelationSet, RetirementSet, STAFF_JOBS, SearchIndex, Session, SessionError, Skipped,
-    StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffOrder, StaffPlan, Target, Tie, TieTarget, find_game,
-    nations, sort_players, sort_staff,
+    ArraySource, Buyer, CaptainRole, CaptainSet, Change, Clause, ClauseSet, ClubDetails, ClubFilter, ClubIndex,
+    ClubMove, ClubSummary, ClubTactic, Coded, EditError, Entity, EntityArrays, ExportFormat, ExportHeader, FeePlan,
+    Field, FmDate, GAME_EXE, GAME_PLUGIN, GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health,
+    Kind, Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation, Operation, Paid, Picture, Planned,
+    PlayerDetails, PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary, ROLES, RelationSet, RetirementSet, Role,
+    STAFF_JOBS, ScoutError, ScoutRequest, Scouted, SearchIndex, Session, SessionError, Skipped, StaffChange,
+    StaffDetails, StaffFilter, StaffIndex, StaffOrder, StaffPlan, Target, Tie, TieTarget, find_game, nations,
+    sort_players, sort_staff,
 };
 use fmlibre_mem::{Process, find_processes, is_current_process_elevated, list_modules};
 use serde::{Deserialize, Serialize};
@@ -1609,7 +1610,7 @@ macro_rules! coded_failures {
     )*};
 }
 
-coded_failures!(EditError, MoveError, SessionError, fmlibre_mem::Error);
+coded_failures!(EditError, MoveError, ScoutError, SessionError, fmlibre_mem::Error);
 
 impl<T> From<std::sync::PoisonError<T>> for Failure {
     fn from(err: std::sync::PoisonError<T>) -> Self {
@@ -2479,6 +2480,69 @@ fn homegrown_rules() -> Vec<u8> {
     HOMEGROWN_RULES.to_vec()
 }
 
+/// What the Scouting tab starts from: the human manager's club, the tactics he plays with the players in their slots,
+/// the roles the editor knows and the club's money.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScoutingView {
+    club: ClubSummary,
+    tactics: Vec<ClubTactic>,
+    /// Why no tactic could be read, when none was: the tab then lets the manager pick the roles.
+    problem: Option<Failure>,
+    /// The list rows of the players in the tactics' slots.
+    players: Vec<PlayerSummary>,
+    roles: &'static [Role],
+    /// Pounds; a week for the wages.
+    transfer_budget: Option<i64>,
+    wage_budget: Option<i64>,
+}
+
+/// The human manager's club for scouting: the first club a human manager runs.
+fn scouting_club(connection: &Connection) -> Result<&ClubSummary, Failure> {
+    let uid = connection
+        .human_clubs
+        .first()
+        .copied()
+        .ok_or_else(|| Failure::new("scout.noClub", "Your manager has no club to scout for"))?;
+    connection.clubs.get(uid).ok_or_else(|| not_found(Entity::Club, uid))
+}
+
+/// The club's transfer budget and wage budget, pounds, when its finances can be read.
+fn scouting_money(connection: &Connection, club: &ClubSummary) -> Result<(Option<i64>, Option<i64>), Failure> {
+    let finances = connection.session.club_details(club)?.and_then(|details| details.finances);
+    Ok((finances.map(|f| i64::from(f.transfer_budget)), finances.map(|f| i64::from(f.wage_budget))))
+}
+
+/// The human manager's tactics, read now: one pass over the game's memory, a few seconds.
+#[tauri::command]
+fn scouting_tactics(state: State<'_, AppState>) -> Result<ScoutingView, Failure> {
+    let guard = state.0.lock()?;
+    let connection = guard.as_ref().ok_or_else(not_connected)?;
+    let club = scouting_club(connection)?;
+    let (tactics, problem) = match connection.session.club_tactics(club, &connection.players) {
+        Ok(tactics) => (tactics, None),
+        Err(err @ (ScoutError::NoTactic { .. } | ScoutError::NotPlaced)) => (Vec::new(), Some(Failure::from(err))),
+        Err(err) => return Err(err.into()),
+    };
+    let mut uids: Vec<u32> = tactics.iter().flat_map(|t| t.slots.iter().filter_map(|s| s.player)).collect();
+    uids.sort_unstable();
+    uids.dedup();
+    let players = uids.into_iter().filter_map(|uid| connection.players.get(uid).cloned()).collect();
+    let (transfer_budget, wage_budget) = scouting_money(connection, club)?;
+    Ok(ScoutingView { club: club.clone(), tactics, problem, players, roles: ROLES, transfer_budget, wage_budget })
+}
+
+/// Players who would fit the slot `request` describes, for the human manager's club. Only reads memory.
+#[tauri::command]
+fn scouting_suggest(state: State<'_, AppState>, request: ScoutRequest) -> Result<Scouted, Failure> {
+    let guard = state.0.lock()?;
+    let connection = guard.as_ref().ok_or_else(not_connected)?;
+    let club = scouting_club(connection)?;
+    let (transfer_budget, wage_budget) = scouting_money(connection, club)?;
+    let buyer = Buyer { club, transfer_budget, wage_budget };
+    Ok(connection.session.scout(&request, &buyer, &connection.players, &connection.clubs, &connection.human_clubs)?)
+}
+
 /// The teams of the club `uid`, the senior team first, with their players: each one's list
 /// row and the live values a squad screen shows, read now.
 #[tauri::command]
@@ -2849,6 +2913,8 @@ pub fn run() {
             add_release_clause,
             homegrown_rules,
             club_squads,
+            scouting_tactics,
+            scouting_suggest,
             set_captain,
             team_action,
             max_attributes,

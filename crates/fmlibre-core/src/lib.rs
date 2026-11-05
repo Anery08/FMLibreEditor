@@ -27,6 +27,7 @@ mod relations;
 mod retirement;
 pub mod rtti;
 mod scan;
+mod scouting;
 mod selection;
 mod session;
 mod squad;
@@ -64,11 +65,15 @@ pub use medical::{Ban, HealPlan, Healed, Injury, LiftPlan, Lifted};
 pub use players::{Nation, PLAYABLE_RATING, PlayerIndex, PlayerSummary, is_woman, nations, read_players};
 pub use profile::{
     ArrayRvas, BuildProfile, ContractLayout, Layout, PlayerLayout, PluginFingerprint, ProfileNotes, SelectionLayout,
-    StaffLayout, built_in_profiles, layout_for, profile_for, profile_text,
+    StaffLayout, TacticLayout, built_in_profiles, layout_for, profile_for, profile_text,
 };
 pub use relations::{HOMEGROWN_RULES, Relation, RelationPlan, RelationSet, Tie, TieTarget};
 pub use retirement::{PlannedRetirement, RetirementPlan, RetirementSet};
 pub use scan::{ArrayCandidate, ScanOptions, VtableCount, scan_object_arrays};
+pub use scouting::{
+    Buyer, ClubTactic, Line, NOT_FOR_SALE, Phase, REALISTIC, ROLES, Reason, Role, ScoutError, ScoutOrder, ScoutRequest,
+    Scouted, Side, Suggestion, TacticSlot, role, role_of_mask,
+};
 pub use session::{ArraySource, IGNORE_PROFILES, Session, SessionError, find_game, profiles_ignored};
 pub use squad::{CaptainPlan, CaptainRole, CaptainSet, ClubTeam, Loan, SquadMember};
 pub use staff::{

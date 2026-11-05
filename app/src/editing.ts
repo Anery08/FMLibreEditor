@@ -6,6 +6,9 @@ import type {
   ApplyReport,
   BatchUndo,
   CaptainRole,
+  Scouted,
+  ScoutingView,
+  ScoutRequest,
   ClubTeam,
   EditField,
   Entity,
@@ -310,3 +313,9 @@ export const setCaptain = (club: number, team: number, role: CaptainRole, uid: n
  */
 export const teamAction = (club: number, team: number, action: TeamAction) =>
   call<MassReport>("team_action", { club, team, action });
+
+/** The human manager's club, the tactics he plays and the roles the editor knows; takes a few seconds. */
+export const scoutingTactics = () => call<ScoutingView>("scouting_tactics");
+
+/** Players who would fit the slot `request` describes, for the human manager's club. */
+export const scoutingSuggest = (request: ScoutRequest) => call<Scouted>("scouting_suggest", { request });

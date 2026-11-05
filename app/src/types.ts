@@ -877,3 +877,134 @@ export interface GraphicsInfo {
   ready: boolean;
   counts: GraphicsCounts;
 }
+
+/** When the team has the ball, or when it has not. */
+export type Phase = "inPossession" | "outOfPossession";
+
+/** The line of the formation a role plays in. */
+export type Line =
+  | "goalkeeper"
+  | "centreBack"
+  | "fullBack"
+  | "wingBack"
+  | "defensiveMidfield"
+  | "centralMidfield"
+  | "attackingMidfield"
+  | "wide"
+  | "striker";
+
+export type Side = "right" | "left";
+
+/** A role of the tactics screen whose mask the editor knows. */
+export interface Role {
+  /** The game's abbreviation in lower case, e.g. "ifb"; the same key in both phases names the same kind of role. */
+  key: string;
+  phase: Phase;
+  line: Line;
+  /** The attributes it leans on most (weighed three times), and those that help. */
+  keyAttributes: string[];
+  otherAttributes: string[];
+}
+
+/** One slot of a tactic, goalkeeper first. */
+export interface TacticSlot {
+  index: number;
+  /** Role keys; null for a role whose mask the editor does not know yet. */
+  inPossession: string | null;
+  outOfPossession: string | null;
+  /** The masks as stored, in hex. */
+  inPossessionMask: string;
+  outOfPossessionMask: string;
+  line: Line | null;
+  /** For a wide line: the side the player in the slot plays best. */
+  side: Side | null;
+  /** The UID of the player in the slot. */
+  player: number | null;
+}
+
+export interface ClubTactic {
+  /** The style code it was made from: "CONT", "TIKI", "DIRE", "GEGE"... */
+  style: string | null;
+  slots: TacticSlot[];
+  /** How many of the game's copies hold it; the first tactic is the one in use. */
+  copies: number;
+}
+
+/** What `scouting_tactics` returns. */
+export interface ScoutingView {
+  club: ClubSummary;
+  tactics: ClubTactic[];
+  /** Why no tactic could be read, when none was. */
+  problem: Failure | null;
+  /** The list rows of the players in the slots. */
+  players: PlayerSummary[];
+  roles: Role[];
+  /** Pounds; a week for the wages. */
+  transferBudget: number | null;
+  wageBudget: number | null;
+}
+
+export type ScoutOrder = "score" | "fit" | "realism" | "fee";
+
+/** What `scouting_suggest` looks for; omitted fields are open. */
+export interface ScoutRequest {
+  inPossession?: string | null;
+  outOfPossession?: string | null;
+  side?: Side | null;
+  /** The UID of the player in the slot now, to compare with. */
+  current?: number | null;
+  minAge?: number | null;
+  maxAge?: number | null;
+  /** Pounds. */
+  maxFee?: number | null;
+  realisticOnly?: boolean;
+  noFreeAgents?: boolean;
+  upgradesOnly?: boolean;
+  order?: ScoutOrder;
+  limit?: number;
+}
+
+/**
+ * Why a move looks easier or harder: `listed`, `freeAgent`, `expiring` (value: days left), `releaseClause` (pounds),
+ * `fringe` / `keyPlayer` (value: squad status code), `overBudget` / `stretch` (pounds over), `wageHigh` (pounds a week
+ * over), `biggerClub` / `smallerClub` (his club's reputation), `reputationGap` (his reputation), `ambitious`
+ * (ambition), `notForSale`.
+ */
+export interface Reason {
+  code: string;
+  /** Its effect on realism, in points. */
+  points: number;
+  value: number | null;
+}
+
+export interface Suggestion {
+  player: PlayerSummary;
+  /** 0–100. */
+  fit: number;
+  /** His attributes for each role, 1–20. */
+  inPossession: number | null;
+  outOfPossession: number | null;
+  /** His rating (1–20) at the best of the slot's positions. */
+  positionRating: number;
+  /** 0–100; 50 and above counts as realistic. */
+  realism: number;
+  reasons: Reason[];
+  /** Pounds; a week for the wage. */
+  fee: number | null;
+  wage: number | null;
+  value: number | null;
+  /** Fit and realism together, with age: the default order. */
+  score: number;
+}
+
+/** What `scouting_suggest` returns. */
+export interface Scouted {
+  suggestions: Suggestion[];
+  /** How the player in the slot now measures up. */
+  current: Suggestion | null;
+  transferBudget: number | null;
+  /** Pounds a week the club can still add to its wage bill. */
+  wageRoom: number | null;
+  examined: number;
+  candidates: number;
+}

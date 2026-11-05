@@ -34,6 +34,26 @@ pub struct Layout {
     /// What a human manager has picked for his club; only in the layouts it has been checked in.
     #[serde(default)]
     pub selection: Option<SelectionLayout>,
+    /// The tactic a selection plays; only in the layouts it has been checked in.
+    #[serde(default)]
+    pub tactic: Option<TacticLayout>,
+}
+
+/// The tactic block a selection's list ([`SelectionLayout::list`]) points at: the eleven slots of the formation, once
+/// for when the team has the ball and once for when it has not, each slot an entry of `slot_size` bytes whose
+/// `role` holds the role's mask (see `crate::scouting`). The slots are in the order of the selection's.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TacticLayout {
+    /// The first in-possession slot.
+    pub in_possession: u64,
+    /// The first out-of-possession slot.
+    pub out_of_possession: u64,
+    pub slot_size: u64,
+    /// In a slot: the `u64` role mask.
+    pub role: u64,
+    /// `u32` code of the style the tactic was made from, as text backwards (`CONT`, `TIKI`, `DIRE`).
+    pub style: u64,
 }
 
 /// What a human manager has picked for his club, as the match engine keeps it: for each of his tactics, objects of one
@@ -197,6 +217,11 @@ pub struct PlayerLayout {
     #[serde(default)]
     pub gender: Option<u64>,
     pub height: u64,
+    /// `i32` pounds: his transfer value, which the game shows in the player's currency as a range starting at it
+    /// while his club's scouts do not know him well; 300,000,000 when he is not for sale. Unset where the layout has
+    /// not placed it.
+    #[serde(default)]
+    pub transfer_value: Option<u64>,
     pub asking_price: u64,
     pub home_reputation: u64,
     pub current_reputation: u64,
@@ -265,7 +290,8 @@ impl PlayerLayout {
             self.personality + crate::PERSONALITY.len() as u64,
         ];
         let single_bytes = self.attributes.values().chain(&self.gender).map(|offset| offset + 1);
-        fields.into_iter().chain(single_bytes).max().unwrap_or(0)
+        let value = self.transfer_value.map(|offset| offset + 4);
+        fields.into_iter().chain(single_bytes).chain(value).max().unwrap_or(0)
     }
 
     /// The largest person-block shift.
