@@ -415,6 +415,10 @@ enum Command {
         /// Number of bytes to dump.
         #[arg(long, default_value = "0x200")]
         len: String,
+        /// Write the raw bytes to this file instead of printing them (unreadable pages as zeros), e.g. to compare
+        /// two moments of the game.
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
     /// Follow the (begin, end) pair stored at PAIR and dump element INDEX of that array.
     Element {
@@ -461,6 +465,16 @@ enum Command {
         /// How far from a hit --near may be, in bytes, before or after it.
         #[arg(long, default_value = "0x40")]
         within: String,
+    },
+    /// Hash every 4 KiB page of the game's readable memory into OUT; with --against an earlier OUT, also save the
+    /// pages whose hash changed (or that are new) to OUT.pages, as (u64 address, 4096 bytes) records. Taken around
+    /// one change in the game, the saved pages hold the bytes it wrote.
+    Pages {
+        /// File for the page hashes: (u64 address, u64 hash) records.
+        out: PathBuf,
+        /// An earlier hash file to compare with.
+        #[arg(long)]
+        against: Option<PathBuf>,
     },
     /// Find the pointers to ADDR in the game's memory, e.g. everything that refers to a player.
     Refs {
@@ -922,9 +936,13 @@ fn run(cli: Cli) -> Result<()> {
             let opts = ScanOptions { min_count: min, max_count: max, ..ScanOptions::default() };
             scan(&process, &game, &modules, &opts, top, json)
         }
-        Command::Dump { addr, len } => {
+        Command::Dump { addr, len, out } => {
             let modules = list_modules(&process).context("listing modules")?;
-            dump(&process, &modules, resolve(&addr, &modules)?, parse_hex(&len)?)
+            let (addr, len) = (resolve(&addr, &modules)?, parse_hex(&len)?);
+            match out {
+                Some(path) => dump_raw(&process, addr, len, &path),
+                None => dump(&process, &modules, addr, len),
+            }
         }
         Command::Element { pair, index, len } => {
             let modules = list_modules(&process).context("listing modules")?;
@@ -940,6 +958,7 @@ fn run(cli: Cli) -> Result<()> {
                 near.map(|near| Ok::<_, anyhow::Error>((parse_bytes(&near)?, parse_hex(&within)?))).transpose()?;
             find(&process, &modules, &pattern, kind, module.as_deref(), max, near)
         }
+        Command::Pages { out, against } => pages(&process, &out, against.as_deref()),
         Command::Refs { addr, span, max } => {
             let modules = list_modules(&process).context("listing modules")?;
             refs(&process, &modules, resolve(&addr, &modules)?, parse_hex(&span)?, max)
@@ -1034,6 +1053,66 @@ fn run(cli: Cli) -> Result<()> {
 // refs and lists
 
 /// Prints every 8-byte-aligned value in readable memory that points into `addr..addr + span`.
+/// Hashes every readable 4 KiB page (FNV-1a over its words) and, against an earlier run, saves the changed pages.
+fn pages(process: &Process, out: &Path, against: Option<&Path>) -> Result<()> {
+    const CHUNK: u64 = 8 << 20;
+    const PAGE: usize = 0x1000;
+    let started = Instant::now();
+    let earlier: std::collections::HashMap<u64, u64> = match against {
+        Some(path) => std::fs::read(path)
+            .with_context(|| format!("reading {}", path.display()))?
+            .as_chunks::<16>()
+            .0
+            .iter()
+            .map(|r| {
+                let (a, h) = r.split_at(8);
+                (u64::from_le_bytes(a.try_into().unwrap()), u64::from_le_bytes(h.try_into().unwrap()))
+            })
+            .collect(),
+        None => Default::default(),
+    };
+    let (mut hashes, mut saved) = (Vec::new(), Vec::new());
+    let (mut scanned, mut changed) = (0u64, 0usize);
+    for region in regions(process, 0x1_0000, 0x7FFF_FFFF_0000).into_iter().filter(|r| r.is_readable()) {
+        let mut offset = 0;
+        while offset < region.size {
+            let base = region.base + offset;
+            let len = (region.size - offset).min(CHUNK);
+            if let Ok(chunk) = process.read_bytes(base, len as usize) {
+                for (i, page) in chunk.chunks(PAGE).enumerate() {
+                    let at = base + (i * PAGE) as u64;
+                    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+                    for word in page.as_chunks::<8>().0 {
+                        hash = (hash ^ u64::from_le_bytes(*word)).wrapping_mul(0x0100_0000_01b3);
+                    }
+                    hashes.extend_from_slice(&at.to_le_bytes());
+                    hashes.extend_from_slice(&hash.to_le_bytes());
+                    if against.is_some() && earlier.get(&at) != Some(&hash) && page.len() == PAGE {
+                        saved.extend_from_slice(&at.to_le_bytes());
+                        saved.extend_from_slice(page);
+                        changed += 1;
+                    }
+                }
+            }
+            scanned += len;
+            offset += CHUNK;
+        }
+    }
+    std::fs::write(out, &hashes).with_context(|| format!("writing {}", out.display()))?;
+    if against.is_some() {
+        let mut path = out.as_os_str().to_owned();
+        path.push(".pages");
+        std::fs::write(&path, &saved).context("writing the changed pages")?;
+    }
+    println!(
+        "{} pages hashed ({:.0} MiB), {changed} changed, in {:.1} s.",
+        hashes.len() / 16,
+        scanned as f64 / 1_048_576.0,
+        started.elapsed().as_secs_f64()
+    );
+    Ok(())
+}
+
 fn refs(process: &Process, modules: &[Module], addr: u64, span: u64, max: usize) -> Result<()> {
     ensure!(span > 0, "the span is empty");
     const CHUNK: u64 = 8 << 20;
@@ -3961,6 +4040,28 @@ fn section_names(process: &Process, module: &Module) -> impl Fn(u64) -> String {
 
 // ---------------------------------------------------------------------------
 // dump / element
+
+/// Writes `len` bytes at `addr` to `path`, a page at a time; pages that cannot be read are written as zeros.
+fn dump_raw(process: &Process, addr: u64, len: u64, path: &Path) -> Result<()> {
+    const PAGE: u64 = 0x1000;
+    let mut bytes = Vec::with_capacity(len as usize);
+    let mut unread = 0u64;
+    let mut at = addr;
+    while at < addr + len {
+        let chunk = (PAGE - at % PAGE).min(addr + len - at);
+        match process.read_bytes(at, chunk as usize) {
+            Ok(page) => bytes.extend_from_slice(&page),
+            Err(_) => {
+                bytes.resize(bytes.len() + chunk as usize, 0);
+                unread += chunk;
+            }
+        }
+        at += chunk;
+    }
+    std::fs::write(path, &bytes).with_context(|| format!("writing {}", path.display()))?;
+    println!("{len:#x} bytes at {addr:#x} written to {} ({unread:#x} unreadable)", path.display());
+    Ok(())
+}
 
 fn dump(process: &Process, modules: &[Module], addr: u64, len: u64) -> Result<()> {
     let bytes =
