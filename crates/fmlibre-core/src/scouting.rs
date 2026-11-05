@@ -669,6 +669,8 @@ pub struct TacticSlot {
     pub line: Option<Line>,
     /// Its side, for a wide line: the side the player who fills it plays best.
     pub side: Option<Side>,
+    /// The position it most likely is (a key of `crate::POSITIONS`), from its line and side.
+    pub position: Option<&'static str>,
     /// The UID of the player who fills it, when he is one of the club's.
     pub player: Option<u32>,
 }
@@ -753,6 +755,7 @@ impl Session {
                     let out_of_possession = role_of_mask(Phase::OutOfPossession, oop[k]);
                     let line = in_possession.or(out_of_possession).map(|role| role.line);
                     let player = people.get(&eleven[k]).copied();
+                    let side = line.zip(player).and_then(|(line, player)| side_of(line, &player.position_ratings));
                     TacticSlot {
                         index: k,
                         in_possession: in_possession.map(|role| role.key),
@@ -760,7 +763,8 @@ impl Session {
                         in_possession_mask: format!("{:x}", ip[k]),
                         out_of_possession_mask: format!("{:x}", oop[k]),
                         line,
-                        side: line.zip(player).and_then(|(line, player)| side_of(line, &player.position_ratings)),
+                        side,
+                        position: line.and_then(|line| position_of(line, side)),
                         player: player.map(|player| player.uid),
                     }
                 })
@@ -787,108 +791,169 @@ fn side_of(line: Line, ratings: &[u8; 15]) -> Option<Side> {
     }
 }
 
-/// What to look for.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct ScoutRequest {
-    /// The slot's roles, by key; at least one.
-    pub in_possession: Option<String>,
-    pub out_of_possession: Option<String>,
-    /// The slot's side, for a wide line; either side when none.
-    pub side: Option<Side>,
-    /// The player who fills the slot now, to compare with.
-    pub current: Option<u32>,
-    pub min_age: Option<u16>,
-    pub max_age: Option<u16>,
-    /// The most the club would pay, pounds; the club's transfer budget decides what is realistic either way.
-    pub max_fee: Option<i64>,
-    /// Only players a transfer to the club looks realistic for.
-    pub realistic_only: bool,
-    /// Leave out players without a club.
-    pub no_free_agents: bool,
-    /// How many to return; 50 when none.
-    pub limit: Option<usize>,
-    /// Only players who fit the slot better than the one in it now.
-    pub upgrades_only: bool,
-    pub order: ScoutOrder,
+/// The position a tactic slot most likely is, from its line and side: a key of `crate::POSITIONS`. A sided line
+/// whose side is not known gives none.
+fn position_of(line: Line, side: Option<Side>) -> Option<&'static str> {
+    Some(match (line, side) {
+        (Line::Goalkeeper, _) => "gk",
+        (Line::CentreBack, _) => "dc",
+        (Line::FullBack, Some(Side::Right)) => "dr",
+        (Line::FullBack, Some(Side::Left)) => "dl",
+        (Line::WingBack, Some(Side::Right)) => "wbr",
+        (Line::WingBack, Some(Side::Left)) => "wbl",
+        (Line::DefensiveMidfield, _) => "dm",
+        (Line::CentralMidfield, _) => "mc",
+        (Line::AttackingMidfield, _) => "amc",
+        (Line::Wide, Some(Side::Right)) => "amr",
+        (Line::Wide, Some(Side::Left)) => "aml",
+        (Line::Striker, _) => "st",
+        (Line::FullBack | Line::WingBack | Line::Wide, None) => return None,
+    })
 }
 
-/// How suggestions are ordered.
+/// A position a recommendation can be for, and the lines whose roles are played there, its own line first.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScoutPosition {
+    /// A key of `crate::POSITIONS`, e.g. `dr`.
+    pub key: &'static str,
+    pub lines: &'static [Line],
+}
+
+/// The positions of the tactics screen, from the goalkeeper up. The game offers wing-back roles in the full-back
+/// positions too, and attacking midfielders' roles in central midfield (both seen on Monza's tactic).
+pub const SCOUT_POSITIONS: &[ScoutPosition] = &[
+    ScoutPosition { key: "gk", lines: &[Line::Goalkeeper] },
+    ScoutPosition { key: "dr", lines: &[Line::FullBack, Line::WingBack] },
+    ScoutPosition { key: "dc", lines: &[Line::CentreBack] },
+    ScoutPosition { key: "dl", lines: &[Line::FullBack, Line::WingBack] },
+    ScoutPosition { key: "wbr", lines: &[Line::WingBack, Line::FullBack] },
+    ScoutPosition { key: "dm", lines: &[Line::DefensiveMidfield, Line::CentralMidfield] },
+    ScoutPosition { key: "wbl", lines: &[Line::WingBack, Line::FullBack] },
+    ScoutPosition { key: "mr", lines: &[Line::Wide] },
+    ScoutPosition { key: "mc", lines: &[Line::CentralMidfield, Line::AttackingMidfield, Line::DefensiveMidfield] },
+    ScoutPosition { key: "ml", lines: &[Line::Wide] },
+    ScoutPosition { key: "amr", lines: &[Line::Wide] },
+    ScoutPosition { key: "amc", lines: &[Line::AttackingMidfield, Line::CentralMidfield] },
+    ScoutPosition { key: "aml", lines: &[Line::Wide] },
+    ScoutPosition { key: "st", lines: &[Line::Striker] },
+];
+
+/// The position with this key.
+pub fn scout_position(key: &str) -> Option<&'static ScoutPosition> {
+    SCOUT_POSITIONS.iter().find(|position| position.key == key)
+}
+
+/// What a recommendation is for.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Purpose {
+    /// Better than the club's best player there now.
+    #[default]
+    FirstTeam,
+    /// At least as good as its second best: depth, at a price that makes sense.
+    Rotation,
+    /// 21 or younger, with room to grow.
+    Future,
+    /// Anyone who fits.
+    Any,
+}
+
+/// How recommendations are ordered.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ScoutOrder {
-    /// Fit and realism together, with age: the default.
+    /// Fit and probability together, as the purpose weighs them: the default.
     #[default]
     Score,
     Fit,
-    Realism,
+    Probability,
     /// Cheapest first.
     Fee,
 }
 
-/// Fit and realism together, for the default order: mostly fit, held back for players past their best years, with a
-/// little for young players who have room to grow.
-fn score(fit: u8, realism: u8, player: &PlayerSummary) -> u8 {
-    let age = player.age.unwrap_or(27);
-    let years = match age {
-        ..=29 => 1.0,
-        30..=31 => 0.95,
-        32..=33 => 0.88,
-        _ => 0.8,
-    };
-    let room = i32::from(player.potential_ability) - i32::from(player.current_ability);
-    let growth = if age <= 23 && room >= 15 { (room / 5).min(6) as f32 } else { 0.0 };
-    ((0.7 * f32::from(fit) + 0.3 * f32::from(realism)) * years + growth).round().clamp(0.0, 100.0) as u8
+/// What a recommendation is asked for.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ScoutRequest {
+    /// The position, a key of `crate::POSITIONS` among [`SCOUT_POSITIONS`].
+    pub position: String,
+    /// The roles, by key; none means the role of the position that suits each player best.
+    pub in_possession: Option<String>,
+    pub out_of_possession: Option<String>,
+    pub purpose: Purpose,
+    pub min_age: Option<u16>,
+    pub max_age: Option<u16>,
+    /// The most the club would pay, pounds.
+    pub max_fee: Option<i64>,
+    /// Only players at least this likely (0–100) to join.
+    pub min_probability: Option<u8>,
+    /// Leave out players without a club.
+    pub no_free_agents: bool,
+    pub order: ScoutOrder,
+    /// How many to return; 50 when none.
+    pub limit: Option<usize>,
 }
 
-/// Why a player looks easier or harder to sign, with the value it is about.
+/// Why a player looks more or less likely to join, with the value it is about.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Reason {
     /// `listed`, `freeAgent`, `expiring`, `releaseClause`, `fringe`, `keyPlayer`, `overBudget`, `stretch`,
     /// `wageHigh`, `biggerClub`, `smallerClub`, `reputationGap`, `ambitious`, `notForSale`.
     pub code: &'static str,
-    /// Its effect on how realistic the move is, in points.
+    /// Its effect on the probability, in points.
     pub points: i32,
     /// The amount or count it names: pounds, days, a reputation.
     pub value: Option<i64>,
 }
 
-/// A player suggested for the slot.
+/// How a player measures up to a position and its roles.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Fitting {
+    pub player: PlayerSummary,
+    /// 0–100: his attributes for the roles, held back where the position is new to him.
+    pub fit: u8,
+    /// His attributes for each role, 1–20, and the roles they were measured for: the ones asked for, or the best of
+    /// the position's.
+    pub in_possession: Option<f32>,
+    pub out_of_possession: Option<f32>,
+    pub in_possession_role: Option<&'static str>,
+    pub out_of_possession_role: Option<&'static str>,
+    /// His rating (1–20) in the position.
+    pub position_rating: u8,
+}
+
+/// A player recommended for the position.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Suggestion {
-    pub player: PlayerSummary,
-    /// How well he fits the slot, 0–100: his attributes for its roles, held back where its position is new to him.
-    pub fit: u8,
-    /// His attributes for each role, 1–20.
-    pub in_possession: Option<f32>,
-    pub out_of_possession: Option<f32>,
-    /// His rating (1–20) at the best of the slot's positions.
-    pub position_rating: u8,
-    /// How realistic a transfer to the club looks, 0–100, and why.
-    pub realism: u8,
+    #[serde(flatten)]
+    pub fitting: Fitting,
+    /// How likely he is to join the club, 0–100, and why: an estimate, not the game's own.
+    pub probability: u8,
     pub reasons: Vec<Reason>,
     /// What a transfer would likely cost and what he would likely earn, pounds (a week for the wage); none when the
     /// editor cannot tell (not for sale, no value known).
     pub fee: Option<i64>,
     pub wage: Option<i64>,
     pub value: Option<i32>,
-    /// The two together, for the default order.
+    /// Fit and probability together, as the purpose weighs them, for the default order.
     pub score: u8,
 }
 
-/// The suggestions and what they were measured against.
+/// The recommendations and what they were measured against.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Scouted {
     pub suggestions: Vec<Suggestion>,
-    /// How the player in the slot now fits it.
-    pub current: Option<Suggestion>,
+    /// The club's own players for the position, best first (at most five).
+    pub squad: Vec<Fitting>,
     /// The club's transfer budget and the wages it can still add, pounds (a week), when its finances are known.
     pub transfer_budget: Option<i64>,
     pub wage_room: Option<i64>,
-    /// Players looked at, and those that fit the slot's positions.
+    /// Players looked at, and those who can play the position.
     pub examined: usize,
     pub candidates: usize,
 }
@@ -932,40 +997,118 @@ fn position_factor(rating: u8) -> f32 {
     }
 }
 
-/// The lowest position rating a suggestion may have at the slot.
+/// The lowest position rating a recommendation may have.
 const LOWEST_RATING: u8 = 10;
 
-/// A player's fit for a slot (0–100), his ratings for its two roles (1–20) and his rating at its positions.
-type Measured = (u8, Option<f32>, Option<f32>, u8);
-
-struct Slot {
-    ip: Option<Vec<(usize, f32)>>,
-    oop: Option<Vec<(usize, f32)>>,
-    positions: &'static [usize],
+/// What a player's measure for a position came to.
+#[derive(Debug, Clone, Copy)]
+struct Measured {
+    fit: u8,
+    ip: Option<(f32, &'static str)>,
+    oop: Option<(f32, &'static str)>,
+    rating: u8,
 }
 
-impl Slot {
-    fn measure(&self, player: &PlayerSummary) -> Option<Measured> {
-        let rating = self.positions.iter().map(|&i| player.position_ratings[i]).max().unwrap_or(0);
-        let ip = self.ip.as_ref().and_then(|w| role_rating(&player.attributes, w));
-        let oop = self.oop.as_ref().and_then(|w| role_rating(&player.attributes, w));
+/// Roles by key with their attribute weights.
+type Weighted = Vec<(&'static str, Vec<(usize, f32)>)>;
+
+/// A position and the roles a player is measured for there.
+struct Measure {
+    position: usize,
+    ip: Weighted,
+    oop: Weighted,
+}
+
+impl Measure {
+    fn new(request: &ScoutRequest) -> Result<Self, ScoutError> {
+        let unknown = |key: &str| ScoutError::UnknownRole { key: key.to_owned() };
+        let position = scout_position(&request.position).ok_or_else(|| unknown(&request.position))?;
+        let index =
+            crate::POSITIONS.iter().position(|&key| key == position.key).ok_or_else(|| unknown(position.key))?;
+        let places: HashMap<&str, usize> =
+            attribute_keys(ATTRIBUTE_GROUPS).enumerate().map(|(i, key)| (key, i)).collect();
+        let roles = |phase: Phase, asked: &Option<String>| -> Result<Weighted, ScoutError> {
+            let chosen: Vec<&'static Role> = match asked.as_deref() {
+                Some(key) => vec![role(phase, key).ok_or_else(|| unknown(key))?],
+                None => ROLES.iter().filter(|r| r.phase == phase && position.lines.contains(&r.line)).collect(),
+            };
+            Ok(chosen.into_iter().map(|role| (role.key, weights(role, &places))).collect())
+        };
+        Ok(Self {
+            position: index,
+            ip: roles(Phase::InPossession, &request.in_possession)?,
+            oop: roles(Phase::OutOfPossession, &request.out_of_possession)?,
+        })
+    }
+
+    fn of(&self, player: &PlayerSummary) -> Option<Measured> {
+        let rating = player.position_ratings[self.position];
+        let best = |roles: &[(&'static str, Vec<(usize, f32)>)]| {
+            roles
+                .iter()
+                .filter_map(|(key, w)| role_rating(&player.attributes, w).map(|r| (r, *key)))
+                .max_by(|a, b| a.0.total_cmp(&b.0))
+        };
+        let ip = best(&self.ip);
+        let oop = best(&self.oop);
         let both = match (ip, oop) {
-            (Some(ip), Some(oop)) => 0.6 * ip + 0.4 * oop,
-            (Some(one), None) | (None, Some(one)) => one,
+            (Some((ip, _)), Some((oop, _))) => 0.6 * ip + 0.4 * oop,
+            (Some((one, _)), None) | (None, Some((one, _))) => one,
             (None, None) => return None,
         };
         // A role rating of 5 is no fit at all and 17 a full one; the game shows few players above that.
         let fit = ((both - 5.0) / 12.0 * 100.0 * position_factor(rating)).round().clamp(0.0, 100.0) as u8;
-        Some((fit, ip, oop, rating))
+        Some(Measured { fit, ip, oop, rating })
     }
 }
 
-/// How many fitting players to look at closely before the realism of a move is worked out.
+fn fitting(player: &PlayerSummary, m: Measured) -> Fitting {
+    Fitting {
+        player: player.clone(),
+        fit: m.fit,
+        in_possession: m.ip.map(|(r, _)| r),
+        out_of_possession: m.oop.map(|(r, _)| r),
+        in_possession_role: m.ip.map(|(_, key)| key),
+        out_of_possession_role: m.oop.map(|(_, key)| key),
+        position_rating: m.rating,
+    }
+}
+
+/// How much room to grow a player has, 0–100, from his potential ability: none below 100, all of it at 200.
+fn potential(player: &PlayerSummary) -> f32 {
+    f32::from((player.potential_ability.max(0) - 100).clamp(0, 100) as u8)
+}
+
+/// Fit and probability together for the default order, as the purpose weighs them: past his best years a player
+/// counts for less, and a young one with room to grow for a little more.
+fn score(purpose: Purpose, fit: u8, probability: u8, player: &PlayerSummary) -> u8 {
+    let (fit, probability) = (f32::from(fit), f32::from(probability));
+    let age = player.age.unwrap_or(27);
+    let years = match age {
+        ..=29 => 1.0,
+        30..=31 => 0.95,
+        32..=33 => 0.88,
+        _ => 0.8,
+    };
+    let room = i32::from(player.potential_ability) - i32::from(player.current_ability);
+    let growth = if age <= 23 && room >= 15 { (room / 5).min(6) as f32 } else { 0.0 };
+    let score = match purpose {
+        Purpose::FirstTeam | Purpose::Any => (0.7 * fit + 0.3 * probability) * years + growth,
+        Purpose::Rotation => (0.5 * fit + 0.5 * probability) * years,
+        Purpose::Future => 0.35 * fit + 0.35 * potential(player) + 0.3 * probability,
+    };
+    score.round().clamp(0.0, 100.0) as u8
+}
+
+/// How many fitting players to look at closely before the probability of a move is worked out.
 const SHORTLIST: usize = 400;
 
+/// The youngest a future prospect may be past.
+const PROSPECT_AGE: u16 = 21;
+
 impl Session {
-    /// Players who would fit the slot `request` describes, best first, for `buyer`. Reads the shortlisted players'
-    /// reputation, ambition and contract from memory.
+    /// Players to recommend for the position `request` describes, best first, for `buyer`, with the club's own
+    /// players there to compare. Reads the shortlisted players' reputation, ambition and contract from memory.
     pub fn scout(
         &self,
         request: &ScoutRequest,
@@ -974,29 +1117,23 @@ impl Session {
         clubs: &SearchIndex<ClubSummary>,
         human_clubs: &[u32],
     ) -> Result<Scouted, ScoutError> {
-        let ip = request
-            .in_possession
-            .as_deref()
-            .map(|key| role(Phase::InPossession, key).ok_or_else(|| ScoutError::UnknownRole { key: key.to_owned() }));
-        let oop = request.out_of_possession.as_deref().map(|key| {
-            role(Phase::OutOfPossession, key).ok_or_else(|| ScoutError::UnknownRole { key: key.to_owned() })
-        });
-        let ip = ip.transpose()?;
-        let oop = oop.transpose()?;
-        let Some(line) = ip.or(oop).map(|role| role.line) else {
-            return Err(ScoutError::UnknownRole { key: String::new() });
-        };
-        let places: HashMap<&str, usize> =
-            attribute_keys(ATTRIBUTE_GROUPS).enumerate().map(|(i, key)| (key, i)).collect();
-        let slot = Slot {
-            ip: ip.map(|role| weights(role, &places)),
-            oop: oop.map(|role| weights(role, &places)),
-            positions: line.positions(request.side),
-        };
+        let measure = Measure::new(request)?;
         let today = self.game_date();
 
+        // The club's own players there, best first.
+        let mut own: Vec<(&PlayerSummary, Measured)> = players
+            .iter()
+            .filter(|player| player.club_uid == Some(buyer.club.uid))
+            .filter_map(|player| measure.of(player).map(|m| (player, m)))
+            .filter(|(_, m)| m.rating >= LOWEST_RATING)
+            .collect();
+        own.sort_by(|a, b| b.1.fit.cmp(&a.1.fit).then(b.0.current_ability.cmp(&a.0.current_ability)));
+        let best_own = own.first().map_or(0, |(_, m)| m.fit);
+        let second_own = own.get(1).map_or(0, |(_, m)| m.fit);
+        let squad: Vec<Fitting> = own.iter().take(5).map(|&(player, m)| fitting(player, m)).collect();
+
         let mut examined = 0;
-        let mut fitting: Vec<(&PlayerSummary, Measured)> = Vec::new();
+        let mut fitting_players: Vec<(&PlayerSummary, Measured)> = Vec::new();
         for player in players.iter() {
             examined += 1;
             let own = player.club_uid == Some(buyer.club.uid);
@@ -1016,43 +1153,62 @@ impl Session {
                 if free && age > 35 {
                     continue;
                 }
+                if request.purpose == Purpose::Future && age > PROSPECT_AGE {
+                    continue;
+                }
             }
-            let Some(measured) = slot.measure(player) else {
+            if player.position_ratings[measure.position] < LOWEST_RATING {
+                continue;
+            }
+            let Some(m) = measure.of(player) else {
                 continue;
             };
-            if measured.3 < LOWEST_RATING {
-                continue;
-            }
-            fitting.push((player, measured));
+            fitting_players.push((player, m));
         }
-        let candidates = fitting.len();
-        fitting.sort_by(|a, b| b.1.0.cmp(&a.1.0).then(b.0.current_ability.cmp(&a.0.current_ability)));
-        fitting.truncate(SHORTLIST);
+        let candidates = fitting_players.len();
+        let purpose_fits = |player: &PlayerSummary, m: &Measured| match request.purpose {
+            Purpose::FirstTeam => m.fit > best_own,
+            Purpose::Rotation => m.fit >= second_own.max(best_own.saturating_sub(10)),
+            Purpose::Future => i32::from(player.potential_ability) - i32::from(player.current_ability) >= 15,
+            Purpose::Any => true,
+        };
+        fitting_players.retain(|(player, m)| purpose_fits(player, m));
+        let rank = |player: &PlayerSummary, m: &Measured| match request.purpose {
+            Purpose::Future => f32::from(m.fit) + potential(player),
+            _ => f32::from(m.fit),
+        };
+        fitting_players.sort_by(|a, b| rank(b.0, &b.1).total_cmp(&rank(a.0, &a.1)));
+        fitting_players.truncate(SHORTLIST);
 
-        let wage_bill = self.wage_bill(buyer.club, players);
-        let wage_room = buyer.wage_budget.zip(wage_bill).map(|(budget, bill)| budget - bill);
+        let wage_room = self.wage_room(buyer, players);
         let looking = Looking { buyer, clubs, today, wage_room };
-        let current = request
-            .current
-            .and_then(|uid| players.get(uid))
-            .and_then(|player| slot.measure(player).map(|measured| self.suggestion(player, measured, &looking)));
-        let to_beat = current.as_ref().filter(|_| request.upgrades_only).map_or(0, |current| current.fit);
-        let mut suggestions: Vec<Suggestion> = fitting
+        let mut suggestions: Vec<Suggestion> = fitting_players
             .into_iter()
-            .filter(|(_, measured)| measured.0 > to_beat || to_beat == 0)
-            .map(|(player, measured)| self.suggestion(player, measured, &looking))
+            .map(|(player, m)| self.suggestion(player, m, request.purpose, &looking))
             .filter(|s| request.max_fee.is_none_or(|max| s.fee.is_some_and(|fee| fee <= max)))
-            .filter(|s| !request.realistic_only || s.realism >= REALISTIC)
+            .filter(|s| request.min_probability.is_none_or(|min| s.probability >= min))
             .collect();
         match request.order {
-            ScoutOrder::Score => suggestions.sort_by(|a, b| b.score.cmp(&a.score).then(b.fit.cmp(&a.fit))),
-            ScoutOrder::Fit => suggestions.sort_by(|a, b| b.fit.cmp(&a.fit).then(b.score.cmp(&a.score))),
-            ScoutOrder::Realism => suggestions.sort_by(|a, b| b.realism.cmp(&a.realism).then(b.fit.cmp(&a.fit))),
-            ScoutOrder::Fee => suggestions
-                .sort_by(|a, b| a.fee.unwrap_or(i64::MAX).cmp(&b.fee.unwrap_or(i64::MAX)).then(b.fit.cmp(&a.fit))),
+            ScoutOrder::Score => {
+                suggestions.sort_by(|a, b| b.score.cmp(&a.score).then(b.fitting.fit.cmp(&a.fitting.fit)))
+            }
+            ScoutOrder::Fit => {
+                suggestions.sort_by(|a, b| b.fitting.fit.cmp(&a.fitting.fit).then(b.score.cmp(&a.score)))
+            }
+            ScoutOrder::Probability => {
+                suggestions.sort_by(|a, b| b.probability.cmp(&a.probability).then(b.fitting.fit.cmp(&a.fitting.fit)))
+            }
+            ScoutOrder::Fee => suggestions.sort_by(|a, b| {
+                a.fee.unwrap_or(i64::MAX).cmp(&b.fee.unwrap_or(i64::MAX)).then(b.fitting.fit.cmp(&a.fitting.fit))
+            }),
         }
         suggestions.truncate(request.limit.unwrap_or(50).clamp(1, 200));
-        Ok(Scouted { suggestions, current, transfer_budget: buyer.transfer_budget, wage_room, examined, candidates })
+        Ok(Scouted { suggestions, squad, transfer_budget: buyer.transfer_budget, wage_room, examined, candidates })
+    }
+
+    /// The wages the club can still add a week: its wage budget less what its players earn now, pounds.
+    pub fn wage_room(&self, buyer: &Buyer<'_>, players: &PlayerIndex) -> Option<i64> {
+        buyer.wage_budget.zip(self.wage_bill(buyer.club, players)).map(|(budget, bill)| budget - bill)
     }
 
     /// The weekly wages of the players under contract with the club, pounds.
@@ -1069,28 +1225,18 @@ impl Session {
         Some(bill)
     }
 
-    fn suggestion(
-        &self,
-        player: &PlayerSummary,
-        (fit, ip, oop, rating): Measured,
-        looking: &Looking<'_>,
-    ) -> Suggestion {
+    fn suggestion(&self, player: &PlayerSummary, m: Measured, purpose: Purpose, looking: &Looking<'_>) -> Suggestion {
         let seller = player.club_uid.and_then(|uid| looking.clubs.get(uid));
         let facts = self.facts(player);
-        let (realism, reasons, fee, wage) = realism(player, &facts, seller, looking);
-        let score = score(fit, realism, player);
+        let (probability, reasons, fee, wage) = probability(player, &facts, seller, looking);
         Suggestion {
-            player: player.clone(),
-            fit,
-            in_possession: ip,
-            out_of_possession: oop,
-            position_rating: rating,
-            realism,
+            fitting: fitting(player, m),
+            probability,
             reasons,
             fee,
             wage,
             value: player.transfer_value,
-            score,
+            score: score(purpose, m.fit, probability, player),
         }
     }
 
@@ -1120,8 +1266,8 @@ impl Session {
     }
 }
 
-/// From this, a move counts as realistic.
-pub const REALISTIC: u8 = 50;
+/// From this, a move counts as likely.
+pub const LIKELY: u8 = 50;
 
 struct Looking<'a> {
     buyer: &'a Buyer<'a>,
@@ -1142,8 +1288,8 @@ struct Facts {
     release_clause: Option<u32>,
 }
 
-/// How realistic a transfer looks, why, and what it would likely cost and pay.
-fn realism(
+/// How likely a transfer looks, why, and what it would likely cost and pay.
+fn probability(
     player: &PlayerSummary,
     facts: &Facts,
     seller: Option<&ClubSummary>,
@@ -1238,7 +1384,7 @@ fn realism(
 }
 
 /// Days from `from` to `to`, by the calendar.
-fn days_between(from: FmDate, to: FmDate) -> i64 {
+pub(crate) fn days_between(from: FmDate, to: FmDate) -> i64 {
     let ordinal = |date: FmDate| {
         let year = i64::from(date.year);
         let leap = |y: i64| (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
@@ -1297,6 +1443,20 @@ mod tests {
     }
 
     #[test]
+    fn every_position_has_roles_in_both_phases() {
+        for position in SCOUT_POSITIONS {
+            assert!(crate::POSITIONS.contains(&position.key), "{}", position.key);
+            for phase in [Phase::InPossession, Phase::OutOfPossession] {
+                assert!(
+                    ROLES.iter().any(|r| r.phase == phase && position.lines.contains(&r.line)),
+                    "{} {phase:?}",
+                    position.key
+                );
+            }
+        }
+    }
+
+    #[test]
     fn sides_follow_the_ratings() {
         let mut ratings = [1u8; 15];
         ratings[DR] = 20;
@@ -1305,6 +1465,14 @@ mod tests {
         assert_eq!(side_of(Line::CentreBack, &ratings), None);
         ratings[WBL] = 20;
         assert_eq!(side_of(Line::FullBack, &ratings), None);
+    }
+
+    #[test]
+    fn slots_name_their_position() {
+        assert_eq!(position_of(Line::FullBack, Some(Side::Right)), Some("dr"));
+        assert_eq!(position_of(Line::Wide, Some(Side::Left)), Some("aml"));
+        assert_eq!(position_of(Line::Wide, None), None);
+        assert_eq!(position_of(Line::Striker, None), Some("st"));
     }
 
     #[test]
@@ -1318,5 +1486,16 @@ mod tests {
     fn fit_holds_back_new_positions() {
         assert!(position_factor(20) > position_factor(14));
         assert_eq!(position_factor(9), 0.0);
+    }
+
+    #[test]
+    fn any_role_takes_the_best_of_the_position() {
+        let request = ScoutRequest { position: "dr".to_owned(), ..ScoutRequest::default() };
+        let measure = Measure::new(&request).expect("dr");
+        assert!(measure.ip.iter().any(|(key, _)| *key == "ifb") && measure.ip.iter().any(|(key, _)| *key == "wb"));
+        assert!(measure.ip.iter().all(|(key, _)| *key != "cb"));
+        let asked = ScoutRequest { position: "dr".to_owned(), in_possession: Some("ifb".to_owned()), ..request };
+        assert_eq!(Measure::new(&asked).expect("ifb").ip.len(), 1);
+        assert!(Measure::new(&ScoutRequest { position: "xx".to_owned(), ..ScoutRequest::default() }).is_err());
     }
 }

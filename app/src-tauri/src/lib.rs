@@ -11,9 +11,9 @@ use fmlibre_core::{
     Field, FmDate, GAME_EXE, GAME_PLUGIN, GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health,
     Kind, Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation, Operation, Paid, Picture, Planned,
     PlayerDetails, PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary, ROLES, RelationSet, RetirementSet, Role,
-    STAFF_JOBS, ScoutError, ScoutRequest, Scouted, SearchIndex, Session, SessionError, Skipped, StaffChange,
-    StaffDetails, StaffFilter, StaffIndex, StaffOrder, StaffPlan, Target, Tie, TieTarget, find_game, nations,
-    sort_players, sort_staff,
+    SCOUT_POSITIONS, STAFF_JOBS, ScoutError, ScoutPosition, ScoutRequest, Scouted, SearchIndex, Session, SessionError,
+    Skipped, SquadReport, StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffOrder, StaffPlan, Target, Tie,
+    TieTarget, find_game, nations, sort_players, sort_staff,
 };
 use fmlibre_mem::{Process, find_processes, is_current_process_elevated, list_modules};
 use serde::{Deserialize, Serialize};
@@ -2480,21 +2480,20 @@ fn homegrown_rules() -> Vec<u8> {
     HOMEGROWN_RULES.to_vec()
 }
 
-/// What the Scouting tab starts from: the human manager's club, the tactics he plays with the players in their slots,
-/// the roles the editor knows and the club's money.
+/// What the Scouting tab starts from: the human manager's club, its money, its senior squad line by line with the
+/// players a scout would let go, and the positions and roles a recommendation can be asked for.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ScoutingView {
+struct ScoutingOverview {
     club: ClubSummary,
-    tactics: Vec<ClubTactic>,
-    /// Why no tactic could be read, when none was: the tab then lets the manager pick the roles.
-    problem: Option<Failure>,
-    /// The list rows of the players in the tactics' slots.
-    players: Vec<PlayerSummary>,
-    roles: &'static [Role],
     /// Pounds; a week for the wages.
     transfer_budget: Option<i64>,
     wage_budget: Option<i64>,
+    /// What the club can still add to its wage bill a week.
+    wage_room: Option<i64>,
+    report: SquadReport,
+    positions: &'static [ScoutPosition],
+    roles: &'static [Role],
 }
 
 /// The human manager's club for scouting: the first club a human manager runs.
@@ -2507,15 +2506,47 @@ fn scouting_club(connection: &Connection) -> Result<&ClubSummary, Failure> {
     connection.clubs.get(uid).ok_or_else(|| not_found(Entity::Club, uid))
 }
 
-/// The club's transfer budget and wage budget, pounds, when its finances can be read.
-fn scouting_money(connection: &Connection, club: &ClubSummary) -> Result<(Option<i64>, Option<i64>), Failure> {
+/// The club as a buyer: its transfer budget and wage budget, pounds, when its finances can be read.
+fn scouting_buyer<'a>(connection: &'a Connection, club: &'a ClubSummary) -> Result<Buyer<'a>, Failure> {
     let finances = connection.session.club_details(club)?.and_then(|details| details.finances);
-    Ok((finances.map(|f| i64::from(f.transfer_budget)), finances.map(|f| i64::from(f.wage_budget))))
+    Ok(Buyer {
+        club,
+        transfer_budget: finances.map(|f| i64::from(f.transfer_budget)),
+        wage_budget: finances.map(|f| i64::from(f.wage_budget)),
+    })
+}
+
+/// The Scouting tab's overview, read now. Only reads memory, in well under a second.
+#[tauri::command]
+fn scouting_overview(state: State<'_, AppState>) -> Result<ScoutingOverview, Failure> {
+    let guard = state.0.lock()?;
+    let connection = guard.as_ref().ok_or_else(not_connected)?;
+    let club = scouting_club(connection)?;
+    let buyer = scouting_buyer(connection, club)?;
+    let report = connection.session.squad_report(club, &connection.players)?;
+    Ok(ScoutingOverview {
+        club: club.clone(),
+        transfer_budget: buyer.transfer_budget,
+        wage_budget: buyer.wage_budget,
+        wage_room: connection.session.wage_room(&buyer, &connection.players),
+        report,
+        positions: SCOUT_POSITIONS,
+        roles: ROLES,
+    })
+}
+
+/// The tactics the human manager plays, as shortcuts to the positions and roles to ask for.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScoutingTactics {
+    tactics: Vec<ClubTactic>,
+    /// Why no tactic could be read, when none was.
+    problem: Option<Failure>,
 }
 
 /// The human manager's tactics, read now: one pass over the game's memory, a few seconds.
 #[tauri::command]
-fn scouting_tactics(state: State<'_, AppState>) -> Result<ScoutingView, Failure> {
+fn scouting_tactics(state: State<'_, AppState>) -> Result<ScoutingTactics, Failure> {
     let guard = state.0.lock()?;
     let connection = guard.as_ref().ok_or_else(not_connected)?;
     let club = scouting_club(connection)?;
@@ -2524,22 +2555,17 @@ fn scouting_tactics(state: State<'_, AppState>) -> Result<ScoutingView, Failure>
         Err(err @ (ScoutError::NoTactic { .. } | ScoutError::NotPlaced)) => (Vec::new(), Some(Failure::from(err))),
         Err(err) => return Err(err.into()),
     };
-    let mut uids: Vec<u32> = tactics.iter().flat_map(|t| t.slots.iter().filter_map(|s| s.player)).collect();
-    uids.sort_unstable();
-    uids.dedup();
-    let players = uids.into_iter().filter_map(|uid| connection.players.get(uid).cloned()).collect();
-    let (transfer_budget, wage_budget) = scouting_money(connection, club)?;
-    Ok(ScoutingView { club: club.clone(), tactics, problem, players, roles: ROLES, transfer_budget, wage_budget })
+    Ok(ScoutingTactics { tactics, problem })
 }
 
-/// Players who would fit the slot `request` describes, for the human manager's club. Only reads memory.
+/// Players a scout would recommend for the position `request` describes, for the human manager's club. Only reads
+/// memory.
 #[tauri::command]
 fn scouting_suggest(state: State<'_, AppState>, request: ScoutRequest) -> Result<Scouted, Failure> {
     let guard = state.0.lock()?;
     let connection = guard.as_ref().ok_or_else(not_connected)?;
     let club = scouting_club(connection)?;
-    let (transfer_budget, wage_budget) = scouting_money(connection, club)?;
-    let buyer = Buyer { club, transfer_budget, wage_budget };
+    let buyer = scouting_buyer(connection, club)?;
     Ok(connection.session.scout(&request, &buyer, &connection.players, &connection.clubs, &connection.human_clubs)?)
 }
 
@@ -2913,6 +2939,7 @@ pub fn run() {
             add_release_clause,
             homegrown_rules,
             club_squads,
+            scouting_overview,
             scouting_tactics,
             scouting_suggest,
             set_captain,

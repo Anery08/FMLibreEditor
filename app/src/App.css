@@ -4569,97 +4569,527 @@ button.danger:hover:not(:disabled) {
   stroke-linejoin: round;
 }
 
-/* Scouting: the slots of a tactic in a column, the suggestions for the selected one beside it. */
+/* Scouting: an assistant scout. A header with the club's figures, three sections under it: transfer advice (a brief
+   on the left, the advice beside it), squad depth (the lines laid out like a pitch) and players to let go. */
 .workspace.scouting {
   min-width: 0;
 }
 
-.scout-slots {
-  flex: none;
-  width: 250px;
-  padding: 14px 0 14px 18px;
-  overflow-y: auto;
-}
-
-.scout-slots ol {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.scout-slot {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px 8px;
-  width: 100%;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-}
-
-.scout-slot:hover:not(.selected) {
-  background: var(--hover);
-}
-
-/* What is picked is printed in reverse, as elsewhere, under the pointer too. */
-.scout-slot.selected,
-.scout-slot.selected:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.scout-slot.selected .muted {
-  color: inherit;
-  opacity: 0.8;
-}
-
-.scout-roles {
-  font-stretch: 88%;
-  font-weight: 800;
-  letter-spacing: 0.3px;
-}
-
-.scout-line {
-  font-size: 12px;
-  text-align: right;
-}
-
-.scout-slot-player {
-  grid-column: 1 / -1;
-  min-width: 0;
-  font-size: 13px;
-}
-
 .scout-main {
-  overflow: hidden;
-}
-
-.scout-toolbar {
-  gap: 8px 18px;
-}
-
-.scout-club {
-  display: inline-flex;
-  font-weight: 800;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px 18px 0;
 }
 
 .scout-banner {
   margin: 0 0 10px;
 }
 
-.scout-summary {
-  margin: 0 0 8px;
+.scout-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 28px;
+  margin-bottom: 10px;
+}
+
+.scout-club {
+  display: inline-flex;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.scout-figures {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 4px 26px;
+  min-width: 0;
+  margin: 0;
+}
+
+.scout-figures dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-stretch: 88%;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.scout-figures dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+}
+
+/* The three sections: tabs on a hairline, the open one underlined in ink. */
+.scout-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.scout-subtabs button,
+.scout-subtabs button:hover:not(:disabled) {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  margin-bottom: -1px;
+  padding: 4px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.scout-subtabs button:hover:not(:disabled, [aria-selected="true"]) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.scout-subtabs button[aria-selected="true"],
+.scout-subtabs button[aria-selected="true"]:hover:not(:disabled) {
+  border-bottom-color: var(--text);
+  background: transparent;
+  color: var(--text);
+}
+
+.scout-badge {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--raised);
+  color: var(--text);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+}
+
+.scout-panel {
+  flex: 1;
+  min-height: 0;
+  padding-top: 14px;
+  overflow: auto;
+}
+
+.scout-panel > :is(.scout-depth, .scout-departures) {
+  padding-bottom: 18px;
+}
+
+/* Advice: the brief and the results are two columns that scroll on their own. */
+.scout-recommend {
+  display: flex;
+  gap: 22px;
+  height: 100%;
+  min-height: 0;
+}
+
+.scout-recommend[hidden] {
+  display: none;
+}
+
+.scout-brief {
+  flex: none;
+  width: 312px;
+  min-height: 0;
+  padding: 0 8px 18px 0;
+  overflow-y: auto;
+}
+
+.scout-heading {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.scout-block {
+  margin-bottom: 14px;
+}
+
+.scout-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* The pitch of positions, attack at the top. */
+.scout-pitch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(6, 28px);
+  gap: 5px 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--raised);
+}
+
+.scout-spot,
+.scout-spot:hover:not(:disabled) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 0;
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  background: var(--field);
+  color: var(--text);
+  font-stretch: 88%;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+.scout-spot:hover:not(:disabled, [aria-pressed="true"]) {
+  border-color: var(--text);
+  background: var(--hover);
+}
+
+.scout-spot[aria-pressed="true"],
+.scout-spot[aria-pressed="true"]:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* The colour of a depth status: the dots on the pitch, the badges of the cards. */
+.scout-dot,
+.scout-status {
+  --status: var(--muted);
+}
+
+:is(.scout-dot, .scout-status)[data-status="missing"] {
+  --status: var(--tier-1);
+}
+
+:is(.scout-dot, .scout-status)[data-status="thin"] {
+  --status: var(--tier-2);
+}
+
+:is(.scout-dot, .scout-status)[data-status="fine"] {
+  --status: var(--tier-4);
+}
+
+:is(.scout-dot, .scout-status)[data-status="crowded"] {
+  --status: var(--accent-text);
+}
+
+.scout-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status);
+  box-shadow: 0 0 0 1px var(--field);
+}
+
+.scout-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 8px 0 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 12px;
+  list-style: none;
+}
+
+.scout-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.scout-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.scout-field :is(select, input) {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+}
+
+.scout-field :is(select, input):hover {
+  border-color: var(--text);
+}
+
+.scout-field :is(select, input):focus-visible {
+  border-color: var(--accent);
+}
+
+.scout-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  font-size: 13px;
+}
+
+/* The two collapsible parts of the brief. */
+.scout-tactic,
+.scout-filters {
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.scout-tactic summary,
+.scout-filters summary {
+  padding: 7px 10px;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.scout-tactic[open] summary,
+.scout-filters[open] summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.scout-tactic-body,
+.scout-filter-grid {
+  padding: 10px;
+}
+
+.scout-tactic-body p {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+}
+
+.scout-tactic-read-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 12.5px;
+}
+
+.scout-tactic-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scout-tactic-slot,
+.scout-tactic-slot:hover:not(:disabled) {
+  min-height: 26px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-stretch: 90%;
+  font-weight: 750;
+}
+
+.scout-tactic-slot[aria-pressed="true"],
+.scout-tactic-slot[aria-pressed="true"]:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.scout-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 10px;
+}
+
+.scout-filter-grid .wide {
+  grid-column: 1 / -1;
+}
+
+/* A switch of two to four buttons in one frame; the pressed one is the choice in effect, under the pointer too. */
+.scout-segmented {
+  display: inline-flex;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.scout-purpose {
+  display: flex;
+}
+
+.scout-segmented button {
+  flex: 1;
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.scout-segmented button + button {
+  border-left: 1px solid var(--border-strong);
+}
+
+.scout-segmented button:hover:not(:disabled, [aria-pressed="true"]) {
+  border-color: var(--border-strong);
+  background: var(--hover);
+  color: var(--text);
+}
+
+.scout-segmented button[aria-pressed="true"],
+.scout-segmented button[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.scout-segmented button:focus-visible {
+  outline-offset: -2px;
+}
+
+/* The results. */
+.scout-results {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding-bottom: 18px;
+  overflow-y: auto;
+}
+
+.scout-ask {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.scout-ask strong {
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-stretch: 88%;
+  font-weight: 800;
+}
+
+.scout-own {
+  margin-bottom: 14px;
+  padding: 8px 12px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.scout-own h3 {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-stretch: 88%;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.scout-own p {
+  margin: 4px 0 6px;
+}
+
+.scout-own ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scout-own li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) 30px 110px minmax(70px, auto) minmax(80px, auto);
+  align-items: center;
+  gap: 4px 12px;
+  padding: 3px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.scout-own li:first-child {
+  border-top: 0;
+}
+
+/* The column names of the squad's options, in the small print of the card's title. */
+.scout-own li.scout-own-head {
+  padding: 2px 0 1px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-stretch: 88%;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.scout-own h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.scout-own-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  letter-spacing: 0.3px;
+}
+
+.scout-own-age {
+  text-align: right;
+}
+
+.scout-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 14px;
+  margin-bottom: 8px;
+}
+
+.scout-order {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.scout-order select {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
 }
 
 .scout-note {
-  margin: 12px 0 18px;
+  margin: 12px 0 0;
   font-size: 12px;
 }
 
@@ -4668,17 +5098,36 @@ button.danger:hover:not(:disabled) {
   vertical-align: middle;
 }
 
+.scout-grid tbody tr {
+  cursor: default;
+}
+
 .scout-grid td.col-name {
+  max-width: 250px;
   white-space: normal;
 }
 
-/* Long club names wrap rather than widen the table. */
-.scout-grid td.scout-club-cell {
-  max-width: 190px;
+.scout-grid th .scout-th-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* The note of the (i) in a header: as wide as a sentence needs, running to the left from the right edge. */
+.scout-grid th .info-tip-note {
+  right: 0;
+  left: auto;
+  width: 250px;
+  font-size: 12.5px;
+  font-stretch: 100%;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
   white-space: normal;
 }
 
-.scout-grid button.name-link {
+.scout-main .name-link {
   min-height: 0;
   padding: 0;
   border: 0;
@@ -4690,67 +5139,118 @@ button.danger:hover:not(:disabled) {
   text-underline-offset: 3px;
 }
 
-.scout-grid button.name-link:is(:hover, :focus-visible):not(:disabled) {
+.scout-main .name-link:is(:hover, :focus-visible):not(:disabled) {
   background: none;
   color: var(--accent-text);
   text-decoration-color: currentColor;
 }
 
-/* The player in the slot now, to measure the others against. */
-.scout-grid tr.scout-current td {
-  background: var(--accent-soft);
-  border-bottom: 2px solid var(--border-strong);
+.scout-club-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.scout-club-line .name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .scout-fit {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.scout-fit .num {
+  min-width: 22px;
+  font-weight: 750;
 }
 
 .scout-bar {
   flex: none;
-  width: 64px;
+  width: 56px;
   height: 6px;
+  border-radius: 3px;
   background: var(--raised);
+  overflow: hidden;
 }
 
 .scout-bar > span {
   display: block;
   height: 100%;
+  background: var(--tier-2);
+}
+
+.scout-bar > span.ok {
   background: var(--tier-3);
 }
 
-.scout-realism {
+.scout-bar > span.good {
+  background: var(--tier-4);
+}
+
+.scout-roles-pair {
+  font-stretch: 90%;
+  font-weight: 750;
+  letter-spacing: 0.2px;
+}
+
+.scout-probability {
   font-weight: 800;
 }
 
-.scout-realism.good {
+.scout-probability.good {
   color: var(--tier-4);
 }
 
-.scout-realism.ok {
+.scout-probability.ok {
   color: var(--tier-2);
 }
 
-.scout-realism.poor {
+.scout-probability.poor {
   color: var(--tier-1);
 }
 
+.scout-note-cell {
+  width: 230px;
+  white-space: normal;
+}
+
+/* At most two chips and a count, side by side; a long one is cut short, its whole text on hover. */
 .scout-reasons {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  min-width: 160px;
-  max-width: 320px;
+  gap: 3px 4px;
+  max-width: 230px;
 }
 
 .scout-reason {
+  overflow: hidden;
+  max-width: 100%;
   height: auto;
-  white-space: normal;
-  line-height: 1.3;
+  line-height: 1.35;
+  text-overflow: ellipsis;
   text-transform: none;
+  white-space: nowrap;
   font-weight: 600;
+}
+
+/* The fee above the wage, both short; the amounts in full on hover. */
+.scout-money .scout-fee {
+  display: block;
+  font-weight: 700;
+}
+
+.scout-money .sub {
+  display: block;
+  white-space: nowrap;
 }
 
 .scout-reason.pos {
@@ -4760,5 +5260,187 @@ button.danger:hover:not(:disabled) {
 
 .scout-reason.neg {
   border-color: var(--tier-1);
+  color: var(--tier-1);
+}
+
+/* Squad depth: ten lines laid out like a pitch, attack at the top. */
+.scout-depth-summary {
+  margin: 0 0 10px;
+}
+
+.scout-pitch-lines {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.scout-line-card {
+  min-width: 0;
+  padding: 7px 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.scout-line-card header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.scout-line-card h3 {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 800;
+}
+
+.scout-status {
+  padding: 0 7px;
+  border: 1px solid var(--status);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--status) 12%, transparent);
+  color: var(--status);
+  font-size: 11px;
+  font-stretch: 90%;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+.scout-count {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.scout-flag {
+  height: auto;
+  line-height: 16px;
+  text-transform: none;
+}
+
+.scout-advice-button {
+  min-height: 24px;
+  margin-left: auto;
+  padding: 1px 9px;
+  font-size: 12px;
+}
+
+.scout-line-players {
+  display: grid;
+  gap: 1px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scout-line-card.single .scout-line-players {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  column-gap: 20px;
+}
+
+.scout-line-players li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto auto 30px;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  font-size: 13px;
+}
+
+.scout-line-players .name-link {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scout-line-players li:not(:has(.tag)) .name-link {
+  grid-column: span 2;
+}
+
+.scout-line-age {
+  text-align: right;
+}
+
+.scout-line-ability {
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  text-align: right;
+}
+
+.scout-line-empty {
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+
+.scout-line-players li.scout-line-more {
+  display: block;
+  min-height: 0;
+  padding: 2px 0 0 30px;
+  font-size: 12px;
+}
+
+.scout-depth-legend::before {
+  content: " · ";
+}
+
+.scout-cover {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/* Players to let go. */
+.scout-departures-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 10px;
+}
+
+/* Here every reason is shown, side by side in a wider column. */
+.scout-departures .scout-note-cell {
+  width: auto;
+}
+
+.scout-departures .scout-reasons {
+  max-width: 380px;
+}
+
+.scout-departures-head p {
+  margin: 0;
+}
+
+.scout-departure-grid .scout-reasons {
+  flex-direction: row;
+  flex-wrap: wrap;
+  max-width: 340px;
+}
+
+.scout-action {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.scout-action[data-action="sell"] {
+  background: color-mix(in srgb, var(--accent-text) 12%, transparent);
+  color: var(--accent-text);
+}
+
+.scout-action[data-action="loan"] {
+  background: color-mix(in srgb, var(--tier-2) 12%, transparent);
+  color: var(--tier-2);
+}
+
+.scout-action[data-action="release"] {
+  background: color-mix(in srgb, var(--tier-1) 12%, transparent);
   color: var(--tier-1);
 }

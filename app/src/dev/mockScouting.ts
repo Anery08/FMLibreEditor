@@ -1,17 +1,25 @@
-// Fixtures for the Scouting tab: the human manager's club, a 4-3-3 he plays, the roles the editor knows (the same as
-// the core's), and suggestions worked out from the fixture players, so the tab can be tried without the game.
+// Fixtures for the Scouting tab: the human manager's club with its squad line by line and the players a scout would
+// let go, a 4-3-3 he plays, the positions and roles the editor knows (the same as the core's), and recommendations
+// worked out from the fixture players, so the tab can be tried without the game.
 
 import type {
   ClubSummary,
   ClubTactic,
+  Departure,
+  DepartureReason,
+  DepthLine,
+  DepthPlayer,
+  DepthStatus,
+  Fitting,
   Line,
   PlayerSummary,
   Reason,
   Role,
+  ScoutPosition,
   Scouted,
-  ScoutingView,
+  ScoutingOverview,
+  ScoutingTactics,
   ScoutRequest,
-  Side,
   Suggestion,
 } from "../types";
 
@@ -79,44 +87,52 @@ const ROLES: Role[] = ROLE_LIST.map(([key, phase, line]) => ({
   otherAttributes: ["stamina", "work_rate"],
 }));
 
-/** The positions a line takes, by side, as the core has them. */
-function positionsOf(line: Line, side: Side | null): string[] {
-  const sided = (right: string[], left: string[]) => (side === "right" ? right : side === "left" ? left : [...right, ...left]);
-  switch (line) {
-    case "goalkeeper":
-      return ["gk"];
-    case "centreBack":
-      return ["dc"];
-    case "fullBack":
-      return sided(["dr", "wbr"], ["dl", "wbl"]);
-    case "wingBack":
-      return sided(["wbr", "dr"], ["wbl", "dl"]);
-    case "defensiveMidfield":
-      return ["dm", "mc"];
-    case "centralMidfield":
-      return ["mc", "dm"];
-    case "attackingMidfield":
-      return ["amc", "mc"];
-    case "wide":
-      return sided(["amr", "mr"], ["aml", "ml"]);
-    case "striker":
-      return ["st"];
-  }
-}
+/** The positions as the core lists them. */
+const POSITIONS: ScoutPosition[] = [
+  { key: "gk", lines: ["goalkeeper"] },
+  { key: "dr", lines: ["fullBack", "wingBack"] },
+  { key: "dc", lines: ["centreBack"] },
+  { key: "dl", lines: ["fullBack", "wingBack"] },
+  { key: "wbr", lines: ["wingBack", "fullBack"] },
+  { key: "dm", lines: ["defensiveMidfield", "centralMidfield"] },
+  { key: "wbl", lines: ["wingBack", "fullBack"] },
+  { key: "mr", lines: ["wide"] },
+  { key: "mc", lines: ["centralMidfield", "attackingMidfield", "defensiveMidfield"] },
+  { key: "ml", lines: ["wide"] },
+  { key: "amr", lines: ["wide"] },
+  { key: "amc", lines: ["attackingMidfield", "centralMidfield"] },
+  { key: "aml", lines: ["wide"] },
+  { key: "st", lines: ["striker"] },
+];
 
-/** The slots of the fixture tactic: Monza's 4-3-3 from the research, [in possession, out of possession, line, side, best position]. */
-const SLOTS: [string, string, Line, Side | null, string][] = [
-  ["bgk", "sk", "goalkeeper", null, "gk"],
-  ["ifb", "pfb", "fullBack", "right", "dr"],
-  ["cb", "cb", "centreBack", null, "dc"],
-  ["bcb", "cb", "centreBack", null, "dc"],
-  ["iwb", "fb", "wingBack", "left", "dl"],
-  ["dm", "dm", "defensiveMidfield", null, "dm"],
-  ["ap", "cm", "centralMidfield", null, "mc"],
-  ["chm", "pcm", "centralMidfield", null, "mc"],
-  ["wfd", "w", "wide", "right", "amr"],
-  ["w", "tw", "wide", "left", "aml"],
-  ["cfd", "cfd", "striker", null, "st"],
+/** The squad's lines as the core has them: key, positions, how many a squad carries. */
+const LINES: [string, string[], number][] = [
+  ["gk", ["gk"], 2],
+  ["dc", ["dc"], 4],
+  ["rightBack", ["dr", "wbr"], 2],
+  ["leftBack", ["dl", "wbl"], 2],
+  ["dm", ["dm"], 2],
+  ["mc", ["mc"], 3],
+  ["rightWing", ["amr", "mr"], 2],
+  ["leftWing", ["aml", "ml"], 2],
+  ["amc", ["amc"], 2],
+  ["st", ["st"], 3],
+];
+
+/** The slots of the fixture tactic: Monza's 4-3-3 from the research, [in possession, out of possession, line, position]. */
+const SLOTS: [string | null, string, Line, string][] = [
+  ["bgk", "sk", "goalkeeper", "gk"],
+  ["ifb", "pfb", "fullBack", "dr"],
+  ["cb", "cb", "centreBack", "dc"],
+  ["bcb", "cb", "centreBack", "dc"],
+  ["iwb", "fb", "wingBack", "dl"],
+  ["dm", "dm", "defensiveMidfield", "dm"],
+  ["ap", "cm", "centralMidfield", "mc"],
+  // An unknown mask, as the Game Pass save had, so the tab shows what it does with one.
+  [null, "pcm", "centralMidfield", "mc"],
+  ["wfd", "w", "wide", "amr"],
+  ["w", "tw", "wide", "aml"],
+  ["cfd", "cfd", "striker", "st"],
 ];
 
 export interface ScoutingFixtures {
@@ -126,57 +142,178 @@ export interface ScoutingFixtures {
   women: Set<number>;
 }
 
+const TRANSFER_BUDGET = 22_957_535;
+const WAGE_BUDGET = 3_638_850;
+const WAGE_ROOM = 666_235;
+
 /** The human manager's club in the fixtures: the first men's club. */
 function humanClub(f: ScoutingFixtures): ClubSummary {
   return f.clubs.find((club) => !club.women)!;
 }
 
-const best = (f: ScoutingFixtures, uid: number, positions: string[]) =>
-  Math.max(0, ...positions.map((key) => f.ratings[uid]?.[key] ?? 0));
+const rating = (f: ScoutingFixtures, uid: number, key: string) => f.ratings[uid]?.[key] ?? 0;
+const best = (f: ScoutingFixtures, uid: number, keys: string[]) => Math.max(0, ...keys.map((key) => rating(f, uid, key)));
 
-export function scoutingTactics(f: ScoutingFixtures): ScoutingView {
+/** The line a fixture player plays best. */
+function lineOf(f: ScoutingFixtures, uid: number): number {
+  let found = 0;
+  let top = 0;
+  LINES.forEach(([, keys], i) => {
+    const here = best(f, uid, keys);
+    if (here > top) {
+      top = here;
+      found = i;
+    }
+  });
+  return found;
+}
+
+function depthStatus(players: number, cover: number, target: number): DepthStatus {
+  if (players === 0 && cover === 0) return "missing";
+  if (players + Math.floor(cover / 2) < target) return "thin";
+  if (players >= target + 2) return "crowded";
+  return "fine";
+}
+
+/** A made-up but steady weekly wage for a fixture player. */
+const wageOf = (p: PlayerSummary) => Math.round(250 + p.currentAbility ** 2.4 / 6);
+/** A made-up but steady transfer value for a fixture player. */
+const valueOf = (p: PlayerSummary) => Math.round(p.currentAbility ** 3 * 9);
+
+export function scoutingOverview(f: ScoutingFixtures): ScoutingOverview {
+  const club = humanClub(f);
+  const squad = f.players.filter((p) => p.clubUid === club.uid);
+  const byAbility = (a: DepthPlayer, b: DepthPlayer) => b.player.currentAbility - a.player.currentAbility;
+  const abilities = squad.map((p) => p.currentAbility).sort((a, b) => b - a).slice(0, 11);
+  const level = abilities.length ? Math.round(abilities.reduce((s, a) => s + a, 0) / abilities.length) : 0;
+  const lines: DepthLine[] = LINES.map(([key, positions, target], i) => {
+    const players = squad
+      .filter((p) => lineOf(f, p.uid) === i)
+      .map((p): DepthPlayer => ({ player: p, rating: best(f, p.uid, positions), onLoan: p.uid % 17 === 0 }))
+      .sort(byAbility);
+    const cover = squad
+      .filter((p) => lineOf(f, p.uid) !== i && best(f, p.uid, positions) >= 15)
+      .map((p): DepthPlayer => ({ player: p, rating: best(f, p.uid, positions), onLoan: false }))
+      .sort(byAbility);
+    return {
+      key,
+      positions,
+      target,
+      players,
+      cover,
+      status: depthStatus(players.length, cover.length, target),
+      weak: players.length > 0 && players[0].player.currentAbility + 15 < level,
+      ageing: players.length > 0 && players.every((d) => (d.player.age ?? 0) >= 31),
+    };
+  });
+  const departures: Departure[] = [];
+  for (const line of lines) {
+    line.players.forEach((d, i) => {
+      const p = d.player;
+      const rank = i + 1;
+      const starters = Math.ceil(line.target / 2);
+      const age = p.age ?? 25;
+      const reasons: DepartureReason[] = [];
+      let priority = 0;
+      const add = (code: string, weight: number, value: number | null) => {
+        reasons.push({ code, value });
+        priority += weight;
+      };
+      if (line.status === "crowded" && rank > line.target) add("surplus", 3, line.players.length);
+      const below = p.currentAbility + 25 < level && age >= 23;
+      if (below) add("belowLevel", 3, p.currentAbility);
+      const ageing = (age >= 32 && rank > starters) || age >= 34;
+      if (ageing) add("ageing", 2, age);
+      if (p.uid % 9 === 0 && rank > starters) add("expiring", 2, 160);
+      if (p.uid % 11 === 0) add("lowMorale", 1, 5);
+      const blocked = age <= 21 && p.potentialAbility - p.currentAbility >= 15 && rank > line.target;
+      if (blocked) add("blocked", 2, p.potentialAbility);
+      if (priority === 0 || d.onLoan) return;
+      const value = valueOf(p);
+      departures.push({
+        player: p,
+        action: blocked && !below ? "loan" : value < 250_000 && age >= 28 && (below || ageing) ? "release" : "sell",
+        reasons,
+        priority,
+        value,
+        wage: wageOf(p),
+        line: line.key,
+        rank,
+      });
+    });
+  }
+  departures.sort((a, b) => b.priority - a.priority || a.player.currentAbility - b.player.currentAbility);
+  const ages = squad.map((p) => p.age ?? 0).filter((a) => a > 0);
+  return {
+    club,
+    transferBudget: TRANSFER_BUDGET,
+    wageBudget: WAGE_BUDGET,
+    wageRoom: WAGE_ROOM,
+    report: {
+      lines,
+      departures,
+      level,
+      size: squad.length,
+      averageAge: ages.length ? ages.reduce((s, a) => s + a, 0) / ages.length : null,
+    },
+    positions: POSITIONS,
+    roles: ROLES,
+  };
+}
+
+export function scoutingTactics(f: ScoutingFixtures): ScoutingTactics {
   const club = humanClub(f);
   const squad = f.players.filter((p) => p.clubUid === club.uid);
   const taken = new Set<number>();
   const tactic: ClubTactic = {
     style: "CONT",
     copies: 3,
-    slots: SLOTS.map(([inPossession, outOfPossession, line, side, position], index) => {
+    slots: SLOTS.map(([inPossession, outOfPossession, line, position], index) => {
       const pick = squad
         .filter((p) => !taken.has(p.uid))
-        .sort((a, b) => (f.ratings[b.uid]?.[position] ?? 0) - (f.ratings[a.uid]?.[position] ?? 0))[0];
+        .sort((a, b) => rating(f, b.uid, position) - rating(f, a.uid, position))[0];
       if (pick) taken.add(pick.uid);
       return {
         index,
-        // One unknown mask, as the Game Pass save had, so the tab shows what it does with one.
-        inPossession: index === 7 ? null : inPossession,
+        inPossession,
         outOfPossession,
-        inPossessionMask: index === 7 ? "408000" : "200002",
+        inPossessionMask: inPossession === null ? "408000" : "200002",
         outOfPossessionMask: "200008",
         line,
-        side,
+        side: position.endsWith("r") ? "right" : position.endsWith("l") ? "left" : null,
+        position,
         player: pick?.uid ?? null,
       };
     }),
   };
+  return { tactics: [tactic], problem: null };
+}
+
+/** A made-up but steady measure of how a fixture player suits a position. */
+function measure(f: ScoutingFixtures, player: PlayerSummary, request: ScoutRequest): Fitting {
+  const position = POSITIONS.find((p) => p.key === request.position)!;
+  const own = rating(f, player.uid, position.key);
+  const roleRating = Math.min(20, 4 + player.currentAbility / 13 + ((player.uid >> 3) % 5) / 2);
+  const factor = own >= 18 ? 1 : own >= 15 ? 0.97 : own >= 13 ? 0.88 : own >= 10 ? 0.75 : 0;
+  const fit = Math.max(0, Math.min(100, Math.round(((roleRating - 5) / 12) * 100 * factor)));
+  const firstOf = (phase: "inPossession" | "outOfPossession") => {
+    const choices = ROLES.filter((r) => r.phase === phase && position.lines.includes(r.line));
+    return choices[player.uid % choices.length]?.key ?? null;
+  };
   return {
-    club,
-    tactics: [tactic],
-    problem: null,
-    players: squad.filter((p) => taken.has(p.uid)),
-    roles: ROLES,
-    transferBudget: 22_957_535,
-    wageBudget: 3_638_850,
+    player,
+    fit,
+    inPossession: Math.round(roleRating * 10) / 10,
+    outOfPossession: Math.round((roleRating - 0.6) * 10) / 10,
+    inPossessionRole: request.inPossession ?? firstOf("inPossession"),
+    outOfPossessionRole: request.outOfPossession ?? firstOf("outOfPossession"),
+    positionRating: own,
   };
 }
 
-/** A made-up but steady measure of how a fixture player suits a slot. */
-function suggestion(f: ScoutingFixtures, player: PlayerSummary, positions: string[], club: ClubSummary): Suggestion {
-  const rating = best(f, player.uid, positions);
-  const roleRating = Math.min(20, 4 + player.currentAbility / 13 + ((player.uid >> 3) % 5) / 2);
-  const factor = rating >= 18 ? 1 : rating >= 15 ? 0.97 : rating >= 13 ? 0.88 : 0.75;
-  const fit = Math.max(0, Math.min(100, Math.round(((roleRating - 5) / 12) * 100 * factor)));
-  const value = Math.round(player.currentAbility ** 3 * 9);
+function suggestion(f: ScoutingFixtures, player: PlayerSummary, request: ScoutRequest, club: ClubSummary): Suggestion {
+  const fitting = measure(f, player, request);
+  const value = valueOf(player);
   const theirs = f.clubs.find((c) => c.uid === player.clubUid);
   const reasons: Reason[] = [];
   let fee: number | null = player.clubUid === null ? 0 : Math.round(value * 1.15);
@@ -186,62 +323,60 @@ function suggestion(f: ScoutingFixtures, player: PlayerSummary, positions: strin
     fee = fee === null ? null : Math.round(fee * 0.8);
   }
   if (player.uid % 5 === 0) reasons.push({ code: "fringe", points: 10, value: 4 });
-  if (player.uid % 11 === 0) reasons.push({ code: "keyPlayer", points: -15, value: 1 });
+  else if (player.uid % 11 === 0) reasons.push({ code: "keyPlayer", points: -15, value: 1 });
   if (player.uid % 13 === 0) reasons.push({ code: "expiring", points: 15, value: 140 });
-  if (fee !== null && fee > 22_957_535 * 1.3) reasons.push({ code: "overBudget", points: -40, value: fee - 22_957_535 });
-  else if (fee !== null && fee > 22_957_535) reasons.push({ code: "stretch", points: -15, value: fee - 22_957_535 });
+  if (fee !== null && fee > TRANSFER_BUDGET * 1.3) reasons.push({ code: "overBudget", points: -40, value: fee - TRANSFER_BUDGET });
+  else if (fee !== null && fee > TRANSFER_BUDGET) reasons.push({ code: "stretch", points: -15, value: fee - TRANSFER_BUDGET });
   if (theirs?.reputation != null && club.reputation != null) {
     if (theirs.reputation > club.reputation + 1000) reasons.push({ code: "biggerClub", points: -20, value: theirs.reputation });
     else if (theirs.reputation + 1000 < club.reputation) reasons.push({ code: "smallerClub", points: 10, value: theirs.reputation });
   }
-  const realism = Math.max(0, Math.min(100, 55 + reasons.reduce((sum, r) => sum + r.points, 0)));
+  const probability = Math.max(0, Math.min(100, 55 + reasons.reduce((sum, r) => sum + r.points, 0)));
   const age = player.age ?? 27;
   const years = age <= 29 ? 1 : age <= 31 ? 0.95 : age <= 33 ? 0.88 : 0.8;
-  return {
-    player,
-    fit,
-    inPossession: Math.round(roleRating * 10) / 10,
-    outOfPossession: Math.round((roleRating - 0.6) * 10) / 10,
-    positionRating: rating,
-    realism,
-    reasons,
-    fee,
-    wage: Math.round(250 + player.currentAbility ** 2.4 / 6),
-    value,
-    score: Math.round((0.7 * fit + 0.3 * realism) * years),
-  };
+  const purpose = request.purpose ?? "firstTeam";
+  const potential = Math.max(0, Math.min(100, player.potentialAbility - 100));
+  const score =
+    purpose === "rotation" ? (0.5 * fitting.fit + 0.5 * probability) * years
+    : purpose === "future" ? 0.35 * fitting.fit + 0.35 * potential + 0.3 * probability
+    : (0.7 * fitting.fit + 0.3 * probability) * years;
+  return { ...fitting, probability, reasons, fee, wage: wageOf(player), value, score: Math.round(score) };
 }
 
 export function scoutingSuggest(f: ScoutingFixtures, request: ScoutRequest): Scouted {
   const club = humanClub(f);
-  const role = ROLES.find((r) => r.key === request.inPossession && r.phase === "inPossession")
-    ?? ROLES.find((r) => r.key === request.outOfPossession && r.phase === "outOfPossession");
-  if (!role) {
-    throw { code: "scout.unknownRole", message: "unknown role", params: { role: request.inPossession ?? "" } };
+  if (!POSITIONS.some((p) => p.key === request.position)) {
+    throw { code: "scout.unknownRole", message: "unknown position", params: { role: request.position } };
   }
-  const positions = positionsOf(role.line, request.side ?? null);
+  const own = f.players
+    .filter((p) => p.clubUid === club.uid && rating(f, p.uid, request.position) >= 10)
+    .map((p) => measure(f, p, request))
+    .sort((a, b) => b.fit - a.fit);
+  const bestOwn = own[0]?.fit ?? 0;
+  const secondOwn = own[1]?.fit ?? 0;
+  const purpose = request.purpose ?? "firstTeam";
   const pool = f.players.filter((p) => !f.women.has(p.uid) && p.clubUid !== club.uid);
   const fitting = pool
-    .filter((p) => best(f, p.uid, positions) >= 10)
+    .filter((p) => rating(f, p.uid, request.position) >= 10)
     .filter((p) => (request.minAge == null || (p.age ?? 0) >= request.minAge) && (request.maxAge == null || (p.age ?? 99) <= request.maxAge))
-    .filter((p) => !(request.noFreeAgents && p.clubUid === null));
-  const currentRow = f.players.find((p) => p.uid === request.current);
-  const current = currentRow ? suggestion(f, currentRow, positions, club) : null;
-  let suggestions = fitting.map((p) => suggestion(f, p, positions, club));
-  if (request.upgradesOnly && current) suggestions = suggestions.filter((s) => s.fit > current.fit);
-  if (request.realisticOnly) suggestions = suggestions.filter((s) => s.realism >= 50);
+    .filter((p) => !(request.noFreeAgents && p.clubUid === null))
+    .filter((p) => purpose !== "future" || ((p.age ?? 99) <= 21 && p.potentialAbility - p.currentAbility >= 15));
+  let suggestions = fitting.map((p) => suggestion(f, p, request, club));
+  if (purpose === "firstTeam") suggestions = suggestions.filter((s) => s.fit > bestOwn);
+  if (purpose === "rotation") suggestions = suggestions.filter((s) => s.fit >= Math.max(secondOwn, bestOwn - 10));
+  if (request.minProbability != null) suggestions = suggestions.filter((s) => s.probability >= request.minProbability!);
   if (request.maxFee != null) suggestions = suggestions.filter((s) => s.fee !== null && s.fee <= request.maxFee!);
   const order = request.order ?? "score";
   suggestions.sort((a, b) =>
     order === "fit" ? b.fit - a.fit
-    : order === "realism" ? b.realism - a.realism
+    : order === "probability" ? b.probability - a.probability
     : order === "fee" ? (a.fee ?? Infinity) - (b.fee ?? Infinity)
     : b.score - a.score);
   return {
     suggestions: suggestions.slice(0, request.limit ?? 50),
-    current,
-    transferBudget: 22_957_535,
-    wageRoom: 666_235,
+    squad: own.slice(0, 5),
+    transferBudget: TRANSFER_BUDGET,
+    wageRoom: WAGE_ROOM,
     examined: f.players.length,
     candidates: fitting.length,
   };

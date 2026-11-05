@@ -15,8 +15,8 @@ use fmlibre_core::{
     ATTRIBUTE_GROUPS, ArrayCandidate, ArrayRvas, ArraySource, AttributeBound, BuildProfile, Buyer, CaptainRole,
     ClubIndex, Entity, ExportFormat, ExportHeader, Field, FmDate, Found, GAME_EXE, GAME_PLUGIN, GameInfo,
     GraphicsIndex, Kind, Loan, MoveTerms, PERSONALITY, POSITIONS, Picture, PlayerFilter, PlayerIndex, PlayerOrder,
-    PlayerSort, ProfileNotes, STAFF_ATTRIBUTE_GROUPS, SUPPORTER_MIX, SUPPORTER_TRAITS, Scale, ScanOptions, ScoutOrder,
-    ScoutRequest, Session, SessionError, StaffIndex, Target, Tie, TieTarget, find_game, job_name, nations,
+    PlayerSort, ProfileNotes, Purpose, STAFF_ATTRIBUTE_GROUPS, SUPPORTER_MIX, SUPPORTER_TRAITS, Scale, ScanOptions,
+    ScoutOrder, ScoutRequest, Session, SessionError, StaffIndex, Target, Tie, TieTarget, find_game, job_name, nations,
     profile_text, scan_object_arrays, sort_players,
 };
 #[cfg(target_os = "macos")]
@@ -348,33 +348,40 @@ enum Command {
         #[arg(long)]
         restore: bool,
     },
-    /// Show the tactics the human manager's club plays and, for one slot, the players who would fit it best and how
-    /// realistic signing each would be. Only reads memory.
+    /// What a scout would tell the human manager's club: with --position, the players to sign there (for the roles
+    /// given, or the best role of the position for each player); with --squad, the squad line by line and the players
+    /// to let go; with --tactics, the tactics the manager plays. Only reads memory.
     Scout {
         /// The club (the human manager's when none).
         #[arg(long)]
         club: Option<u32>,
-        /// The slot (0 goalkeeper .. 10) of the first tactic to scout for; only the tactics when none.
+        /// The position to recommend players for, e.g. dr, dc, amr.
         #[arg(long)]
-        slot: Option<usize>,
-        /// Roles to scout for instead of the slot's, by key (e.g. ifb, pfb).
+        position: Option<String>,
+        /// Roles to recommend for, by key (e.g. ifb, pfb); the best of the position's when none.
         #[arg(long)]
         ip: Option<String>,
         #[arg(long)]
         oop: Option<String>,
+        /// firstTeam, rotation, future or any.
+        #[arg(long, default_value = "firstTeam")]
+        purpose: String,
         #[arg(long)]
         max_age: Option<u16>,
-        /// Only moves that look realistic.
+        /// Only players at least this likely (0-100) to join.
         #[arg(long)]
-        realistic: bool,
-        /// Only players who fit the slot better than the one in it.
-        #[arg(long)]
-        upgrades: bool,
-        /// score, fit, realism or fee.
+        min_probability: Option<u8>,
+        /// score, fit, probability or fee.
         #[arg(long, default_value = "score")]
         order: String,
         #[arg(long, default_value_t = 25)]
         limit: usize,
+        /// Show the squad line by line and the players to let go.
+        #[arg(long)]
+        squad: bool,
+        /// Show the tactics the manager plays (a pass over the game's memory).
+        #[arg(long)]
+        tactics: bool,
     },
     /// Show a club's teams: their kind, captains and players with their live values.
     Teams {
@@ -950,25 +957,32 @@ fn run(cli: Cli) -> Result<()> {
         Command::Swap { uid, other, restore } => {
             swap_players(&connect(process, ArraySource::ProfileFirst)?, uid, other, restore)
         }
-        Command::Scout { club, slot, ip, oop, max_age, realistic, upgrades, order, limit } => {
+        Command::Scout { club, position, ip, oop, purpose, max_age, min_probability, order, limit, squad, tactics } => {
             let session = connect(process, ArraySource::ProfileFirst)?;
             let order = match order.as_str() {
                 "fit" => ScoutOrder::Fit,
-                "realism" => ScoutOrder::Realism,
+                "probability" => ScoutOrder::Probability,
                 "fee" => ScoutOrder::Fee,
                 _ => ScoutOrder::Score,
             };
-            let request = ScoutRequest {
+            let purpose = match purpose.as_str() {
+                "rotation" => Purpose::Rotation,
+                "future" => Purpose::Future,
+                "any" => Purpose::Any,
+                _ => Purpose::FirstTeam,
+            };
+            let request = position.map(|position| ScoutRequest {
+                position,
                 in_possession: ip,
                 out_of_possession: oop,
+                purpose,
                 max_age,
-                realistic_only: realistic,
-                upgrades_only: upgrades,
+                min_probability,
                 order,
                 limit: Some(limit),
                 ..ScoutRequest::default()
-            };
-            scout(&session, club, slot, request)
+            });
+            scout(&session, club, request, squad, tactics)
         }
         Command::Teams { club } => teams(&connect(process, ArraySource::ProfileFirst)?, club),
         Command::Room { club, max } => room(&connect(process, ArraySource::ProfileFirst)?, club, max),
@@ -3579,83 +3593,151 @@ fn swap_players(session: &Session, uid: u32, other: u32, restore: bool) -> Resul
     Ok(())
 }
 
-fn scout(session: &Session, club: Option<u32>, slot: Option<usize>, mut request: ScoutRequest) -> Result<()> {
-    let started = Instant::now();
+fn scout(
+    session: &Session,
+    club: Option<u32>,
+    request: Option<ScoutRequest>,
+    squad: bool,
+    tactics: bool,
+) -> Result<()> {
     let players = PlayerIndex::new(session.players()?);
     let clubs = ClubIndex::new(session.clubs()?);
     let human: Vec<u32> = session.staff()?.iter().filter(|s| s.is_human).filter_map(|s| s.club_uid).collect();
     let uid = club.or_else(|| human.first().copied()).context("no club given and no human manager with a club")?;
     let club = clubs.get(uid).with_context(|| format!("no club with UID {uid}"))?;
     let finances = session.club_details(club)?.and_then(|details| details.finances);
-    let name = |uid: Option<u32>| uid.and_then(|uid| players.get(uid)).map_or("-", |p| p.name.as_str());
-    let tactics = session.club_tactics(club, &players)?;
-    println!("{}: {} tactic(s) in {:.1} s", club.name, tactics.len(), started.elapsed().as_secs_f64());
-    for (i, tactic) in tactics.iter().enumerate() {
-        println!("tactic {i} (style {}, {} copies)", tactic.style.as_deref().unwrap_or("?"), tactic.copies);
-        for s in &tactic.slots {
-            println!(
-                "  {:>2}  {:<5} {:<5} {:<18} {:<6} {}",
-                s.index,
-                s.in_possession.unwrap_or(&s.in_possession_mask),
-                s.out_of_possession.unwrap_or(&s.out_of_possession_mask),
-                s.line.map_or_else(|| "?".to_owned(), |line| format!("{line:?}")),
-                s.side.map_or_else(String::new, |side| format!("{side:?}")),
-                name(s.player)
-            );
-        }
-    }
-    let Some(slot) = slot else {
-        return Ok(());
-    };
-    let tactic = tactics.first().context("no tactic")?;
-    let s = tactic.slots.get(slot).with_context(|| format!("no slot {slot}"))?;
-    request.in_possession = request.in_possession.or(s.in_possession.map(str::to_owned));
-    request.out_of_possession = request.out_of_possession.or(s.out_of_possession.map(str::to_owned));
-    request.side = s.side;
-    request.current = s.player;
     let buyer = Buyer {
         club,
         transfer_budget: finances.map(|f| i64::from(f.transfer_budget)),
         wage_budget: finances.map(|f| i64::from(f.wage_budget)),
     };
+    let name = |uid: Option<u32>| uid.and_then(|uid| players.get(uid)).map_or("-", |p| p.name.as_str());
+    println!(
+        "{}: transfer budget {:?}, wage budget {:?}, wage room {:?} a week",
+        club.name,
+        buyer.transfer_budget,
+        buyer.wage_budget,
+        session.wage_room(&buyer, &players)
+    );
+
+    if tactics {
+        let started = Instant::now();
+        let tactics = session.club_tactics(club, &players)?;
+        println!("\n{} tactic(s) in {:.1} s", tactics.len(), started.elapsed().as_secs_f64());
+        for (i, tactic) in tactics.iter().enumerate() {
+            println!("tactic {i} (style {}, {} copies)", tactic.style.as_deref().unwrap_or("?"), tactic.copies);
+            for s in &tactic.slots {
+                println!(
+                    "  {:>2}  {:<5} {:<5} {:<5} {}",
+                    s.index,
+                    s.in_possession.unwrap_or(&s.in_possession_mask),
+                    s.out_of_possession.unwrap_or(&s.out_of_possession_mask),
+                    s.position.unwrap_or("?"),
+                    name(s.player)
+                );
+            }
+        }
+    }
+
+    if squad {
+        let started = Instant::now();
+        let report = session.squad_report(club, &players)?;
+        println!(
+            "\nsquad: {} players, level {} (average ability of the best eleven), average age {:.1}, in {:.2} s",
+            report.size,
+            report.level,
+            report.average_age.unwrap_or(0.0),
+            started.elapsed().as_secs_f64()
+        );
+        for line in &report.lines {
+            let names: Vec<String> = line
+                .players
+                .iter()
+                .map(|d| format!("{} {} ({})", d.player.name, d.player.current_ability, d.player.age.unwrap_or(0)))
+                .collect();
+            let cover: Vec<&str> = line.cover.iter().map(|d| d.player.name.as_str()).collect();
+            println!(
+                "  {:<10} {:<8} {}/{}{}{}  {}  | cover: {}",
+                line.key,
+                format!("{:?}", line.status),
+                line.players.len(),
+                line.target,
+                if line.weak { " weak" } else { "" },
+                if line.ageing { " ageing" } else { "" },
+                names.join(", "),
+                cover.join(", ")
+            );
+        }
+        println!("let go:");
+        for d in &report.departures {
+            let reasons: Vec<String> = d
+                .reasons
+                .iter()
+                .map(|r| r.value.map_or_else(|| r.code.to_owned(), |v| format!("{}={v}", r.code)))
+                .collect();
+            println!(
+                "  {:<24} {:>3} {:<10} #{:<2} CA {:>3}  {:?}  priority {:>2}  value {:>11}  wage {:>8}  {}",
+                clip(&d.player.name, 24),
+                d.player.age.unwrap_or(0),
+                d.line,
+                d.rank,
+                d.player.current_ability,
+                d.action,
+                d.priority,
+                d.value.map_or_else(|| "-".to_owned(), |v| v.to_string()),
+                d.wage.map_or_else(|| "-".to_owned(), |v| v.to_string()),
+                reasons.join(" ")
+            );
+        }
+    }
+
+    let Some(request) = request else {
+        return Ok(());
+    };
     let started = Instant::now();
     let scouted = session.scout(&request, &buyer, &players, &clubs, &human)?;
     println!(
-        "\nslot {slot} ({} / {}, {:?}): {} of {} players fit, in {:.1} s; budget {:?}, wage room {:?} a week",
-        request.in_possession.as_deref().unwrap_or("-"),
-        request.out_of_possession.as_deref().unwrap_or("-"),
-        request.side,
+        "\n{} ({} / {}, {:?}): {} of {} players can play there, in {:.2} s",
+        request.position,
+        request.in_possession.as_deref().unwrap_or("any"),
+        request.out_of_possession.as_deref().unwrap_or("any"),
+        request.purpose,
         scouted.candidates,
         scouted.examined,
         started.elapsed().as_secs_f64(),
-        scouted.transfer_budget,
-        scouted.wage_room
     );
-    let row = |s: &fmlibre_core::Suggestion| {
+    let fitting = |f: &fmlibre_core::Fitting| {
+        format!(
+            "{:>10}  {:<24} {:>3} {:<22} fit {:>3} ({:<4} {:>4.1} / {:<4} {:>4.1}, pos {:>2})",
+            f.player.uid,
+            clip(&f.player.name, 24),
+            f.player.age.map_or_else(String::new, |age| age.to_string()),
+            clip(f.player.club.as_deref().unwrap_or("(free)"), 22),
+            f.fit,
+            f.in_possession_role.unwrap_or("-"),
+            f.in_possession.unwrap_or(0.0),
+            f.out_of_possession_role.unwrap_or("-"),
+            f.out_of_possession.unwrap_or(0.0),
+            f.position_rating,
+        )
+    };
+    println!("the club's own:");
+    for f in &scouted.squad {
+        println!("  {}", fitting(f));
+    }
+    println!("recommended:");
+    for s in &scouted.suggestions {
         let reasons: Vec<String> = s.reasons.iter().map(|r| format!("{}{:+}", r.code, r.points)).collect();
         println!(
-            "  {:>10}  {:<24} {:>3} {:<22} fit {:>3} ({:>4.1}/{:>4.1}, pos {:>2})  real {:>3}  score {:>3}  fee {:>12}  wage {:>8}  {}",
-            s.player.uid,
-            clip(&s.player.name, 24),
-            s.player.age.map_or_else(String::new, |age| age.to_string()),
-            clip(s.player.club.as_deref().unwrap_or("(free)"), 22),
-            s.fit,
-            s.in_possession.unwrap_or(0.0),
-            s.out_of_possession.unwrap_or(0.0),
-            s.position_rating,
-            s.realism,
+            "  {}  prob {:>3}  score {:>3}  fee {:>11}  wage {:>8}  {}",
+            fitting(&s.fitting),
+            s.probability,
             s.score,
             s.fee.map_or_else(|| "-".to_owned(), |fee| fee.to_string()),
             s.wage.map_or_else(|| "-".to_owned(), |wage| wage.to_string()),
             reasons.join(" ")
         );
-    };
-    if let Some(current) = &scouted.current {
-        println!("now:");
-        row(current);
     }
-    println!("suggested:");
-    scouted.suggestions.iter().for_each(row);
     Ok(())
 }
 

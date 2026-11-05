@@ -1876,35 +1876,40 @@ export const en = {
     steamBuild: (id: string) => `build ${id}`,
   },
 
-  /** The Scouting tab: players who could fill a slot of the manager's tactic. */
+  /** The Scouting tab: an assistant scout who advises on signings, the squad's depth and who could go. */
   scouting: {
     nav: "Scouting",
-    /** While the tactics are read from the game's memory. */
-    reading: "Reading your tactics…",
+    reading: "Reading your club…",
     refresh: "Refresh",
-    refreshTitle: "Read the tactics from the game again",
+    refreshTitle: "Read the club from the game again",
     searching: "Searching…",
-    transferBudget: "Transfer budget",
-    wageRoom: "Wage room",
-    wageBudget: "Wage budget",
-    perWeek: "/wk",
     none: "—",
-    /** The name of the tactic select and its options: "Tactic 1 (Control Possession)". */
-    tacticPicker: "Tactic",
-    tactic: (number: number, style: string | null) =>
-      style === null ? `Tactic ${number}` : `Tactic ${number} (${style})`,
-    /** The tactics' style codes. */
-    styles: {
-      CONT: "Control Possession",
-      TIKI: "Tiki-Taka",
-      DIRE: "Direct",
-      GEGE: "Gegenpress",
-    } as Record<string, string>,
-    slots: "Slots",
-    emptySlot: "Nobody",
-    /** The role of a slot that the editor does not know; `mask` is its value in hex. */
-    unknownRole: (mask: string) => `The editor does not know this role yet (mask ${mask}).`,
-    sideShort: { right: "R", left: "L" },
+    perWeek: "/wk",
+    openProfile: "Open the profile",
+    freeAgent: "Free agent",
+    loan: "Loan",
+    header: {
+      transferBudget: "Transfer budget",
+      wageRoom: "Wage room",
+      wageBudget: "Wage budget",
+      squad: "Squad",
+      averageAge: "Average age",
+      players: (count: number) => (count === 1 ? "1 player" : `${format(count)} players`),
+    },
+    tabs: {
+      label: "Scouting sections",
+      recommend: "Transfer advice",
+      depth: "Squad depth",
+      departures: "Players to let go",
+    },
+    /** The depth statuses: the dots on the pitch and the badges of the cards. */
+    status: {
+      missing: "Missing",
+      thin: "Thin",
+      fine: "Fine",
+      crowded: "Crowded",
+    },
+    /** The lines of the formation that roles belong to: the groups of the role selects. */
     lines: {
       goalkeeper: "Goalkeeper",
       centreBack: "Centre-back",
@@ -1916,55 +1921,92 @@ export const en = {
       wide: "Wide",
       striker: "Striker",
     },
-    /** What to look for in the selected slot. */
-    roleSelect: {
-      inPossession: "Role in possession",
-      outOfPossession: "Role out of possession",
-      none: "No role",
-      pick: "Pick a role",
-    },
-    pickRole: "Pick a role in possession to look for players.",
-    side: {
-      label: "Side",
-      auto: "Auto",
-      right: "Right",
-      left: "Left",
-      either: "Either",
-    },
-    filters: {
+    /** The squad lines, by key. */
+    depthLines: {
+      gk: "Goalkeepers",
+      dc: "Centre-backs",
+      rightBack: "Right-backs",
+      leftBack: "Left-backs",
+      dm: "Defensive midfielders",
+      mc: "Central midfielders",
+      rightWing: "Right wingers",
+      leftWing: "Left wingers",
+      amc: "Attacking midfielders",
+      st: "Strikers",
+    } as Record<string, string>,
+    /** The hover of a position on the pitch: "Right-backs: 2 in the squad (usually 2) — Fine". */
+    positionTip: (line: string, count: number, target: number, status: string) =>
+      `${line}: ${format(count)} in the squad (usually ${format(target)}) — ${status}`,
+    brief: {
+      heading: "What are you looking for?",
+      pitch: "Position",
+      legend: "The dots show how the squad stands in each line.",
+      inPossession: "In possession",
+      outOfPossession: "Out of possession",
+      anyRole: "Any — best role for each player",
+      tactic: "Use my tactic",
+      tacticRead: "Read my tactic",
+      tacticReading: "Reading…",
+      tacticHint: "Takes a few seconds.",
+      tacticSlotTitle: "Look for this position and these roles",
+      purpose: "For",
+      filters: "Filters",
       minAge: "Min age",
       maxAge: "Max age",
       maxFee: "Max fee",
-      realisticOnly: "Only realistic moves",
-      upgradesOnly: "Only upgrades",
+      minProbability: "Probability",
+      anyProbability: "Any",
       noFreeAgents: "No free agents",
-      order: "Order",
-      orders: {
-        score: "Best match",
-        fit: "Fit",
-        realism: "Realism",
-        fee: "Cheapest",
-      },
     },
-    summary: (candidates: number, examined: number, shown: number) =>
-      `${format(candidates)} of ${format(examined)} players can play there · showing ${format(shown)}`,
-    current: "In the slot now",
-    openProfile: "Open the profile",
-    freeAgent: "Free agent",
-    empty: "No player fits these filters",
+    purposes: {
+      firstTeam: "First team",
+      rotation: "Rotation",
+      future: "Future",
+      any: "All",
+    },
+    purposeTips: {
+      firstTeam: "Better than your best player in this position",
+      rotation: "As good as your second choice, at a sensible price",
+      future: "21 or younger, with room to grow",
+      any: "Everyone who fits",
+    },
+    /** The sentence above the advice: before the position, and after it; `roles` and `purpose` follow a dot. */
+    ask: {
+      before: "Advice for ",
+      after: "",
+      anyRole: "best role per player",
+    },
+    own: {
+      heading: "In your squad",
+      empty: "Nobody in your squad plays here.",
+      position: "Position",
+    },
+    summary: (candidates: number, shown: number) =>
+      `${format(candidates)} players can play here · ${format(shown)} recommended`,
+    order: {
+      label: "Order",
+      score: "Recommended",
+      fit: "Fit",
+      probability: "Probability",
+      fee: "Cheapest",
+    },
+    empty: "No advice for this position with these settings. Try the purpose All or looser filters.",
     columns: {
       player: "Player",
       age: "Age",
-      club: "Club",
-      positions: "Positions",
       fit: "Fit",
-      realism: "Realism",
-      fee: "Fee",
+      role: "Role",
+      probability: "Probability",
+      fee: "Est. fee",
       wage: "Wage",
+      note: "Scout's note",
+      money: "Fee / wage",
       value: "Value",
-      reasons: "Reasons",
     },
-    /** The hover of a fit: his attributes for each role (1–20) and his rating at the position. */
+    probabilityInfo:
+      "How likely the player is to join your club — an estimate from his value, contract, club and reputation.",
+    probabilityInfoLabel: "What is probability?",
+    /** The hover of a fit: his attributes for each role (1–20) and how well he plays the position. */
     fitTitle: (inPossession: string | null, outOfPossession: string | null, position: string) =>
       [
         inPossession !== null && `In possession: ${inPossession}`,
@@ -1973,8 +2015,43 @@ export const en = {
       ]
         .filter(Boolean)
         .join("\n"),
-    note: "Fit uses the editor's own attribute weights for each role; fees and wages are estimates from the player's value and contract.",
-    /** The names of the roles, by key, whichever phase. */
+    note: "Fit uses the editor's own attribute weights for each role; fees, wages and probabilities are estimates.",
+    depth: {
+      summary: (size: number, age: string | null, level: string) =>
+        `${format(size)} players${age === null ? "" : ` · average age ${age}`} · best eleven average ability ${level}`,
+      weak: "Below squad level",
+      ageing: "Ageing",
+      cover: (names: string) => `Can also play here: ${names}`,
+      advice: "Get advice",
+      adviceTitle: "Transfer advice for this line",
+      empty: "Nobody",
+      ability: "Current ability",
+      more: (count: number) => `+${format(count)} more`,
+      legend: "Beside each player: age · current ability",
+    },
+    departures: {
+      intro: "Players your scout would let go, most pressing first.",
+      filter: "Advice",
+      all: "All",
+      empty: "Your scout would not let anyone go right now.",
+      columns: {
+        player: "Player",
+        age: "Age",
+        ability: "Ability",
+        value: "Value",
+        wage: "Wage",
+        contract: "Contract until",
+        advice: "Advice",
+        reasons: "Reasons",
+      },
+      actions: { sell: "Sell", loan: "Loan out", release: "Release" },
+      /** "3rd" in a line. */
+      rank: (line: string, rank: number) => {
+        const tens = rank % 100;
+        const suffix = (tens >= 11 && tens <= 13) || rank % 10 > 3 ? "th" : ["th", "st", "nd", "rd"][rank % 10];
+        return `${line} · ${rank}${suffix}`;
+      },
+    },
     roles: {
       bgk: "Ball-Playing Goalkeeper",
       ngk: "No-Nonsense Goalkeeper",
@@ -2023,7 +2100,6 @@ export const en = {
       tcf: "Tracking Centre Forward",
       ocf: "Outlet Centre Forward",
     } as Record<string, string>,
-    /** Why a move looks easier or harder, by code; `value` is the reason's value as text (days or an amount). */
     reasons: {
       listed: () => "Transfer listed",
       freeAgent: () => "Free agent",
@@ -2039,6 +2115,18 @@ export const en = {
       reputationGap: () => "Too big a name for your club",
       ambitious: () => "Ambitious: would welcome the step up",
       notForSale: () => "Not for sale",
+    } as Record<string, (value: string) => string>,
+    /** Why a player could go, by code; `value` is the reason's value as text. */
+    departureReasons: {
+      surplus: (value: string) => `Crowded line (${value} players)`,
+      belowLevel: () => "Below the squad's level",
+      ageing: (value: string) => `Getting old (${value})`,
+      expiring: (value: string) => `Contract ends in ${value} days`,
+      highWage: (value: string) => `High wage for his role (${value}/wk)`,
+      unhappy: () => "Unhappy",
+      lowMorale: () => "Low morale",
+      blocked: () => "Needs games to grow",
+      listed: () => "Already transfer listed",
     } as Record<string, (value: string) => string>,
   },
 

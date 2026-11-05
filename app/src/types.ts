@@ -906,6 +906,13 @@ export interface Role {
   otherAttributes: string[];
 }
 
+/** A position a recommendation can be asked for, and the lines whose roles are played there, its own first. */
+export interface ScoutPosition {
+  /** A position key, e.g. "dr" (see positionLabel). */
+  key: string;
+  lines: Line[];
+}
+
 /** One slot of a tactic, goalkeeper first. */
 export interface TacticSlot {
   index: number;
@@ -918,6 +925,8 @@ export interface TacticSlot {
   line: Line | null;
   /** For a wide line: the side the player in the slot plays best. */
   side: Side | null;
+  /** The position the slot most likely is (a position key), from its line and side. */
+  position: string | null;
   /** The UID of the player in the slot. */
   player: number | null;
 }
@@ -930,78 +939,158 @@ export interface ClubTactic {
   copies: number;
 }
 
-/** What `scouting_tactics` returns. */
-export interface ScoutingView {
-  club: ClubSummary;
+/** What `scouting_tactics` returns: shortcuts to the positions and roles of the tactics the manager plays. */
+export interface ScoutingTactics {
   tactics: ClubTactic[];
   /** Why no tactic could be read, when none was. */
   problem: Failure | null;
-  /** The list rows of the players in the slots. */
-  players: PlayerSummary[];
-  roles: Role[];
+}
+
+export type DepthStatus = "missing" | "thin" | "fine" | "crowded";
+
+export interface DepthPlayer {
+  player: PlayerSummary;
+  /** His best rating (1–20) among the line's positions. */
+  rating: number;
+  /** Here on loan from another club. */
+  onLoan: boolean;
+}
+
+/** One line of the senior squad. */
+export interface DepthLine {
+  /** "gk", "dc", "rightBack", "leftBack", "dm", "mc", "rightWing", "leftWing", "amc" or "st". */
+  key: string;
+  /** Its positions (position keys), the one to ask recommendations for first. */
+  positions: string[];
+  /** How many players a squad usually carries there. */
+  target: number;
+  /** The players whose best position is here, best first. */
+  players: DepthPlayer[];
+  /** Players who play here well (rated 15 or more) but best elsewhere. */
+  cover: DepthPlayer[];
+  status: DepthStatus;
+  /** Its best player is well below the squad's level. */
+  weak: boolean;
+  /** All its players are 31 or older. */
+  ageing: boolean;
+}
+
+export type DepartureAction = "sell" | "loan" | "release";
+
+/**
+ * Why a player could go: `surplus` (value: the players of his line), `belowLevel` (his ability), `ageing` (his age),
+ * `expiring` (days left), `highWage` (pounds a week), `unhappy` (his reasons to be), `lowMorale` (1–20), `blocked`
+ * (his potential ability), `listed`.
+ */
+export interface DepartureReason {
+  code: string;
+  value: number | null;
+}
+
+export interface Departure {
+  player: PlayerSummary;
+  action: DepartureAction;
+  reasons: DepartureReason[];
+  /** The more reasons and the stronger, the higher. */
+  priority: number;
+  /** Pounds; a week for the wage. */
+  value: number | null;
+  wage: number | null;
+  /** His line (a DepthLine key) and where he stands in it, 1 being its best. */
+  line: string;
+  rank: number;
+}
+
+export interface SquadReport {
+  lines: DepthLine[];
+  departures: Departure[];
+  /** The average current ability of the squad's best eleven. */
+  level: number;
+  size: number;
+  averageAge: number | null;
+}
+
+/** What `scouting_overview` returns. */
+export interface ScoutingOverview {
+  club: ClubSummary;
   /** Pounds; a week for the wages. */
   transferBudget: number | null;
   wageBudget: number | null;
+  /** What the club can still add to its wage bill a week. */
+  wageRoom: number | null;
+  report: SquadReport;
+  positions: ScoutPosition[];
+  roles: Role[];
 }
 
-export type ScoutOrder = "score" | "fit" | "realism" | "fee";
+/** What a recommendation is for: better than the best at the position now, depth, a prospect, or anyone. */
+export type Purpose = "firstTeam" | "rotation" | "future" | "any";
+
+export type ScoutOrder = "score" | "fit" | "probability" | "fee";
 
 /** What `scouting_suggest` looks for; omitted fields are open. */
 export interface ScoutRequest {
+  /** A position key from `ScoutingOverview.positions`. */
+  position: string;
+  /** Role keys; null or omitted for the role of the position that suits each player best. */
   inPossession?: string | null;
   outOfPossession?: string | null;
-  side?: Side | null;
-  /** The UID of the player in the slot now, to compare with. */
-  current?: number | null;
+  purpose?: Purpose;
   minAge?: number | null;
   maxAge?: number | null;
   /** Pounds. */
   maxFee?: number | null;
-  realisticOnly?: boolean;
+  /** 0–100. */
+  minProbability?: number | null;
   noFreeAgents?: boolean;
-  upgradesOnly?: boolean;
   order?: ScoutOrder;
   limit?: number;
 }
 
 /**
- * Why a move looks easier or harder: `listed`, `freeAgent`, `expiring` (value: days left), `releaseClause` (pounds),
+ * Why a move looks more or less likely: `listed`, `freeAgent`, `expiring` (value: days left), `releaseClause` (pounds),
  * `fringe` / `keyPlayer` (value: squad status code), `overBudget` / `stretch` (pounds over), `wageHigh` (pounds a week
  * over), `biggerClub` / `smallerClub` (his club's reputation), `reputationGap` (his reputation), `ambitious`
  * (ambition), `notForSale`.
  */
 export interface Reason {
   code: string;
-  /** Its effect on realism, in points. */
+  /** Its effect on the probability, in points. */
   points: number;
   value: number | null;
 }
 
-export interface Suggestion {
+/** How a player measures up to a position and its roles. */
+export interface Fitting {
   player: PlayerSummary;
   /** 0–100. */
   fit: number;
-  /** His attributes for each role, 1–20. */
+  /** His attributes for each role, 1–20, and the roles measured: those asked for, or the best of the position's. */
   inPossession: number | null;
   outOfPossession: number | null;
-  /** His rating (1–20) at the best of the slot's positions. */
+  inPossessionRole: string | null;
+  outOfPossessionRole: string | null;
+  /** His rating (1–20) in the position. */
   positionRating: number;
-  /** 0–100; 50 and above counts as realistic. */
-  realism: number;
+}
+
+export interface Suggestion extends Fitting {
+  /** How likely he is to join the club, 0–100: an estimate. 50 and above counts as likely. */
+  probability: number;
   reasons: Reason[];
   /** Pounds; a week for the wage. */
   fee: number | null;
   wage: number | null;
   value: number | null;
-  /** Fit and realism together, with age: the default order. */
+  /** Fit and probability together, as the purpose weighs them: the default order. */
   score: number;
 }
 
 /** What `scouting_suggest` returns. */
 export interface Scouted {
   suggestions: Suggestion[];
-  /** How the player in the slot now measures up. */
-  current: Suggestion | null;
+  /** The club's own players for the position, best first (at most five). */
+  squad: Fitting[];
   transferBudget: number | null;
   /** Pounds a week the club can still add to its wage bill. */
   wageRoom: number | null;
