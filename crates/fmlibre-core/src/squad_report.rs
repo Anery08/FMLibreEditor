@@ -323,10 +323,10 @@ impl Session {
             if p.transfer_listed {
                 add("listed", 1, None);
             }
-            // A regular's unhappiness or low morale is for the manager to talk over, not a reason to let him go: it
-            // only adds to other reasons. A whole squad can be concerned for a day about one teammate.
-            let only_mood = reasons.iter().all(|reason| matches!(reason.code, "unhappy" | "lowMorale"));
-            if priority == 0 || (first_choice && only_mood) {
+            // A player's mood is for the manager to talk over, not a reason to let him go: unhappiness and low morale
+            // only add to the reasons his line, ability, age, contract, wage or listing give. A whole squad can be
+            // concerned for a day about one teammate.
+            if reasons.iter().all(|reason| matches!(reason.code, "unhappy" | "lowMorale")) {
                 continue;
             }
             let worth_little = p.transfer_value.is_none_or(|value| value < 250_000);
