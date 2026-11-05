@@ -611,6 +611,12 @@ export const en = {
     freezeAttributesNote:
       "While the app is open and connected, his attributes do not get worse: what the game takes is put back, and " +
       "improvements still count. The app remembers this for this save, and freezes them again when it connects to it.",
+    /** The same for a member of staff, who has no injury proneness or dirtiness. */
+    maxStaffAttributesTitle: "Set every attribute of this member of staff to its best: 20",
+    undoMaxStaffTitle: "Write the old attributes back to the game",
+    freezeStaffAttributesNote:
+      "While the app is open and connected, their attributes do not get worse: what the game takes is put back, and " +
+      "improvements still count. The app remembers this for this save, and freezes them again when it connects to it.",
     /** Freezing his energy and match sharpness, under them in the Medical group, and what that does. */
     freezeFitness: "Freeze energy and sharpness",
     freezeFitnessNote:
@@ -956,6 +962,7 @@ export const en = {
       waitingTitle: "What was frozen waits for now",
       /** `names` are the players' names, set apart by commas. */
       players: (names: string) => `Attributes: ${names}`,
+      staff: (names: string) => `Staff attributes: ${names}`,
       clubs: (names: string) => `Money: ${names}`,
       fitness: (names: string) => `Energy and sharpness: ${names}`,
       /** After the first few names. */
