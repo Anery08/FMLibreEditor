@@ -265,14 +265,14 @@ function ContractGroup({ details, contract }: { details: PlayerDetails; contract
 }
 
 /**
- * Where a player is on loan, from his loan contract, and the button that brings him back: the loan then ends the day
- * after the game's date, and the game brings him back to his club when it gets there. The end date is an input while
- * he is edited.
+ * Where a player is on loan, from his loan contract, and the button that brings him back: today becomes the last day
+ * of the loan, and the game brings him back to his club when the day is over. Once the loan ends today the button
+ * gives way to a status saying his return is pending; a loan whose end has passed while he is still away gets a
+ * warning and the button again. The end date is an input while he is edited.
  */
 function LoanFacts({ uid, loan }: { uid: number; loan: LoanDetails }) {
   const { editable, onEdited } = useContext(EditorContext);
   const [recalling, setRecalling] = useState(false);
-  const [recalled, setRecalled] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -287,7 +287,6 @@ function LoanFacts({ uid, loan }: { uid: number; loan: LoanDetails }) {
     setError(null);
     try {
       await recallLoan(uid);
-      setRecalled(true);
       onEdited();
     } catch (e) {
       setError(describeError(e));
@@ -309,16 +308,22 @@ function LoanFacts({ uid, loan }: { uid: number; loan: LoanDetails }) {
     <div className="clauses loan">
       <div className="injuries-head">
         <h4>{profileText.loan}</h4>
-        <button
-          type="button"
-          className="heal-toggle"
-          disabled={!editable}
-          aria-disabled={recalling || undefined}
-          title={profileText.recallTitle}
-          onClick={() => void recall()}
-        >
-          {recalling ? profileText.recalling : profileText.recall}
-        </button>
+        {loan.ends === "today" ? (
+          <span className="tag loan loan-status" role="status">
+            {loan.recalled ? profileText.recalledWaiting : profileText.endsTodayWaiting}
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="heal-toggle"
+            disabled={!editable}
+            aria-disabled={recalling || undefined}
+            title={profileText.recallTitle}
+            onClick={() => void recall()}
+          >
+            {recalling ? profileText.recalling : loan.ends === "passed" ? profileText.recallAgain : profileText.recall}
+          </button>
+        )}
       </div>
       <dl className="stats">
         <Fact label={profileText.loanAt}>{club(loan.clubUid, loan.club)}</Fact>
@@ -329,7 +334,12 @@ function LoanFacts({ uid, loan }: { uid: number; loan: LoanDetails }) {
         </Fact>
         <Fact label={profileText.loanNumber}>{loan.squadNumber ?? profileText.none}</Fact>
       </dl>
-      {recalled && <p className="note">{profileText.recalled(loan.parent ?? "")}</p>}
+      {loan.ends === "today" && <p className="note">{profileText.returnsTomorrow(loan.parent ?? "")}</p>}
+      {loan.ends === "passed" && (
+        <div className="banner move-error" role="alert">
+          {profileText.endPassed(date(loan.until))}
+        </div>
+      )}
       {error !== null && (
         <div className="banner move-error" role="alert">
           {error}

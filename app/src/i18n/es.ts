@@ -626,8 +626,13 @@ export const es: Strings = {
     recall: "Repescar de la cesión",
     recalling: "Repescando…",
     recallTitle:
-      "La cesión termina mañana: cuando el juego llegue a ese día la terminará y lo devolverá a su club. Cambios puede deshacerlo hasta entonces",
-    recalled: (parent) => `La cesión termina ahora mañana: continúa en el juego y volverá a ${parent}.`,
+      "Hoy pasa a ser el último día de la cesión: al acabar el día el juego la termina y al día siguiente vuelve a su club. Cambios puede deshacerlo hasta entonces",
+    recallAgain: "Repescar de nuevo",
+    recalledWaiting: "Repescado · vuelta pendiente",
+    endsTodayWaiting: "Termina hoy · vuelta pendiente",
+    returnsTomorrow: (parent) => `Hoy es el último día de la cesión: avanza un día en el juego y estará de vuelta en ${parent}.`,
+    endPassed: (date) =>
+      `La cesión debía terminar el ${date}, pero el juego no lo ha devuelto. Repéscalo de nuevo y avanza un día.`,
     clauseCondition: (kind, value) => {
       switch (kind) {
         case 10:

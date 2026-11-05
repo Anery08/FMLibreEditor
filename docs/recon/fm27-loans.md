@@ -43,10 +43,15 @@ as a club of its own (such as "VfB Stuttgart II" or "FC Twente/Heracles Academie
 ## Recalling a player
 
 The editor never ends a loan itself: the game would have to take him out of one team's list and put him in another,
-free the loan contract and tell both clubs. It moves the loan's end (`loan.expires`) to the day after the game's date
-instead, and lets the game end the loan when it gets there, as at the end of any loan. A day the game has passed
-would never come, so the editor writes only days after the game's date.
+free the loan contract and tell both clubs. It moves the loan's end (`loan.expires`) instead, and lets the game end
+the loan, as at the end of any loan.
 
-Written and restored with the probe (`set player 67201634 loan.expires 2026-09-18 --restore`): the date read back,
-and an earlier day was refused. Whether the game then brings the player back is to be checked in the game: recall him,
-continue a day, and look at both clubs' squads.
+**The end is the loan's last day.** In the game, André Onana and Altay Bayındır (Manchester United's goalkeepers on
+loan at Trabzonspor and Celta) were recalled with their end moved to the day after the game's date: both came back,
+two days on. A loan "until 30 June" is one he plays through 30 June, back at his club on 1 July. So a recall makes the
+game's date the loan's last day, and the player is back the next day: one day on.
+
+A day the game has finished would never be one again, and a loan whose last day it was might never end, so the editor
+writes only the game's date or a later one. While a loan ends on the game's date, the profile says his return is
+pending instead of offering the recall; a loan whose end has passed while he is still away gets a warning and the
+recall again.

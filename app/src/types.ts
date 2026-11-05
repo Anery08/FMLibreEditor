@@ -505,7 +505,7 @@ export interface PlayerDetails extends PlayerSummary {
 
 /**
  * A player's loan, as his loan contract says: the club he is on loan to, the club he belongs to, and the days it runs
- * from and to. `loan.expires` edits the day it ends; `recall_loan` makes it end the day after the game's date.
+ * from and to. `loan.expires` edits the day it ends; `recall_loan` makes it end on the game's date.
  */
 export interface LoanDetails {
   /** The club he is on loan to. */
@@ -521,7 +521,17 @@ export interface LoanDetails {
   squadNumber: number | null;
   /** Pounds per week, as the loan contract holds it. */
   wage: number;
+  /**
+   * Where its end stands against the game's date: `today` is its last day, after which the game brings him back (one
+   * day on); `passed` means the game has not done so when that day was over.
+   */
+  ends: LoanEnd;
+  /** Whether the editor brought its end forward this session (Recall from loan, not undone). */
+  recalled: boolean;
 }
+
+/** Where a loan's end stands against the game's date. */
+export type LoanEnd = "later" | "today" | "passed" | "unknown";
 
 /** What ties a player to a nation or club: a secondary nationality, or a nation or club he was trained in. */
 export type TieKind = "nationality" | "trainedInNation" | "trainedAtClub";

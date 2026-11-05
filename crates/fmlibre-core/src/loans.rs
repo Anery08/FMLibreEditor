@@ -2,8 +2,10 @@
 //!
 //! The game keeps it apart from his contract with his own club (see [`LoanLayout`]). The editor reads where he is on
 //! loan and from when to when, and changes the day the loan ends (the field `loan.expires`, see [`crate::fields`]). It
-//! never ends a loan itself: a loan brought forward to end the day after the game's date ends when the game gets
-//! there, and the game brings the player back to his club as it does at the end of any loan.
+//! never ends a loan itself. The game takes that day as the loan's last one: when it is over, the game ends the loan
+//! and the player is back at his club the next day, as at the end of any loan. So a loan brought forward to end on the
+//! game's date brings him back one day on (on the Game Pass save, Onana and Bayındır, made to end the next day, were
+//! back two days on).
 //!
 //! [`LoanLayout`]: crate::profile::LoanLayout
 
@@ -33,6 +35,36 @@ pub struct LoanDetails {
     pub squad_number: Option<u8>,
     /// Pounds per week, as the loan contract holds it.
     pub wage: i32,
+    /// Where its end stands against the game's date.
+    pub ends: LoanEnd,
+    /// Whether the editor brought it forward this session (see the app's change log); the core never sets it.
+    pub recalled: bool,
+}
+
+/// Where a loan's end stands against the game's date.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LoanEnd {
+    /// After the game's date.
+    Later,
+    /// On the game's date: its last day. When the day is over the game ends it, and he is back at his club the next day.
+    Today,
+    /// Before the game's date, and he is still on loan: the game has not ended it when its day was over.
+    Passed,
+    /// The game's date, or the loan's end, is not known.
+    Unknown,
+}
+
+impl LoanEnd {
+    /// Where the end `until` stands against the game's date `today`.
+    pub fn of(until: Option<FmDate>, today: Option<FmDate>) -> Self {
+        match (until, today) {
+            (Some(until), Some(today)) if until > today => LoanEnd::Later,
+            (Some(until), Some(today)) if until == today => LoanEnd::Today,
+            (Some(_), Some(_)) => LoanEnd::Passed,
+            _ => LoanEnd::Unknown,
+        }
+    }
 }
 
 impl Session {
@@ -87,15 +119,18 @@ impl Session {
         let (club_uid, club) = self.club_of_team(team);
         let (parent_uid, parent) = self.club_of_team(parent_team);
         let number = bytes[c.squad_number as usize];
+        let until = date(c.expires);
         Ok(Some(LoanDetails {
             club_uid,
             club,
             parent_uid,
             parent,
             from: date(c.signed),
-            until: date(c.expires),
+            until,
             squad_number: (number != 255).then_some(number),
             wage: i32::from_le_bytes(bytes[c.wage as usize..c.wage as usize + 4].try_into().expect("4 bytes")),
+            ends: LoanEnd::of(until, self.game_date()),
+            recalled: false,
         }))
     }
 
@@ -112,5 +147,20 @@ impl Session {
         let name =
             self.process.read_u64(club + self.layout.club.name).ok().and_then(|at| read_fm_string(&self.process, at));
         (uid, name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_loan_ends_later_today_or_has_passed() {
+        let day = |day: u8| Some(FmDate { year: 2026, month: 9, day });
+        assert_eq!(LoanEnd::of(day(18), day(17)), LoanEnd::Later);
+        assert_eq!(LoanEnd::of(day(17), day(17)), LoanEnd::Today);
+        assert_eq!(LoanEnd::of(day(16), day(17)), LoanEnd::Passed);
+        assert_eq!(LoanEnd::of(None, day(17)), LoanEnd::Unknown);
+        assert_eq!(LoanEnd::of(day(17), None), LoanEnd::Unknown);
     }
 }

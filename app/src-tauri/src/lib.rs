@@ -1907,7 +1907,20 @@ fn player_details(state: State<'_, AppState>, uid: u32) -> Result<PlayerDetails,
     let guard = state.0.lock()?;
     let connection = guard.as_ref().ok_or_else(not_connected)?;
     let player = connection.players.get(uid).ok_or_else(|| not_found(Entity::Player, uid))?;
-    connection.session.player_details(player)?.ok_or_else(data_changed)
+    let mut details = connection.session.player_details(player)?.ok_or_else(data_changed)?;
+    // A loan that ends on the day this session's recall wrote, not undone, is the editor's doing.
+    if let Some(loan) = details.loan.as_mut() {
+        let until = loan.until.map(FmDate::to_number);
+        loan.recalled = connection.log.iter().any(|logged| {
+            let change = &logged.change;
+            change.entity == Entity::Player
+                && change.uid == uid
+                && change.field == LOAN_EXPIRES
+                && logged.undone_at.is_none()
+                && Some(change.new) == until
+        });
+    }
+    Ok(details)
 }
 
 /// The full profile of the member of staff with `uid`. Only reads memory.

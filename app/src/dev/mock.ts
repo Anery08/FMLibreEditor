@@ -328,7 +328,18 @@ function loanOf(player: PlayerSummary): LoanDetails | null {
     until: { year: 2027, month: 6, day: 30 },
     squadNumber: 1 + (player.uid % 40),
     wage: 2_000 + (player.uid % 50) * 900,
+    ends: "later",
+    recalled: false,
   };
+}
+
+/** Where the end `until` of a fixture loan stands against the game's date, as the real details say. */
+function loanEnd(until: FmDate | null): LoanDetails["ends"] {
+  if (until === null) {
+    return "unknown";
+  }
+  const [end, today] = [numberFromDate(until), numberFromDate(GAME_DATE)];
+  return end > today ? "later" : end === today ? "today" : "passed";
 }
 
 /** The fixture players healed through the editor, by UID, while the healing is not undone. */
@@ -863,11 +874,18 @@ function withWritten<D extends PlayerDetails | StaffDetails>(entity: Entity, d: 
       case "international":
         (d as PlayerDetails).international[INTERNATIONAL[name as keyof typeof INTERNATIONAL]] = value;
         break;
-      case "loan":
-        if (name === "expires" && (d as PlayerDetails).loan) {
-          (d as PlayerDetails).loan!.until = dateFromNumber(value);
+      case "loan": {
+        const loan = (d as PlayerDetails).loan;
+        if (name === "expires" && loan) {
+          loan.until = dateFromNumber(value);
+          loan.ends = loanEnd(loan.until);
+          // As the real app tells: the end this session's recall wrote, not undone.
+          loan.recalled = changes.some(
+            (c) => c.uid === d.uid && c.field === "loan.expires" && c.undoneAt === null && c.new === value,
+          );
         }
         break;
+      }
       case "contract":
         if (d.contract && name === "wage") {
           d.contract.wage = value;
@@ -1102,11 +1120,11 @@ function applyEdits(entity: Entity, uid: number, edits: FieldEdit[]): ApplyRepor
       report.failed.push({ ...edit, error: failure("edit.notADate", message, { field: field.key, value: edit.value }) });
       continue;
     }
-    // Like the real command, a loan ends on a day the game has yet to reach.
-    const tomorrow = numberFromDate(addDays(GAME_DATE, 1));
-    if (field.key === "loan.expires" && edit.value < tomorrow) {
-      const message = `${edit.value} is not a valid ${field.key}; it takes ${tomorrow} to ${field.max}`;
-      const params = { field: field.key, value: edit.value, min: tomorrow, max: field.max };
+    // Like the real command, a loan ends on a day the game is yet to finish: today or later.
+    const today = numberFromDate(GAME_DATE);
+    if (field.key === "loan.expires" && edit.value < today) {
+      const message = `${edit.value} is not a valid ${field.key}; it takes ${today} to ${field.max}`;
+      const params = { field: field.key, value: edit.value, min: today, max: field.max };
       report.failed.push({ ...edit, error: failure("edit.outOfRange", message, params) });
       continue;
     }
@@ -1140,11 +1158,11 @@ function applyEdits(entity: Entity, uid: number, edits: FieldEdit[]): ApplyRepor
 }
 
 /**
- * `recall_loan`: the loan now ends the day after the game's date, written and logged like an edit of `loan.expires`;
- * null when it ends then already.
+ * `recall_loan`: the loan now ends on the game's date, its last day, written and logged like an edit of
+ * `loan.expires`; null when it ends then already.
  */
 function recallLoan(uid: number): LoggedChange | null {
-  const report = applyEdits("player", uid, [{ field: "loan.expires", value: numberFromDate(addDays(GAME_DATE, 1)) }]);
+  const report = applyEdits("player", uid, [{ field: "loan.expires", value: numberFromDate(GAME_DATE) }]);
   if (report.failed.length > 0) {
     throw report.failed[0].error;
   }

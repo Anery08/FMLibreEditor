@@ -569,9 +569,15 @@ export const en = {
     recall: "Recall from loan",
     recalling: "Recalling…",
     recallTitle:
-      "Make the loan end tomorrow: when the game gets there it ends the loan and brings him back to his club. Changes can undo it until then",
-    recalled: (parent: string) =>
-      `The loan now ends tomorrow: continue in the game and he returns to ${parent}.`,
+      "Make today the last day of the loan: when the day is over the game ends it, and he is back at his club the next day. Changes can undo it until then",
+    recallAgain: "Recall again",
+    /** Where the Recall button was, once the loan ends today: recalled by the editor, or ending today anyway. */
+    recalledWaiting: "Recalled · return pending",
+    endsTodayWaiting: "Ends today · return pending",
+    returnsTomorrow: (parent: string) =>
+      `Today is the last day of the loan: continue one day in the game and he is back at ${parent}.`,
+    endPassed: (date: string) =>
+      `The loan was to end on ${date}, but the game has not brought him back. Recall him again, then continue one day.`,
     /** What a clause depends on, by kind: goals, assists, matches, years or a percentage. */
     clauseCondition: (kind: number, value: number) => {
       switch (kind) {

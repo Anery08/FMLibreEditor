@@ -430,8 +430,8 @@ fn player_fields(layout: &Layout) -> Vec<Field> {
     out.extend(contract_fields(layout, Entity::Player));
     out.extend(player_contract_fields(layout));
     out.extend(player_mood_fields(layout));
-    // The day his loan ends, in his loan contract: one player at a time, and only to a day after the game's date, which
-    // the game will get to (see `Session::write`). On that day the game ends the loan itself.
+    // The day his loan ends, in his loan contract: one player at a time, and only to the game's date or a later one (see
+    // `Session::write`). The game takes it as the loan's last day: when that day is over it ends the loan itself.
     if layout.loan.is_some() {
         out.push(
             Field::new(Entity::Player, LOAN_EXPIRES, layout.contract.expires, Kind::Date, 20000101..=21001231)
@@ -882,11 +882,12 @@ impl Session {
         if field.kind == Kind::Date && FmDate::from_number(value).is_none() {
             return Err(EditError::NotADate { field: field.key.clone(), value });
         }
-        // A loan ends on a day the game has yet to reach: a day it has passed would never come, and the loan with it.
+        // A loan ends on a day the game is yet to finish: the end of a day it has finished would never come, and with it
+        // neither would the end of the loan.
         if field.key == LOAN_EXPIRES && !restoring {
-            let tomorrow = self.loan_recall_day()?.to_number();
-            if value < tomorrow {
-                return Err(EditError::OutOfRange { field: field.key.clone(), value, min: tomorrow, max: field.max });
+            let today = self.loan_recall_day()?.to_number();
+            if value < today {
+                return Err(EditError::OutOfRange { field: field.key.clone(), value, min: today, max: field.max });
             }
         }
         self.check_target(target, field)?;
@@ -968,14 +969,12 @@ impl Session {
         Ok(None)
     }
 
-    /// The first day a loan may be made to end on, the day after the game's date: a loan recalled now ends then, when the
-    /// game ends it and brings the player back to his club.
+    /// The first day a loan may be made to end on, the game's date: a loan recalled now ends today. The game takes a
+    /// loan's end as its last day, so it ends the loan when today is over, and the player is back at his club the next
+    /// day: one day on. (A loan made to end tomorrow brought the players back two days on.)
     pub fn loan_recall_day(&self) -> Result<FmDate, EditError> {
-        let today = self.game_date().ok_or(EditError::Unsupported {
-            field: LOAN_EXPIRES.to_owned(),
-            reason: "the in-game date is not known",
-        })?;
-        Ok(today.plus_days(1))
+        self.game_date()
+            .ok_or(EditError::Unsupported { field: LOAN_EXPIRES.to_owned(), reason: "the in-game date is not known" })
     }
 
     /// Undoes `change`, provided the game still holds the value it wrote.

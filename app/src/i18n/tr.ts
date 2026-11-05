@@ -611,8 +611,13 @@ export const tr: Strings = {
     recall: "Kiralıktan geri çağır",
     recalling: "Geri çağrılıyor…",
     recallTitle:
-      "Kiralık yarın bitsin: oyun o güne geldiğinde kiralığı bitirir ve oyuncuyu kulübüne geri getirir. O güne kadar Değişiklikler'den geri alınabilir",
-    recalled: (parent) => `Kiralık artık yarın bitiyor: oyunda devam edin, oyuncu ${parent} kulübüne dönecek.`,
+      "Kiralığın son günü bugün olsun: gün bitince oyun kiralığı bitirir, oyuncu ertesi gün kulübünde olur. O zamana kadar Değişiklikler'den geri alınabilir",
+    recallAgain: "Tekrar geri çağır",
+    recalledWaiting: "Geri çağrıldı · dönüşü bekleniyor",
+    endsTodayWaiting: "Bugün bitiyor · dönüşü bekleniyor",
+    returnsTomorrow: (parent) => `Kiralığın son günü bugün: oyunda bir gün devam edin, oyuncu ${parent} kulübüne dönmüş olacak.`,
+    endPassed: (date) =>
+      `Kiralığın ${date} tarihinde bitmesi gerekiyordu ama oyun oyuncuyu geri getirmedi. Tekrar geri çağırıp bir gün devam edin.`,
     clauseCondition: (kind, value) => {
       switch (kind) {
         case 10:
