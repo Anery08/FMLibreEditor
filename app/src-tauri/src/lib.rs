@@ -773,6 +773,12 @@ impl Connection {
         })
     }
 
+    /// Works out making the loan of the player `uid` permanent on the contract `terms`.
+    fn plan_permanent(&self, uid: u32, terms: MoveTerms) -> Result<MovePlan, Failure> {
+        let player = self.players.get(uid).ok_or_else(|| not_found(Entity::Player, uid))?;
+        Ok(self.session.plan_loan_permanent(player, terms, &self.human_clubs)?)
+    }
+
     /// Works out releasing the player `uid` from his club.
     fn plan_release(&self, uid: u32) -> Result<MovePlan, Failure> {
         let player = self.players.get(uid).ok_or_else(|| not_found(Entity::Player, uid))?;
@@ -2280,6 +2286,59 @@ async fn move_player(
     .await?
 }
 
+/// Checks that the loan of the player `uid` can be made permanent on the contract `terms`, the club he is on loan to
+/// paying his own one `fee` pounds if given, and names the clubs; the error says why it cannot. Nothing is written.
+#[tauri::command]
+fn plan_loan_permanent(
+    state: State<'_, AppState>,
+    uid: u32,
+    terms: MoveTerms,
+    fee: Option<i64>,
+) -> Result<MovePreview, Failure> {
+    let guard = state.0.lock()?;
+    let connection = guard.as_ref().ok_or_else(not_connected)?;
+    let plan = connection.plan_permanent(uid, terms)?;
+    let fee = connection.plan_fee(plan.from_club, plan.to_club, fee)?;
+    let name = |uid: u32| ClubName { uid, name: connection.club_name(uid) };
+    Ok(MovePreview { from: name(plan.from_club), to: name(plan.to_club), fee })
+}
+
+/// Makes the loan of the player `uid` permanent on the contract `terms`, the club he is on loan to paying his own one
+/// `fee` pounds if given, worked out again from the game as it is now: he stays where he plays, now under contract
+/// with that club, and leaves his own. Logged as a move between the two clubs, which one undo takes back. When the fee
+/// cannot be paid, nothing stays changed. Off the window's thread: leaving a club a human manager runs takes a few
+/// seconds.
+#[tauri::command]
+async fn make_loan_permanent(
+    app: tauri::AppHandle,
+    uid: u32,
+    terms: MoveTerms,
+    fee: Option<i64>,
+) -> Result<LoggedChange, Failure> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<LoggedChange, Failure> {
+        let state = app.state::<AppState>();
+        let mut guard = state.0.lock()?;
+        let connection = guard.as_mut().ok_or_else(not_connected)?;
+        let plan = connection.plan_permanent(uid, terms)?;
+        let fee_plan = connection.plan_fee(plan.from_club, plan.to_club, fee)?;
+        let club = |uid: u32| connection.clubs.get(uid).cloned().ok_or_else(|| not_found(Entity::Club, uid));
+        let (buyer, seller) = (club(plan.to_club)?, club(plan.from_club)?);
+        let done = connection.session.apply_club_move(&plan)?;
+        let paid = match fee_plan {
+            Some(fee_plan) => match connection.session.pay_fee(&fee_plan, &buyer, &seller) {
+                Ok(paid) => paid,
+                Err(err) => {
+                    let _ = connection.session.undo_club_move(&done);
+                    return Err(err.into());
+                }
+            },
+            None => Vec::new(),
+        };
+        Ok(connection.log_move(done, terms, paid, fee_plan.map(|plan| plan.fee)))
+    })
+    .await?
+}
+
 /// Checks that the player `uid` can be released from his club, and names it; the error says why he cannot. Nothing is
 /// written.
 #[tauri::command]
@@ -2864,6 +2923,8 @@ pub fn run() {
             plan_club_move,
             room_makers,
             move_player,
+            plan_loan_permanent,
+            make_loan_permanent,
             plan_release,
             release_player,
             plan_club_swap,

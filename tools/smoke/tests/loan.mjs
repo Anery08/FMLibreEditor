@@ -65,7 +65,7 @@ export async function run({ app, report, probe, connection }) {
   await app.click(`${rows}[0]`, "his row");
   const profile = `${VIS}(".profile:not(.popup)")`;
   await app.waitFor(`${profile} && ${profile}.getAttribute("aria-busy") === "false"`, "his profile", 30000);
-  const button = `${profile}.querySelector(".clauses.loan button.heal-toggle")`;
+  const button = `${profile}.querySelector(".clauses.loan button.recall-toggle")`;
   const dialog = `document.querySelector(".recall-dialog")`;
   await app.click(button, "Recall from loan");
   await app.waitFor(dialog, "the recall dialog");
@@ -90,5 +90,33 @@ export async function run({ app, report, probe, connection }) {
   if (logged) await app.must("undo_change", { id: logged.id });
   const back = probe.get("player", player.uid, [FIELD])[FIELD];
   report.check("undone again", back === before, String(back));
+
+  // Made permanent: the dialog plans it, then the command makes it, which the probe reads as no loan, and one undo puts
+  // the loan back.
+  await app.click(`${profile}.querySelector(".clauses.loan button.permanent-toggle")`, "Make permanent");
+  const permanent = `document.querySelector(".permanent-dialog")`;
+  await app.waitFor(`${permanent}?.querySelector(".move-plan.ok, .move-plan.refused")`, "the plan in the dialog", 20000);
+  const planLine = await app.js(`${permanent}.querySelector(".move-plan").textContent`);
+  const planned = await app.js(`!!${permanent}.querySelector(".move-plan.ok")`);
+  report.check("the dialog plans making the loan permanent", planned, planLine);
+  await app.shot("loan-permanent-dialog");
+  await app.press("Escape");
+  await app.waitFor(`!${permanent}`, "the dialog to close");
+  const made = await app.must("make_loan_permanent", { uid: player.uid, terms: {} });
+  const afterMade = await app.must("player_details", { uid: player.uid });
+  const loansNow = probe.run(["loans", player.uid]);
+  report.check(
+    "made permanent: no loan, at the club he was on loan to",
+    afterMade.loan === null && afterMade.clubUid === loan.clubUid && /^0 loan contract/m.test(loansNow),
+    `${made.moved?.from} → ${made.moved?.to}`,
+  );
+  const unmade = await app.must("undo_change", { id: made.id });
+  const restoredLoan = await app.must("player_details", { uid: player.uid });
+  const loanEnd = probe.get("player", player.uid, [FIELD])[FIELD];
+  report.check(
+    "the undo puts the loan back",
+    unmade.undoneAt != null && restoredLoan.loan?.parentUid === loan.parentUid && loanEnd === before,
+    String(loanEnd),
+  );
   await app.press("Escape");
 }

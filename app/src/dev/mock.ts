@@ -1447,12 +1447,11 @@ function planMove(uid: number, clubUid: number, terms: MoveTerms, fee?: number, 
  * `move_player`: moves the fixture player and logs it as a change of his `club`; with `release`, that player of the
  * club becomes a free agent in the same change.
  */
-function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number, release?: number): LoggedChange {
-  const preview = planMove(uid, clubUid, terms, fee, release);
-  const player = players.find((p) => p.uid === uid)!;
-  const leaver = players.find((p) => p.uid === release);
-  const id = changes.length + 1;
-  // The fee, as the real command pays it: each amount by what it changes, so that undoing takes back just that.
+/**
+ * Pays the fee of `preview`, as the real commands pay one: each amount by what it changes, so that undoing takes back
+ * just that. What was paid, for the undo.
+ */
+function payFee(preview: MovePreview): [number, string, number][] {
   const paid: [number, string, number][] = [];
   for (const money of [preview.fee?.buyer, preview.fee?.seller]) {
     if (money) {
@@ -1464,6 +1463,84 @@ function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number
       }
     }
   }
+  return paid;
+}
+
+/**
+ * `plan_loan_permanent`: a fixture player on loan can stay at the club he is on loan to, on the terms, that club paying
+ * his own one the fee; the same checks of the terms as a move.
+ */
+function planLoanPermanent(uid: number, terms: MoveTerms, fee?: number): MovePreview {
+  const player = players.find((p) => p.uid === uid);
+  if (!player) {
+    throw notFound("player", uid);
+  }
+  const loan = loanOf(player);
+  const from = loan && clubs.find((c) => c.uid === loan.parentUid);
+  const to = loan && clubs.find((c) => c.uid === loan.clubUid);
+  if (!from || !to) {
+    throw failure("move.notOnLoan", "the player is not on loan");
+  }
+  const outOfRange = (field: string, value: number, min: number, max: number) =>
+    failure("move.outOfRange", `${value} is not a valid ${field}; it takes ${min} to ${max}`, { field, value, min, max });
+  if (terms.wage !== undefined && (!Number.isInteger(terms.wage) || terms.wage < 0 || terms.wage > 10_000_000)) {
+    throw outOfRange("contract.wage", terms.wage, 0, 10_000_000);
+  }
+  const tomorrow = numberFromDate(addDays(GAME_DATE, 1));
+  if (terms.expires !== undefined && (dateFromNumber(terms.expires) === null || terms.expires < tomorrow || terms.expires > 21001231)) {
+    throw outOfRange("contract.expires", terms.expires, tomorrow, 21001231);
+  }
+  return {
+    from: { uid: from.uid, name: from.name },
+    to: { uid: to.uid, name: to.name },
+    ...(fee !== undefined && fee > 0 && { fee: feePlan(from.uid, to.uid, fee) }),
+  };
+}
+
+/**
+ * `make_loan_permanent`: the fixture player stays where he plays, his loan gone (as for a moved player, `loanOf` has
+ * none for him), logged as a move between the two clubs that `undoMove` takes back.
+ */
+function makeLoanPermanent(uid: number, terms: MoveTerms, fee?: number): LoggedChange {
+  const preview = planLoanPermanent(uid, terms, fee);
+  const player = players.find((p) => p.uid === uid)!;
+  const id = changes.length + 1;
+  const paid = payFee(preview);
+  moveUndo.set(id, {
+    row: { club: player.club, clubUid: player.clubUid, contractExpires: player.contractExpires },
+    written: written.get(`player:${uid}`),
+    paid,
+  });
+  if (terms.expires !== undefined) {
+    player.contractExpires = dateFromNumber(terms.expires);
+  }
+  if (terms.wage !== undefined) {
+    writeValue("player", uid, "contract.wage", terms.wage);
+  }
+  movedPlayers.set(uid, (movedPlayers.get(uid) ?? 0) + 1);
+  const logged: LoggedChange = {
+    id,
+    at: Date.now(),
+    name: player.name,
+    entity: "player",
+    uid,
+    field: "club",
+    old: preview.from.uid,
+    new: preview.to.uid,
+    undoneAt: null,
+    batch: null,
+    moved: { from: preview.from.name, to: preview.to.name, ...(preview.fee && { fee: preview.fee.fee }) },
+  };
+  changes.push(logged);
+  return { ...logged };
+}
+
+function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number, release?: number): LoggedChange {
+  const preview = planMove(uid, clubUid, terms, fee, release);
+  const player = players.find((p) => p.uid === uid)!;
+  const leaver = players.find((p) => p.uid === release);
+  const id = changes.length + 1;
+  const paid = payFee(preview);
   const rowOf = (p: PlayerSummary) => ({ club: p.club, clubUid: p.clubUid, contractExpires: p.contractExpires });
   moveUndo.set(id, {
     row: rowOf(player),
@@ -2578,6 +2655,10 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       const terms = (args?.terms ?? {}) as MoveTerms;
       return movePlayer(Number(args?.uid), Number(args?.club), terms, args?.fee as number, args?.release as number) as T;
     }
+    case "plan_loan_permanent":
+      return planLoanPermanent(Number(args?.uid), (args?.terms ?? {}) as MoveTerms, args?.fee as number) as T;
+    case "make_loan_permanent":
+      return makeLoanPermanent(Number(args?.uid), (args?.terms ?? {}) as MoveTerms, args?.fee as number) as T;
     case "room_makers":
       return roomMakers(Number(args?.club)) as T;
     case "staff_jobs":

@@ -51,6 +51,9 @@ pub struct LoanLayout {
     pub record: u64,
     /// In that record: pointer to the loan contract, null when he is not on loan.
     pub contract: u64,
+    /// In that record: the pointers to his other contracts (with a B team, and others), null for none. When a loan
+    /// ends and these are all null, the game leaves the player without a record.
+    pub others: Vec<u64>,
     /// The class of loan contracts, as written in C++.
     pub class: String,
 }

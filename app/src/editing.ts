@@ -205,6 +205,20 @@ export const planClubMove = (uid: number, club: number, terms: MoveTerms, fee?: 
 export const roomMakers = (club: number) => call<RoomMaker[]>("room_makers", { club });
 
 /**
+ * Checks that the loan of the player `uid` can be made permanent on `terms`, the club he is on loan to paying his own
+ * one `fee` pounds if given, and names the clubs (`from` his own, `to` the one he stays at). Nothing is written.
+ */
+export const planLoanPermanent = (uid: number, terms: MoveTerms, fee?: number) =>
+  call<MovePreview>("plan_loan_permanent", { uid, terms, fee });
+
+/**
+ * Makes the loan of the player `uid` permanent: he stays where he plays, now under contract with the club he was on
+ * loan to, and leaves his own. Logged as a move between the two clubs, which one undo takes back.
+ */
+export const makeLoanPermanent = (uid: number, terms: MoveTerms, fee?: number) =>
+  call<LoggedChange>("make_loan_permanent", { uid, terms, fee });
+
+/**
  * Checks that the player `uid` can be released from his club, and names it. Nothing is written; when he cannot be
  * released, the error says why (a loan, a club a human manager runs, ...).
  */

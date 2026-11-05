@@ -4076,6 +4076,15 @@ button.danger:hover:not(:disabled) {
   margin: 0;
 }
 
+/* The buttons of a loan: Recall (or the status that takes its place) and Make permanent, side by side. */
+.loan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .injury-list {
   margin: 6px 0 0;
   padding: 0 6px;

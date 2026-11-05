@@ -33,6 +33,20 @@ The bytes after the squad number (`+0x60` to `+0x100`) hold the loan's own terms
 read 3,212 twice at `+0xA0` and `+0xA8`, 58,333 twice at `+0xCC`, his wage again at `+0xD4`, and 180 and 270 at
 `+0xD8`.
 
+The record is 32 bytes, laid out one after another with the others of its kind, so reading past its end shows the
+next player's:
+
+| Offset | What | Records holding one |
+| --- | --- | --- |
+| `+0x00` | the loan contract (`db::LOAN_CONTRACT`) | 3,598 |
+| `+0x08` | a contract with a club's B team (`db::B_CLUB_CONTRACT`) | 2,189 |
+| `+0x10` | a basic or full contract (a few player-coaches) | 11 |
+| `+0x18` | another contract with a B team | 60 |
+
+When the game ended the loans of Onana and Bayındır, whose records held nothing else, it left them without a record:
+null at `+0x338`. Their team (`+0x130`) pointed at Manchester United's again, while `+0x138` kept Trabzonspor's, the
+last team they played for.
+
 ## Who has one
 
 On the save, 3,596 players had a loan contract, and every one of them passed the editor's checks (class and owner).
@@ -55,3 +69,22 @@ A day the game has finished would never be one again, and a loan whose last day 
 writes only the game's date or a later one. While a loan ends on the game's date, the profile says his return is
 pending instead of offering the recall; a loan whose end has passed while he is still away gets a warning and the
 recall again.
+
+## Making a loan permanent
+
+A player on loan is in a list of the team he plays for, at the club he is on loan to, and in a list of his own club:
+its senior team's, or for a youngster the youth team's he played for (Mirza Ćatović, on loan from VfB Stuttgart to
+Barcelona, is in Stuttgart's under-19s' list and not in its senior team's). Making the loan permanent (`plan_loan_permanent`)
+leaves him where he plays, and writes:
+
+1. his own contract: both team pointers to the senior team of the club he stays at, signed and joined on the game's
+   date, the wage and end when given, the squad number and squad status his loan contract has there, and off the
+   transfer and loan lists;
+2. his own club: a captaincy he holds is left empty, and every list that holds him loses him;
+3. the loan, let go as the game lets one go: null at `+0x338` when the record holds nothing else, the loan contract's
+   slot in the record otherwise. The loan contract and the record are left with nothing pointing at them.
+
+Each write keeps the bytes it found, so one undo puts the loan back. Checked with the probe's `permanent 2000332528
+--restore` (9 writes): while made permanent he read as Barcelona's, not on loan, with the squad status of his loan
+contract (13), and afterwards as on loan again from Stuttgart until 30 June 2027. Whether the game takes him as
+Barcelona's over the next days is to be checked in the game.

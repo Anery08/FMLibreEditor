@@ -569,6 +569,8 @@ export const en = {
     recall: "Recall from loan",
     recallTitle: "Bring him back to his club: the loan ends today. Asks before anything changes",
     recallAgain: "Recall again",
+    makePermanent: "Make permanent",
+    makePermanentTitle: "Keep him at the club he is on loan to, under contract with it. Asks before anything changes",
     /** Where the Recall button was, once the loan ends today: recalled by the editor, or ending today anyway. */
     recalledWaiting: "Recalled · return pending",
     endsTodayWaiting: "Ends today · return pending",
@@ -1711,6 +1713,29 @@ export const en = {
     hint: "Nothing changes in the game until you press Release.",
     release: "Release",
     releasing: "Releasing…",
+    cancel: "Cancel",
+  },
+
+  /** Making a player's loan permanent: the dialog the Make permanent button of the Loan part of his profile opens. */
+  permanent: {
+    title: "Make the loan permanent",
+    /** The club he stays at, and his own club, which he leaves. */
+    stays: "Stays at",
+    leaves: "Leaves",
+    checking: "Checking…",
+    doesHeading: "What it does",
+    /** One line each. */
+    does: [
+      "He stays where he plays, now under contract with that club from today, on the terms above",
+      "He keeps the squad number and squad status he has there",
+      "He leaves every team of his own club, and the loan ends",
+      "The game's transfer history does not list it",
+      "Listed under Changes as a transfer, where one undo puts the loan back",
+    ],
+    /** Nothing changes in the game until Make permanent. */
+    hint: "Nothing changes in the game until you press Make permanent.",
+    confirm: "Make permanent",
+    confirming: "Making it permanent…",
     cancel: "Cancel",
   },
 

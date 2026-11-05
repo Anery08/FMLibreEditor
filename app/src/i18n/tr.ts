@@ -93,7 +93,9 @@ const errors: ErrorTexts = {
   "move.notAClub": () => "Bu kulübün oyuncunun katılabileceği bir A takımı yok.",
   "move.freeAgent": () => "Oyuncunun kulübü yok; serbest oyuncular henüz taşınamıyor.",
   "move.sameClub": () => "Oyuncu zaten bu kulüpte.",
-  "move.onLoan": () => "Oyuncu kiralık; kiralık oyuncular henüz taşınamıyor.",
+  "move.onLoan": () =>
+    "Oyuncu kiralık: önce profilindeki Kiralık bölümünden geri çağırın ya da kiralığı kalıcı yapın.",
+  "move.notOnLoan": () => "Oyuncu kiralık değil.",
   "move.playerCoach": () => "Oyuncu-antrenörler taşınamıyor: aynı zamanda personel olarak da çalışıyorlar.",
   "move.unusualContract": () => "Oyuncunun sözleşmesi olağan bir oyuncu sözleşmesi değil.",
   "move.humanClub": () =>
@@ -611,6 +613,8 @@ export const tr: Strings = {
     recall: "Kiralıktan geri çağır",
     recallTitle: "Oyuncuyu kulübüne geri getir: kiralık bugün biter. Bir şey değişmeden önce sorulur",
     recallAgain: "Tekrar geri çağır",
+    makePermanent: "Kalıcı yap",
+    makePermanentTitle: "Oyuncuyu kiralık olduğu kulüpte, o kulüple sözleşmeli olarak tut. Bir şey değişmeden önce sorulur",
     recalledWaiting: "Geri çağrıldı · dönüşü bekleniyor",
     endsTodayWaiting: "Bugün bitiyor · dönüşü bekleniyor",
     pendingTitle: (parent) => `Kiralığın son günü bugün: oyunda bir gün devam edin, oyuncu ${parent} kulübüne dönmüş olacak.`,
@@ -1507,6 +1511,25 @@ export const tr: Strings = {
     hint: "Siz serbest bırakmadan oyunda hiçbir şey değişmez.",
     release: "Serbest bırak",
     releasing: "Serbest bırakılıyor…",
+    cancel: "İptal",
+  },
+
+  permanent: {
+    title: "Kiralığı kalıcı yap",
+    stays: "Kalacağı kulüp",
+    leaves: "Ayrılacağı kulüp",
+    checking: "Kontrol ediliyor…",
+    doesHeading: "Ne yapar",
+    does: [
+      "Oyuncu oynadığı kulüpte kalır; sözleşmesi bugünden başlayarak bu kulüple ve yukarıdaki şartlarla olur",
+      "Oradaki forma numarası ve forma süresi korunur",
+      "Kendi kulübünün bütün takımlarından çıkar ve kiralık sona erer",
+      "Oyunun transfer geçmişinde görünmez",
+      "Değişiklikler bölümünde transfer olarak listelenir; tek geri alma kiralığı geri getirir",
+    ],
+    hint: "Siz kalıcı yapmadan oyunda hiçbir şey değişmez.",
+    confirm: "Kalıcı yap",
+    confirming: "Kalıcı yapılıyor…",
     cancel: "İptal",
   },
 

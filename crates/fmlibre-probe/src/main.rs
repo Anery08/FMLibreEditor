@@ -204,6 +204,24 @@ enum Command {
         #[arg(long, default_value_t = 0)]
         hold: u64,
     },
+    /// Make the loan of a player permanent in the running game: he stays at the club he is on loan to, now under
+    /// contract with it, and leaves his own club.
+    Permanent {
+        /// The player's UID.
+        uid: u32,
+        /// A new wage in pounds per week; his contract's otherwise.
+        #[arg(long)]
+        wage: Option<i64>,
+        /// A new contract end as YYYY-MM-DD; his contract's otherwise.
+        #[arg(long)]
+        expires: Option<String>,
+        /// Put it all back afterwards and check it: tests the change without changing the save.
+        #[arg(long)]
+        restore: bool,
+        /// With --restore, how many seconds to wait before putting it back, to look at the game meanwhile.
+        #[arg(long, default_value_t = 0)]
+        hold: u64,
+    },
     /// Work out a move as the app's transfer dialog does, on the player's contract, and say whether it can be made.
     /// Writes nothing.
     Plan {
@@ -825,6 +843,7 @@ fn run(cli: Cli) -> Result<()> {
         Some(
             Command::Set { .. }
                 | Command::Move { .. }
+                | Command::Permanent { .. }
                 | Command::Release { .. }
                 | Command::StaffMove { .. }
                 | Command::StaffJob { .. }
@@ -899,6 +918,11 @@ fn run(cli: Cli) -> Result<()> {
             let terms = MoveTerms { wage, expires };
             let session = connect(process, ArraySource::ProfileFirst)?;
             move_player(&session, uid, club, terms, fee, release, restore.then_some(hold))
+        }
+        Command::Permanent { uid, wage, expires, restore, hold } => {
+            let expires = expires.as_deref().map(parse_iso_date).transpose()?.map(FmDate::to_number);
+            let session = connect(process, ArraySource::ProfileFirst)?;
+            make_permanent(&session, uid, MoveTerms { wage, expires }, restore.then_some(hold))
         }
         Command::Plan { uid, club, release } => {
             plan_move(&connect(process, ArraySource::ProfileFirst)?, uid, club, release)
@@ -3211,6 +3235,48 @@ fn move_player(
     Ok(())
 }
 
+/// Makes the loan of the player `uid` permanent, shows where he is and what his contract says before and after, and
+/// with `restore_after` puts it all back and checks it.
+fn make_permanent(session: &Session, uid: u32, terms: MoveTerms, restore_after: Option<u64>) -> Result<()> {
+    let players = PlayerIndex::new(session.players()?);
+    let player = players.get(uid).with_context(|| format!("no player with UID {uid}"))?;
+    let human: Vec<u32> = session.staff()?.iter().filter(|s| s.is_human).filter_map(|s| s.club_uid).collect();
+    let contract_fields = ["contract.wage", "contract.expires", "contract.squad_number", "contract.squad_status"];
+    let show = |label: &str| -> Result<()> {
+        let now = session.players()?;
+        let player = now.iter().find(|p| p.uid == uid).context("the player is gone")?;
+        let loan = session.loan(player)?;
+        let target = player.target();
+        let fields: Vec<_> =
+            contract_fields.iter().map(|key| session.field(Entity::Player, key)).collect::<Result<_, _>>()?;
+        let values = session.read_fields(&target, &fields)?;
+        let values: Vec<String> = contract_fields
+            .iter()
+            .zip(values)
+            .map(|(key, value)| format!("{key} {}", value.map_or("-".to_owned(), |v| v.to_string())))
+            .collect();
+        let loan = loan.map_or("not on loan".to_owned(), |loan| {
+            format!("on loan from {} to {}", loan.parent.unwrap_or_default(), loan.club.unwrap_or_default())
+        });
+        println!("  {label}: plays for {}, {loan}; {}", player.club.as_deref().unwrap_or("-"), values.join(", "));
+        Ok(())
+    };
+    show("before")?;
+    let plan = session.plan_loan_permanent(player, terms, &human)?;
+    println!("{} (UID {uid}): club {} -> club {}, {} writes", player.name, plan.from_club, plan.to_club, plan.writes());
+    let done = session.apply_club_move(&plan)?;
+    show("after")?;
+    if let Some(hold) = restore_after {
+        if hold > 0 {
+            println!("  putting it back in {hold} s");
+            std::thread::sleep(std::time::Duration::from_secs(hold));
+        }
+        session.undo_club_move(&done)?;
+        show("restored")?;
+    }
+    Ok(())
+}
+
 fn plan_move(session: &Session, uid: u32, club: u32, release: Option<u32>) -> Result<()> {
     let players = PlayerIndex::new(session.players()?);
     let clubs = ClubIndex::new(session.clubs()?);
@@ -3523,6 +3589,8 @@ fn list_loans(session: &Session, only: Option<u32>, club: Option<u32>, raw: bool
         is_user_pointer(club).then_some(club)
     };
     let (mut records, mut pointers, mut found, mut away, mut away_found, mut shown) = (0, 0, 0, 0, 0, 0);
+    let mut slots: std::collections::BTreeMap<(usize, String), (usize, Vec<String>)> =
+        std::collections::BTreeMap::new();
     let today = session.game_date();
     println!("In-game date: {}", date(today));
     for player in session.players()? {
@@ -3534,6 +3602,18 @@ fn list_loans(session: &Session, only: Option<u32>, club: Option<u32>, raw: bool
             records += 1;
             if is_user_pointer(process.read_u64(record + loan.contract)?) {
                 pointers += 1;
+            }
+            // What each slot of the record points at, by class: what else the record keeps.
+            for (slot, word) in process.read_bytes(record, 0x40)?.as_chunks::<8>().0.iter().enumerate() {
+                let word = u64::from_le_bytes(*word);
+                if is_user_pointer(word) && word >= 0x100_0000 {
+                    let class = fmlibre_core::rtti::class_of(process, &session.plugin, word).unwrap_or_default();
+                    let seen = slots.entry((slot * 8, class)).or_insert((0, Vec::new()));
+                    seen.0 += 1;
+                    if seen.1.len() < 3 {
+                        seen.1.push(format!("{} {}", player.uid, player.name));
+                    }
+                }
             }
         }
         // Away from his club: the team he plays for belongs to another club than his contract's team.
@@ -3581,6 +3661,10 @@ fn list_loans(session: &Session, only: Option<u32>, club: Option<u32>, raw: bool
          them pointing at a contract; {away} players away from their club's teams, {away_found} of them with a loan \
          contract"
     );
+    println!("What the records of other contracts point at, by slot and class:");
+    for ((slot, class), (count, names)) in &slots {
+        println!("  +{slot:#04x}  {count:>6}  {class}  e.g. {}", names.join(", "));
+    }
     Ok(())
 }
 

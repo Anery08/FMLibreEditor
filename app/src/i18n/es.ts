@@ -198,7 +198,9 @@ const errors: ErrorTexts = {
   "move.notAClub": () => "Este club no tiene un primer equipo al que pueda unirse el jugador.",
   "move.freeAgent": () => "El jugador no tiene club; los agentes libres aún no se pueden traspasar.",
   "move.sameClub": () => "El jugador ya está en este club.",
-  "move.onLoan": () => "El jugador está cedido; los jugadores cedidos aún no se pueden traspasar.",
+  "move.onLoan": () =>
+    "El jugador está cedido: repéscalo primero o haz la cesión definitiva, en la parte Cesión de su perfil.",
+  "move.notOnLoan": () => "El jugador no está cedido.",
   "move.playerCoach": () => "Los jugadores-entrenadores no se pueden traspasar: también trabajan como personal.",
   "move.unusualContract": () => "El contrato del jugador no es un contrato de jugador corriente.",
   "move.humanClub": () =>
@@ -626,6 +628,8 @@ export const es: Strings = {
     recall: "Repescar de la cesión",
     recallTitle: "Devolverlo a su club: la cesión termina hoy. Pregunta antes de cambiar nada",
     recallAgain: "Repescar de nuevo",
+    makePermanent: "Hacer definitiva",
+    makePermanentTitle: "Que se quede en el club donde está cedido, con contrato con él. Pregunta antes de cambiar nada",
     recalledWaiting: "Repescado · vuelta pendiente",
     endsTodayWaiting: "Termina hoy · vuelta pendiente",
     pendingTitle: (parent) => `Hoy es el último día de la cesión: avanza un día en el juego y estará de vuelta en ${parent}.`,
@@ -1563,6 +1567,25 @@ export const es: Strings = {
     hint: "Nada cambia en el juego hasta que pulsas Rescindir.",
     release: "Rescindir",
     releasing: "Rescindiendo…",
+    cancel: "Cancelar",
+  },
+
+  permanent: {
+    title: "Hacer la cesión definitiva",
+    stays: "Se queda en",
+    leaves: "Deja",
+    checking: "Comprobando…",
+    doesHeading: "Qué hace",
+    does: [
+      "Se queda donde juega, ahora con contrato con ese club desde hoy y con las condiciones de arriba",
+      "Conserva allí su dorsal y su estatus en la plantilla",
+      "Deja todos los equipos de su club, y la cesión termina",
+      "El historial de traspasos del juego no lo muestra",
+      "Figura en Cambios como un traspaso; deshacerlo una vez devuelve la cesión",
+    ],
+    hint: "Nada cambia en el juego hasta que pulsas Hacer definitiva.",
+    confirm: "Hacer definitiva",
+    confirming: "Haciéndola definitiva…",
     cancel: "Cancelar",
   },
 
