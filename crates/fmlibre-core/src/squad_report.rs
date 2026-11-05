@@ -9,7 +9,7 @@ use serde::Serialize;
 use crate::clubs::ClubSummary;
 use crate::details::{POSITIONS, read_player_details};
 use crate::players::{PLAYABLE_RATING, PlayerIndex, PlayerSummary};
-use crate::scouting::{ScoutError, days_between};
+use crate::scouting::{NOT_FOR_SALE, ScoutError, days_between, known_value};
 use crate::session::Session;
 use crate::squad::Loan;
 
@@ -104,8 +104,9 @@ pub struct Departure {
     pub reasons: Vec<DepartureReason>,
     /// The more reasons and the stronger, the higher.
     pub priority: u8,
-    /// Pounds; a week for the wage.
+    /// Pounds; a week for the wage. The value is none where the game keeps none or he is not for sale.
     pub value: Option<i32>,
+    pub not_for_sale: bool,
     pub wage: Option<i32>,
     /// His line, and where he stands in it (1 is its best).
     pub line: &'static str,
@@ -338,7 +339,8 @@ impl Session {
                 action,
                 reasons,
                 priority,
-                value: p.transfer_value,
+                value: known_value(p.transfer_value),
+                not_for_sale: p.transfer_value == Some(NOT_FOR_SALE),
                 wage,
                 line: line.key,
                 rank,

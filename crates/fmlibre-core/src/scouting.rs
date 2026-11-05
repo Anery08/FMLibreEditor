@@ -34,6 +34,12 @@ const EMPTY: u32 = u32::MAX;
 /// The transfer value the game gives a player who is not for sale.
 pub const NOT_FOR_SALE: i32 = 300_000_000;
 
+/// A transfer value to show as an amount: none where the game keeps none (-1, as for this year's youth intake) or the
+/// player is not for sale.
+pub(crate) fn known_value(value: Option<i32>) -> Option<i32> {
+    value.filter(|&value| value >= 0 && value != NOT_FOR_SALE)
+}
+
 /// When the team has the ball, or when it has not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -939,6 +945,7 @@ pub struct Suggestion {
     /// editor cannot tell (not for sale, no value known).
     pub fee: Option<i64>,
     pub wage: Option<i64>,
+    /// His transfer value, pounds; none when the game keeps none or he is not for sale (a reason says so).
     pub value: Option<i32>,
     /// Fit and probability together, as the purpose weighs them, for the default order.
     pub score: u8,
@@ -1284,7 +1291,7 @@ impl Session {
             reasons,
             fee,
             wage,
-            value: player.transfer_value,
+            value: known_value(player.transfer_value),
             score: score(purpose, m.fit, probability, player),
             owner_club: lent.and_then(|uid| looking.clubs.get(uid)).map(|club| club.name.clone()),
             owner_club_uid: lent,
@@ -1531,6 +1538,16 @@ mod tests {
         let from = FmDate { year: 2027, month: 8, day: 15 };
         let to = FmDate { year: 2028, month: 6, day: 30 };
         assert_eq!(days_between(from, to), 320);
+    }
+
+    #[test]
+    fn only_real_values_are_amounts() {
+        assert_eq!(known_value(Some(144_244_816)), Some(144_244_816));
+        assert_eq!(known_value(Some(0)), Some(0));
+        // This year's youth intake has none yet; a player the game keeps as not for sale has no amount either.
+        assert_eq!(known_value(Some(-1)), None);
+        assert_eq!(known_value(Some(NOT_FOR_SALE)), None);
+        assert_eq!(known_value(None), None);
     }
 
     #[test]

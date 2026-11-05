@@ -35,7 +35,8 @@ function sortValue(d: Departure, rank: number, by: DepartureSort): number | stri
     case "pa":
       return d.player.potentialAbility;
     case "value":
-      return d.value;
+      // Not for sale is worth more than any fee.
+      return d.notForSale ? Number.MAX_SAFE_INTEGER : d.value;
     case "wage":
       return d.wage;
     case "contract":
@@ -130,7 +131,9 @@ export function ScoutDepartures({
                 <td className="num">{d.player.age ?? text.none}</td>
                 <td className="num scout-ca">{d.player.currentAbility}</td>
                 <td className="num muted">{d.player.potentialAbility}</td>
-                <td className="num">{d.value === null ? text.none : formatMoney(d.value)}</td>
+                <td className="num">
+                  {d.notForSale ? text.reasons.notForSale("") : d.value === null ? text.none : formatMoney(d.value)}
+                </td>
                 <td className="num">{d.wage === null ? text.none : `${formatMoney(d.wage)}${text.perWeek}`}</td>
                 <td>{formatDate(d.player.contractExpires) || text.none}</td>
                 <td>

@@ -958,8 +958,9 @@ export interface Departure {
   reasons: DepartureReason[];
   /** The more reasons and the stronger, the higher. */
   priority: number;
-  /** Pounds; a week for the wage. */
+  /** Pounds; a week for the wage. The value is null where the game keeps none or he is not for sale. */
   value: number | null;
+  notForSale: boolean;
   wage: number | null;
   /** His line (a DepthLine key) and where he stands in it, 1 being its best. */
   line: string;

@@ -212,12 +212,15 @@ export function scoutingOverview(f: ScoutingFixtures): ScoutingOverview {
       if (blocked) add("blocked", 2, p.potentialAbility);
       if (priority === 0 || d.onLoan) return;
       const value = valueOf(p);
+      // One fixture player stands for those the game keeps as not for sale.
+      const notForSale = p.uid % 7 === 0;
       departures.push({
         player: p,
         action: blocked && !below ? "loan" : value < 250_000 && age >= 28 && (below || ageing) ? "release" : "sell",
         reasons,
         priority,
-        value,
+        value: notForSale ? null : value,
+        notForSale,
         wage: wageOf(p),
         line: line.key,
         rank,
