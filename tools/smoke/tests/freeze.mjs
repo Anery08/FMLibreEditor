@@ -1,5 +1,5 @@
-// Freezing a player's attributes: the probe lowers one as the game would, and the app puts it back within its 2 s
-// hold; unfrozen, a lower value stays lower. Everything the probe lowered is written back.
+// Freezing a player's attributes: the probe changes one as the game would, and the app puts it back within its 2 s
+// hold; unfrozen, a changed value stays. What the probe changed is written back.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { sleep } from "../lib/app.mjs";
