@@ -1,6 +1,7 @@
 // Recalling a player from his loan: the game's date becomes the loan's last day, which the probe reads back, the
 // profile says his return is pending, and the undo puts the old end back. When the day is over the game would end the
 // loan itself; the test undoes it before.
+import { SHOWN, VIS } from "../lib/app.mjs";
 import { findPlayer } from "../lib/witness.mjs";
 
 export const name = "loan";
@@ -54,4 +55,40 @@ export async function run({ app, report, probe, connection }) {
   report.check("the undo puts the old end back", undone.undoneAt != null && restored === before, String(restored));
   const later = await app.must("player_details", { uid: player.uid });
   report.check("and his profile offers the recall again", later.loan?.ends === "later" && !later.loan.recalled);
+
+  // The same through his profile: the button asks first, Cancel writes nothing, Recall writes and the status replaces
+  // the button.
+  await app.openTab(0);
+  await app.setInput(`${VIS}(".search input")`, String(player.uid));
+  const rows = `[...document.querySelectorAll("table.grid tbody tr")].filter(${SHOWN})`;
+  await app.waitFor(`${rows}.length === 1 && ${rows}[0].textContent.includes(${JSON.stringify(player.name)})`, "his row");
+  await app.click(`${rows}[0]`, "his row");
+  const profile = `${VIS}(".profile:not(.popup)")`;
+  await app.waitFor(`${profile} && ${profile}.getAttribute("aria-busy") === "false"`, "his profile", 30000);
+  const button = `${profile}.querySelector(".clauses.loan button.heal-toggle")`;
+  const dialog = `document.querySelector(".recall-dialog")`;
+  await app.click(button, "Recall from loan");
+  await app.waitFor(dialog, "the recall dialog");
+  const asked = await app.js(`${dialog}.contains(document.activeElement) && document.activeElement.textContent`);
+  await app.shot("loan-recall-dialog");
+  await app.press("Escape");
+  await app.waitFor(`!${dialog}`, "the dialog to close");
+  const kept = probe.get("player", player.uid, [FIELD])[FIELD];
+  report.check("the dialog asks first: Cancel or Escape writes nothing", kept === before, `focus on ${JSON.stringify(asked)}`);
+  await app.click(button, "Recall from loan");
+  await app.waitFor(dialog, "the recall dialog");
+  await app.click(`${dialog}.querySelector(".modal-foot button.primary")`, "Recall");
+  await app.waitFor(`!${dialog} && ${profile}.querySelector(".clauses.loan .loan-status")`, "the pending status");
+  const viaDialog = probe.get("player", player.uid, [FIELD])[FIELD];
+  report.check("Recall in the dialog makes today the last day", viaDialog === today, String(viaDialog));
+  const status = await app.js(`${profile}.querySelector(".clauses.loan .loan-status").textContent`);
+  const gone = await app.js(`!${button}`);
+  report.check("the status takes the button's place", gone, status);
+  await app.shot("loan-recalled");
+  const log = await app.must("change_log");
+  const logged = log.find((change) => change.uid === player.uid && change.field === FIELD && change.undoneAt == null);
+  if (logged) await app.must("undo_change", { id: logged.id });
+  const back = probe.get("player", player.uid, [FIELD])[FIELD];
+  report.check("undone again", back === before, String(back));
+  await app.press("Escape");
 }

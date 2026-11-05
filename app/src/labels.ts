@@ -153,6 +153,9 @@ export const moveText = strings.move;
 /** Releasing a player from his club: the button beside Transfer in his profile and the dialog it opens. */
 export const releaseText = strings.release;
 
+/** Recalling a player from his loan: the dialog the Recall button in his profile opens. */
+export const recallText = strings.recall;
+
 /** A player's secondary nationalities and homegrown status: the group in his profile and its dialog. */
 export const tieText = strings.ties;
 

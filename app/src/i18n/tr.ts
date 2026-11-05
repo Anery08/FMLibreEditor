@@ -609,13 +609,11 @@ export const tr: Strings = {
     loanUntil: "Bitiş",
     loanNumber: "Oradaki forma numarası",
     recall: "Kiralıktan geri çağır",
-    recalling: "Geri çağrılıyor…",
-    recallTitle:
-      "Kiralığın son günü bugün olsun: gün bitince oyun kiralığı bitirir, oyuncu ertesi gün kulübünde olur. O zamana kadar Değişiklikler'den geri alınabilir",
+    recallTitle: "Oyuncuyu kulübüne geri getir: kiralık bugün biter. Bir şey değişmeden önce sorulur",
     recallAgain: "Tekrar geri çağır",
     recalledWaiting: "Geri çağrıldı · dönüşü bekleniyor",
     endsTodayWaiting: "Bugün bitiyor · dönüşü bekleniyor",
-    returnsTomorrow: (parent) => `Kiralığın son günü bugün: oyunda bir gün devam edin, oyuncu ${parent} kulübüne dönmüş olacak.`,
+    pendingTitle: (parent) => `Kiralığın son günü bugün: oyunda bir gün devam edin, oyuncu ${parent} kulübüne dönmüş olacak.`,
     endPassed: (date) =>
       `Kiralığın ${date} tarihinde bitmesi gerekiyordu ama oyun oyuncuyu geri getirmedi. Tekrar geri çağırıp bir gün devam edin.`,
     clauseCondition: (kind, value) => {
@@ -1509,6 +1507,22 @@ export const tr: Strings = {
     hint: "Siz serbest bırakmadan oyunda hiçbir şey değişmez.",
     release: "Serbest bırak",
     releasing: "Serbest bırakılıyor…",
+    cancel: "İptal",
+  },
+
+  recall: {
+    title: "Kiralıktan geri çağır",
+    from: "Kiralık olduğu kulüp",
+    to: "Döneceği kulüp",
+    doesHeading: "Geri çağırma ne yapar",
+    does: (parent) => [
+      "Kiralığın son günü bugün olur: gün bitince oyun kiralığı kendisi sona erdirir",
+      `Oyunda bir gün devam ettiğinizde oyuncu ${parent} kulübüne dönmüş olur`,
+      "O zamana kadar Değişiklikler bölümünde listelenir; geri alma kiralığın eski bitiş tarihini geri getirir",
+    ],
+    hint: "Siz geri çağırmadan oyunda hiçbir şey değişmez.",
+    confirm: "Geri çağır",
+    confirming: "Geri çağrılıyor…",
     cancel: "İptal",
   },
 

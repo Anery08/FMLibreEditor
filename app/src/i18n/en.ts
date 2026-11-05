@@ -567,14 +567,12 @@ export const en = {
     loanUntil: "Until",
     loanNumber: "Number there",
     recall: "Recall from loan",
-    recalling: "Recalling…",
-    recallTitle:
-      "Make today the last day of the loan: when the day is over the game ends it, and he is back at his club the next day. Changes can undo it until then",
+    recallTitle: "Bring him back to his club: the loan ends today. Asks before anything changes",
     recallAgain: "Recall again",
     /** Where the Recall button was, once the loan ends today: recalled by the editor, or ending today anyway. */
     recalledWaiting: "Recalled · return pending",
     endsTodayWaiting: "Ends today · return pending",
-    returnsTomorrow: (parent: string) =>
+    pendingTitle: (parent: string) =>
       `Today is the last day of the loan: continue one day in the game and he is back at ${parent}.`,
     endPassed: (date: string) =>
       `The loan was to end on ${date}, but the game has not brought him back. Recall him again, then continue one day.`,
@@ -1713,6 +1711,26 @@ export const en = {
     hint: "Nothing changes in the game until you press Release.",
     release: "Release",
     releasing: "Releasing…",
+    cancel: "Cancel",
+  },
+
+  /** Recalling a player from his loan: the dialog the Recall button of the Loan part of his profile opens. */
+  recall: {
+    title: "Recall from loan",
+    /** The club he is on loan at, and the one he goes back to. */
+    from: "On loan at",
+    to: "Goes back to",
+    doesHeading: "What the recall does",
+    /** One line each; `parent` is the club he goes back to. */
+    does: (parent: string) => [
+      "Today becomes the last day of the loan: when the day is over, the game ends the loan itself",
+      `Continue one day in the game and he is back at ${parent}`,
+      "Until then it is listed under Changes, where an undo puts the loan's old end back",
+    ],
+    /** Nothing changes in the game until Recall. */
+    hint: "Nothing changes in the game until you press Recall.",
+    confirm: "Recall",
+    confirming: "Recalling…",
     cancel: "Cancel",
   },
 

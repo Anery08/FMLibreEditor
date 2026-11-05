@@ -624,13 +624,11 @@ export const es: Strings = {
     loanUntil: "Hasta",
     loanNumber: "Dorsal allí",
     recall: "Repescar de la cesión",
-    recalling: "Repescando…",
-    recallTitle:
-      "Hoy pasa a ser el último día de la cesión: al acabar el día el juego la termina y al día siguiente vuelve a su club. Cambios puede deshacerlo hasta entonces",
+    recallTitle: "Devolverlo a su club: la cesión termina hoy. Pregunta antes de cambiar nada",
     recallAgain: "Repescar de nuevo",
     recalledWaiting: "Repescado · vuelta pendiente",
     endsTodayWaiting: "Termina hoy · vuelta pendiente",
-    returnsTomorrow: (parent) => `Hoy es el último día de la cesión: avanza un día en el juego y estará de vuelta en ${parent}.`,
+    pendingTitle: (parent) => `Hoy es el último día de la cesión: avanza un día en el juego y estará de vuelta en ${parent}.`,
     endPassed: (date) =>
       `La cesión debía terminar el ${date}, pero el juego no lo ha devuelto. Repéscalo de nuevo y avanza un día.`,
     clauseCondition: (kind, value) => {
@@ -1565,6 +1563,22 @@ export const es: Strings = {
     hint: "Nada cambia en el juego hasta que pulsas Rescindir.",
     release: "Rescindir",
     releasing: "Rescindiendo…",
+    cancel: "Cancelar",
+  },
+
+  recall: {
+    title: "Repescar de la cesión",
+    from: "Cedido a",
+    to: "Vuelve a",
+    doesHeading: "Qué hace la repesca",
+    does: (parent) => [
+      "Hoy pasa a ser el último día de la cesión: al acabar el día, el juego la termina por sí mismo",
+      `Avanza un día en el juego y estará de vuelta en ${parent}`,
+      "Hasta entonces figura en Cambios, donde deshacerlo devuelve el fin anterior de la cesión",
+    ],
+    hint: "Nada cambia en el juego hasta que pulsas Repescar.",
+    confirm: "Repescar",
+    confirming: "Repescando…",
     cancel: "Cancelar",
   },
 

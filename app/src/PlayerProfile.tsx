@@ -1,11 +1,11 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AttributeActions } from "./AttributeActions";
 import { ClauseList } from "./ClauseList";
 import { CompareToggle } from "./Comparison";
 import { EditableValue, EditInput } from "./EditControls";
 import { call } from "./api";
-import { keepPlaying, recallLoan } from "./editing";
+import { keepPlaying } from "./editing";
 import { describeError, formatDate, formatNumber, formatMoney } from "./format";
 import { ATTRIBUTE_LABELS, editText, profileText, type AttributeKey } from "./labels";
 import { MedicalGroup } from "./MedicalGroup";
@@ -13,6 +13,7 @@ import { MoveButton } from "./MoveDialog";
 import { ClubLogo, NationFlag, PersonFace, PICTURE_SIZE, WithPicture } from "./Picture";
 import { FEET, GOALKEEPING, HIDDEN, isGoalkeeper, MENTAL, PHYSICAL, TECHNICAL } from "./playerAttributes";
 import { PositionPitch, PositionRatings } from "./PositionPitch";
+import { RecallDialog } from "./RecallDialog";
 import { ReleaseButton } from "./ReleaseDialog";
 import { TiesGroup } from "./TiesGroup";
 import {
@@ -257,7 +258,7 @@ function ContractGroup({ details, contract }: { details: PlayerDetails; contract
         </div>
         <ContractDates contract={contract} />
       </div>
-      {details.loan && <LoanFacts uid={uid} loan={details.loan} />}
+      {details.loan && <LoanFacts uid={uid} name={details.name} loan={details.loan} />}
       <ClauseList uid={uid} name={details.name} clauses={contract.clauses} room={details.clauseRoom} />
       <ConcernList uid={uid} concerns={contract.concerns} />
     </section>
@@ -265,34 +266,26 @@ function ContractGroup({ details, contract }: { details: PlayerDetails; contract
 }
 
 /**
- * Where a player is on loan, from his loan contract, and the button that brings him back: today becomes the last day
- * of the loan, and the game brings him back to his club when the day is over. Once the loan ends today the button
- * gives way to a status saying his return is pending; a loan whose end has passed while he is still away gets a
- * warning and the button again. The end date is an input while he is edited.
+ * Where a player is on loan, from his loan contract, and the button that brings him back. The button opens a dialog
+ * that says what the recall does and asks first (see `RecallDialog`): today becomes the last day of the loan, and the
+ * game brings him back to his club when the day is over. Once the loan ends today the button gives way to a status
+ * saying his return is pending; a loan whose end has passed while he is still away gets a warning and the button
+ * again. The end date is an input while he is edited.
  */
-function LoanFacts({ uid, loan }: { uid: number; loan: LoanDetails }) {
+function LoanFacts({ uid, name, loan }: { uid: number; name: string; loan: LoanDetails }) {
   const { editable, onEdited } = useContext(EditorContext);
-  const [recalling, setRecalling] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const wasAsking = useRef(false);
 
+  // Once the dialog is gone, focus goes back to the button that opened it, while there is one: after a recall the
+  // status takes its place.
   useEffect(() => {
-    setRecalling(false);
-  }, [loan]);
-
-  const recall = async () => {
-    if (recalling) {
-      return;
+    if (wasAsking.current && !asking) {
+      button.current?.focus();
     }
-    setRecalling(true);
-    setError(null);
-    try {
-      await recallLoan(uid);
-      onEdited();
-    } catch (e) {
-      setError(describeError(e));
-      setRecalling(false);
-    }
-  };
+    wasAsking.current = asking;
+  }, [asking]);
 
   const club = (clubUid: number | null, name: string | null) =>
     name === null ? (
@@ -309,19 +302,20 @@ function LoanFacts({ uid, loan }: { uid: number; loan: LoanDetails }) {
       <div className="injuries-head">
         <h4>{profileText.loan}</h4>
         {loan.ends === "today" ? (
-          <span className="tag loan loan-status" role="status">
+          <span className="tag loan loan-status" role="status" title={profileText.pendingTitle(loan.parent ?? "")}>
             {loan.recalled ? profileText.recalledWaiting : profileText.endsTodayWaiting}
           </span>
         ) : (
           <button
+            ref={button}
             type="button"
             className="heal-toggle"
+            aria-haspopup="dialog"
             disabled={!editable}
-            aria-disabled={recalling || undefined}
             title={profileText.recallTitle}
-            onClick={() => void recall()}
+            onClick={() => setAsking(true)}
           >
-            {recalling ? profileText.recalling : loan.ends === "passed" ? profileText.recallAgain : profileText.recall}
+            {loan.ends === "passed" ? profileText.recallAgain : profileText.recall}
           </button>
         )}
       </div>
@@ -334,17 +328,12 @@ function LoanFacts({ uid, loan }: { uid: number; loan: LoanDetails }) {
         </Fact>
         <Fact label={profileText.loanNumber}>{loan.squadNumber ?? profileText.none}</Fact>
       </dl>
-      {loan.ends === "today" && <p className="note">{profileText.returnsTomorrow(loan.parent ?? "")}</p>}
       {loan.ends === "passed" && (
         <div className="banner move-error" role="alert">
           {profileText.endPassed(date(loan.until))}
         </div>
       )}
-      {error !== null && (
-        <div className="banner move-error" role="alert">
-          {error}
-        </div>
-      )}
+      {asking && <RecallDialog uid={uid} name={name} loan={loan} onRecalled={onEdited} onClose={() => setAsking(false)} />}
     </div>
   );
 }
