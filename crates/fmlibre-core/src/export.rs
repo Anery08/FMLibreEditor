@@ -474,6 +474,7 @@ mod tests {
             retirement_known: false,
             retires: None,
             clause_room: 0,
+            loan: None,
         }
     }
 

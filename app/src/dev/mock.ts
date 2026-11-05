@@ -29,6 +29,7 @@ import type {
   Health,
   Ban,
   Injury,
+  LoanDetails,
   Tie,
   Clause,
   TieKind,
@@ -302,9 +303,32 @@ function details(player: PlayerSummary): PlayerDetails {
     clauseRoom: player.club ? clauseRoomOf(player.uid) : 0,
     retirementKnown: true,
     retires: retiresOf(player.uid),
+    loan: loanOf(player),
     // Drawn last, so that the values above come out as before.
     morale: Math.round(7 + next() * 10),
   });
+}
+
+/**
+ * Where a fixture player is on loan: every thirteenth player with a club plays there on loan from the next fixture
+ * club, from the end of June to the end of the season, number 1 + his UID modulo 40 there.
+ */
+function loanOf(player: PlayerSummary): LoanDetails | null {
+  if (player.club === null || player.clubUid === null || player.uid % 13 !== 6 || movedPlayers.has(player.uid)) {
+    return null;
+  }
+  const at = (CLUBS.indexOf(player.club) + 1) % CLUBS.length;
+  const parentUid = player.clubUid >= 2_000_100_000 ? 2_000_100_000 + at : 500 + at * 7;
+  return {
+    clubUid: player.clubUid,
+    club: player.club,
+    parentUid,
+    parent: CLUBS[at],
+    from: { year: 2026, month: 6, day: 29 },
+    until: { year: 2027, month: 6, day: 30 },
+    squadNumber: 1 + (player.uid % 40),
+    wage: 2_000 + (player.uid % 50) * 900,
+  };
 }
 
 /** The fixture players healed through the editor, by UID, while the healing is not undone. */
@@ -757,6 +781,8 @@ function fieldTable(entity: Entity): EditField[] {
       ...personality,
       ...contract,
       ...playerContract,
+      // One player at a time, and only to a day after the game's date.
+      { ...field("loan.expires", "date", 20000101, 21001231), mass: false },
     ];
   }
   return [
@@ -836,6 +862,11 @@ function withWritten<D extends PlayerDetails | StaffDetails>(entity: Entity, d: 
       }
       case "international":
         (d as PlayerDetails).international[INTERNATIONAL[name as keyof typeof INTERNATIONAL]] = value;
+        break;
+      case "loan":
+        if (name === "expires" && (d as PlayerDetails).loan) {
+          (d as PlayerDetails).loan!.until = dateFromNumber(value);
+        }
         break;
       case "contract":
         if (d.contract && name === "wage") {
@@ -981,6 +1012,8 @@ function currentValues(entity: Entity, uid: number): FieldValues {
         }
         return undefined;
       }
+      case "loan":
+        return name === "expires" ? (person as PlayerDetails).loan?.until && numberFromDate((person as PlayerDetails).loan!.until!) : undefined;
       case "facilities":
         return club.facilities[name];
       case "finance":
@@ -1069,6 +1102,14 @@ function applyEdits(entity: Entity, uid: number, edits: FieldEdit[]): ApplyRepor
       report.failed.push({ ...edit, error: failure("edit.notADate", message, { field: field.key, value: edit.value }) });
       continue;
     }
+    // Like the real command, a loan ends on a day the game has yet to reach.
+    const tomorrow = numberFromDate(addDays(GAME_DATE, 1));
+    if (field.key === "loan.expires" && edit.value < tomorrow) {
+      const message = `${edit.value} is not a valid ${field.key}; it takes ${tomorrow} to ${field.max}`;
+      const params = { field: field.key, value: edit.value, min: tomorrow, max: field.max };
+      report.failed.push({ ...edit, error: failure("edit.outOfRange", message, params) });
+      continue;
+    }
     const old: number | undefined = currentValues(entity, uid)[field.key];
     if (old === undefined) {
       // No contract, no contract end, or a club without full finances.
@@ -1096,6 +1137,18 @@ function applyEdits(entity: Entity, uid: number, edits: FieldEdit[]): ApplyRepor
     report.applied.push({ ...logged });
   }
   return report;
+}
+
+/**
+ * `recall_loan`: the loan now ends the day after the game's date, written and logged like an edit of `loan.expires`;
+ * null when it ends then already.
+ */
+function recallLoan(uid: number): LoggedChange | null {
+  const report = applyEdits("player", uid, [{ field: "loan.expires", value: numberFromDate(addDays(GAME_DATE, 1)) }]);
+  if (report.failed.length > 0) {
+    throw report.failed[0].error;
+  }
+  return report.applied[0] ?? null;
 }
 
 /** `undo_change`: writes the old value back unless the value has changed since. */
@@ -2482,6 +2535,8 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       return currentValues(args?.entity as Entity, Number(args?.uid)) as T;
     case "apply_edits":
       return applyEdits(args?.entity as Entity, Number(args?.uid), (args?.edits ?? []) as FieldEdit[]) as T;
+    case "recall_loan":
+      return recallLoan(Number(args?.uid)) as T;
     case "change_log":
       return changes.map((c) => ({ ...c })).reverse() as T;
     case "undo_change":

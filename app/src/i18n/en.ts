@@ -405,6 +405,7 @@ export const en = {
     "contract.squad_status": "Squad status",
     "contract.transfer_listed": "Transfer listed",
     "contract.loan_listed": "Loan listed",
+    "loan.expires": "Loan end",
     // A member of staff's job, which the change log keeps as a change of its code.
     "contract.job": "Job",
     // A player's ties, which the change log keeps as changes of the nation or club (see `ties`).
@@ -558,6 +559,19 @@ export const en = {
     moodTitle: "As FMRTE shows it, from -100 to 100; the game shows it in words",
     /** The name of a clause or bonus by its kind; a kind the app does not know yet by its number. */
     clauseName: (kind: number) => CLAUSE_NAMES_EN[kind] ?? `Clause ${kind}`,
+    /** A player's loan: where he is on loan, and the button that brings him back. */
+    loan: "Loan",
+    loanAt: "On loan at",
+    loanParent: "Belongs to",
+    loanFrom: "From",
+    loanUntil: "Until",
+    loanNumber: "Number there",
+    recall: "Recall from loan",
+    recalling: "Recalling…",
+    recallTitle:
+      "Make the loan end tomorrow: when the game gets there it ends the loan and brings him back to his club. Changes can undo it until then",
+    recalled: (parent: string) =>
+      `The loan now ends tomorrow: continue in the game and he returns to ${parent}.`,
     /** What a clause depends on, by kind: goals, assists, matches, years or a percentage. */
     clauseCondition: (kind: number, value: number) => {
       switch (kind) {

@@ -8,11 +8,11 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use fmlibre_core::{
     ArraySource, CaptainRole, CaptainSet, Change, Clause, ClauseSet, ClubDetails, ClubFilter, ClubIndex, ClubMove,
     Coded, EditError, Entity, EntityArrays, ExportFormat, ExportHeader, FeePlan, Field, FmDate, GAME_EXE, GAME_PLUGIN,
-    GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind, Lifted, Listed, Loan, MoveError,
-    MovePlan, MoveTerms, Nation, Operation, Paid, Picture, Planned, PlayerDetails, PlayerFilter, PlayerIndex,
-    PlayerOrder, PlayerSummary, RelationSet, RetirementSet, STAFF_JOBS, SearchIndex, Session, SessionError, Skipped,
-    StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffOrder, StaffPlan, Target, Tie, TieTarget, find_game,
-    nations, sort_players, sort_staff,
+    GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind, LOAN_EXPIRES, Lifted, Listed, Loan,
+    MoveError, MovePlan, MoveTerms, Nation, Operation, Paid, Picture, Planned, PlayerDetails, PlayerFilter,
+    PlayerIndex, PlayerOrder, PlayerSummary, RelationSet, RetirementSet, STAFF_JOBS, SearchIndex, Session,
+    SessionError, Skipped, StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffOrder, StaffPlan, Target, Tie,
+    TieTarget, find_game, nations, sort_players, sort_staff,
 };
 use fmlibre_mem::{Process, find_processes, is_current_process_elevated, list_modules};
 use serde::{Deserialize, Serialize};
@@ -2151,6 +2151,26 @@ fn apply_edits(
     Ok(report)
 }
 
+/// Brings the player `uid` back from his loan: the loan now ends on the day after the game's date, and when the game
+/// gets there it ends the loan and brings him back to his club. Logged as a change of the day the loan ends, which an
+/// undo puts back while the game has not ended the loan. Nothing is written or logged when it ends then already.
+#[tauri::command]
+fn recall_loan(state: State<'_, AppState>, uid: u32) -> Result<Option<LoggedChange>, Failure> {
+    let mut guard = state.0.lock()?;
+    let connection = guard.as_mut().ok_or_else(not_connected)?;
+    let (target, name) = connection.target(Entity::Player, uid)?;
+    let session = &connection.session;
+    let written = session.loan_recall_day().and_then(|day| {
+        let field = session.field(Entity::Player, LOAN_EXPIRES)?;
+        session.write_field(&target, &field, day.to_number())
+    });
+    match written {
+        Ok(change) if change.old == change.new => Ok(None),
+        Ok(change) => Ok(Some(connection.log_change(change, name, None))),
+        Err(err) => Err(connection.with_names(err.into())),
+    }
+}
+
 /// Every change written this session, newest first.
 #[tauri::command]
 fn change_log(state: State<'_, AppState>) -> Result<Vec<LoggedChange>, Failure> {
@@ -2822,6 +2842,7 @@ pub fn run() {
             edit_fields,
             read_values,
             apply_edits,
+            recall_loan,
             change_log,
             undo_change,
             plan_mass_edit,

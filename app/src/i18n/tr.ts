@@ -54,6 +54,7 @@ const UNSUPPORTED: Partial<Record<string, string>> = {
   "it is changed one person at a time": "bu alan kişi kişi değiştirilir",
   "the new value is not one of the game's own records of that kind":
     "yeni değer, oyunun bu türdeki kendi kayıtlarından biri değil",
+  "the in-game date is not known": "oyun içi tarih bilinmiyor",
 };
 
 const reload = "verileri yeniden okuyup tekrar deneyin";
@@ -471,6 +472,7 @@ export const tr: Strings = {
     "contract.squad_status": "Forma süresi",
     "contract.transfer_listed": "Transfer listesinde",
     "contract.loan_listed": "Kiralık listesinde",
+    "loan.expires": "Kiralık bitişi",
     "contract.job": "Görev",
     "tie.nationality": "İkinci uyruk",
     "tie.trainedInNation": "Yetiştiği ülke",
@@ -600,6 +602,17 @@ export const tr: Strings = {
     playingTimeHappiness: "Forma süresi mutluluğu",
     moodTitle: "FMRTE'nin gösterdiği gibi, -100 ile 100 arasında; oyun bunu kelimelerle gösterir",
     clauseName: (kind) => CLAUSE_NAMES_TR[kind] ?? `Madde ${kind}`,
+    loan: "Kiralık",
+    loanAt: "Kiralık olduğu kulüp",
+    loanParent: "Bağlı olduğu kulüp",
+    loanFrom: "Başlangıç",
+    loanUntil: "Bitiş",
+    loanNumber: "Oradaki forma numarası",
+    recall: "Kiralıktan geri çağır",
+    recalling: "Geri çağrılıyor…",
+    recallTitle:
+      "Kiralık yarın bitsin: oyun o güne geldiğinde kiralığı bitirir ve oyuncuyu kulübüne geri getirir. O güne kadar Değişiklikler'den geri alınabilir",
+    recalled: (parent) => `Kiralık artık yarın bitiyor: oyunda devam edin, oyuncu ${parent} kulübüne dönecek.`,
     clauseCondition: (kind, value) => {
       switch (kind) {
         case 10:

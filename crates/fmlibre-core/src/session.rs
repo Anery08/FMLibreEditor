@@ -144,6 +144,9 @@ pub struct Session {
     /// The vtables of the class that holds a human manager's selections, found by its name the first time they are
     /// needed: none when the layout does not place them or the game does not name that class.
     pub(crate) selection_class: OnceLock<Vec<u64>>,
+    /// The vtables of loan contracts, found by their class name the first time they are needed: none when the layout
+    /// does not place loans or the game does not name that class.
+    pub(crate) loan_class: OnceLock<Vec<u64>>,
     /// What the checks found: worked out the first time it is needed, and again by [`Session::recheck`].
     health: Mutex<Option<Arc<Health>>>,
     /// Whether editing a build without a profile was allowed.
@@ -182,6 +185,7 @@ impl Session {
             retirement_class: OnceLock::new(),
             retirement_place: Mutex::new(None),
             selection_class: OnceLock::new(),
+            loan_class: OnceLock::new(),
             health: Mutex::new(None),
             unknown_build_allowed: AtomicBool::new(false),
             search_all: source == ArraySource::ScanOnly,
@@ -357,6 +361,7 @@ impl Session {
         details.ties = self.relations(player).unwrap_or_default();
         details.tie_room = self.relation_room(player).unwrap_or(0);
         details.clause_room = self.clause_room(player).unwrap_or(0);
+        details.loan = self.loan(player).unwrap_or(None);
         if let Ok(date) = self.planned_retirement(player) {
             (details.retirement_known, details.retires) = (true, date);
         }

@@ -5,7 +5,7 @@ import { ClauseList } from "./ClauseList";
 import { CompareToggle } from "./Comparison";
 import { EditableValue, EditInput } from "./EditControls";
 import { call } from "./api";
-import { keepPlaying } from "./editing";
+import { keepPlaying, recallLoan } from "./editing";
 import { describeError, formatDate, formatNumber, formatMoney } from "./format";
 import { ATTRIBUTE_LABELS, editText, profileText, type AttributeKey } from "./labels";
 import { MedicalGroup } from "./MedicalGroup";
@@ -29,7 +29,7 @@ import {
   WageFact,
   type RatingRow,
 } from "./ProfileParts";
-import type { ApplyReport, Concern, Contract, FmDate, PlayerDetails, PlayerSummary } from "./types";
+import type { ApplyReport, Concern, Contract, FmDate, LoanDetails, PlayerDetails, PlayerSummary } from "./types";
 import { ComparisonContext, type Comparison } from "./useComparison";
 import { EditorContext, useEditableField, useProfileEditing } from "./useProfileEditing";
 
@@ -257,9 +257,85 @@ function ContractGroup({ details, contract }: { details: PlayerDetails; contract
         </div>
         <ContractDates contract={contract} />
       </div>
+      {details.loan && <LoanFacts uid={uid} loan={details.loan} />}
       <ClauseList uid={uid} name={details.name} clauses={contract.clauses} room={details.clauseRoom} />
       <ConcernList uid={uid} concerns={contract.concerns} />
     </section>
+  );
+}
+
+/**
+ * Where a player is on loan, from his loan contract, and the button that brings him back: the loan then ends the day
+ * after the game's date, and the game brings him back to his club when it gets there. The end date is an input while
+ * he is edited.
+ */
+function LoanFacts({ uid, loan }: { uid: number; loan: LoanDetails }) {
+  const { editable, onEdited } = useContext(EditorContext);
+  const [recalling, setRecalling] = useState(false);
+  const [recalled, setRecalled] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRecalling(false);
+  }, [loan]);
+
+  const recall = async () => {
+    if (recalling) {
+      return;
+    }
+    setRecalling(true);
+    setError(null);
+    try {
+      await recallLoan(uid);
+      setRecalled(true);
+      onEdited();
+    } catch (e) {
+      setError(describeError(e));
+      setRecalling(false);
+    }
+  };
+
+  const club = (clubUid: number | null, name: string | null) =>
+    name === null ? (
+      profileText.none
+    ) : (
+      <WithPicture inline picture={clubUid !== null && <ClubLogo uid={clubUid} name={name} size={PICTURE_SIZE.textLogo} />}>
+        {name}
+      </WithPicture>
+    );
+  const date = (value: FmDate | null) => formatDate(value) || profileText.none;
+
+  return (
+    <div className="clauses loan">
+      <div className="injuries-head">
+        <h4>{profileText.loan}</h4>
+        <button
+          type="button"
+          className="heal-toggle"
+          disabled={!editable}
+          aria-disabled={recalling || undefined}
+          title={profileText.recallTitle}
+          onClick={() => void recall()}
+        >
+          {recalling ? profileText.recalling : profileText.recall}
+        </button>
+      </div>
+      <dl className="stats">
+        <Fact label={profileText.loanAt}>{club(loan.clubUid, loan.club)}</Fact>
+        <Fact label={profileText.loanParent}>{club(loan.parentUid, loan.parent)}</Fact>
+        <Fact label={profileText.loanFrom}>{date(loan.from)}</Fact>
+        <Fact label={profileText.loanUntil}>
+          <EditableValue field="loan.expires">{date(loan.until)}</EditableValue>
+        </Fact>
+        <Fact label={profileText.loanNumber}>{loan.squadNumber ?? profileText.none}</Fact>
+      </dl>
+      {recalled && <p className="note">{profileText.recalled(loan.parent ?? "")}</p>}
+      {error !== null && (
+        <div className="banner move-error" role="alert">
+          {error}
+        </div>
+      )}
+    </div>
   );
 }
 

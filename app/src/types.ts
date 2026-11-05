@@ -499,6 +499,28 @@ export interface PlayerDetails extends PlayerSummary {
    * allocates nothing, so a release clause can be added to few contracts.
    */
   clauseRoom: number;
+  /** Where he is on loan, from his loan contract; null when he is not on loan (or the editor cannot tell). */
+  loan: LoanDetails | null;
+}
+
+/**
+ * A player's loan, as his loan contract says: the club he is on loan to, the club he belongs to, and the days it runs
+ * from and to. `loan.expires` edits the day it ends; `recall_loan` makes it end the day after the game's date.
+ */
+export interface LoanDetails {
+  /** The club he is on loan to. */
+  clubUid: number | null;
+  club: string | null;
+  /** The club his own contract is with. */
+  parentUid: number | null;
+  parent: string | null;
+  from: FmDate | null;
+  /** The day the loan ends: the game brings him back then. */
+  until: FmDate | null;
+  /** His squad number at the club he is on loan to. */
+  squadNumber: number | null;
+  /** Pounds per week, as the loan contract holds it. */
+  wage: number;
 }
 
 /** What ties a player to a nation or club: a secondary nationality, or a nation or club he was trained in. */

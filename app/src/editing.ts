@@ -30,6 +30,13 @@ import type {
 /** The fields of players or of staff the editor can change, in display order. */
 export const editFields = (entity: Entity) => call<EditField[]>("edit_fields", { entity });
 
+/**
+ * Brings the player `uid` back from his loan: it now ends the day after the game's date, when the game ends it and
+ * brings him back to his club. Logged like a change of `loan.expires`, which Undo in Changes puts back; null when
+ * the loan ends then already.
+ */
+export const recallLoan = (uid: number) => call<LoggedChange | null>("recall_loan", { uid });
+
 /** Freezes the money of the club `club`, or unfreezes it; the clubs whose money is frozen now. */
 export const freezeMoney = (club: number, frozen: boolean) => call<number[]>("freeze_money", { club, frozen });
 

@@ -34,6 +34,25 @@ pub struct Layout {
     /// What a human manager has picked for his club; only in the layouts it has been checked in.
     #[serde(default)]
     pub selection: Option<SelectionLayout>,
+    /// Where a player on loan keeps his loan contract; only in the layouts it has been checked in.
+    #[serde(default)]
+    pub loan: Option<LoanLayout>,
+}
+
+/// Where a player on loan keeps his loan contract: his `record` pointer (shifted like the person block) leads to a
+/// record of his other contracts, whose field at `contract` points at the loan contract while he is on loan. The loan
+/// contract is an object of `class` (found by its name: see [`crate::rtti`]), laid out as a contract
+/// ([`ContractLayout`]) for its owner, its teams, its dates and the squad number: its team is the one he is on loan
+/// to, and its end date is the day the loan ends.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LoanLayout {
+    /// In a player: pointer to the record of his other contracts.
+    pub record: u64,
+    /// In that record: pointer to the loan contract, null when he is not on loan.
+    pub contract: u64,
+    /// The class of loan contracts, as written in C++.
+    pub class: String,
 }
 
 /// What a human manager has picked for his club, as the match engine keeps it: for each of his tactics, objects of one

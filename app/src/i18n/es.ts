@@ -61,6 +61,7 @@ const UNSUPPORTED: Partial<Record<string, string>> = {
   "it is changed one person at a time": "se cambia persona a persona",
   "the new value is not one of the game's own records of that kind":
     "el nuevo valor no es uno de los registros del propio juego de ese tipo",
+  "the in-game date is not known": "no se conoce la fecha del juego",
 };
 
 const reload = "vuelve a leer los datos e inténtalo de nuevo";
@@ -484,6 +485,7 @@ export const es: Strings = {
     "contract.squad_status": "Estatus en la plantilla",
     "contract.transfer_listed": "Transferible",
     "contract.loan_listed": "Cedible",
+    "loan.expires": "Fin de la cesión",
     "contract.job": "Puesto",
     "tie.nationality": "Nacionalidad secundaria",
     "tie.trainedInNation": "Formado en el país",
@@ -615,6 +617,17 @@ export const es: Strings = {
     playingTimeHappiness: "Felicidad con los minutos",
     moodTitle: "Como lo muestra FMRTE, de -100 a 100; el juego lo muestra con palabras",
     clauseName: (kind) => CLAUSE_NAMES_ES[kind] ?? `Cláusula ${kind}`,
+    loan: "Cesión",
+    loanAt: "Cedido a",
+    loanParent: "Pertenece a",
+    loanFrom: "Desde",
+    loanUntil: "Hasta",
+    loanNumber: "Dorsal allí",
+    recall: "Repescar de la cesión",
+    recalling: "Repescando…",
+    recallTitle:
+      "La cesión termina mañana: cuando el juego llegue a ese día la terminará y lo devolverá a su club. Cambios puede deshacerlo hasta entonces",
+    recalled: (parent) => `La cesión termina ahora mañana: continúa en el juego y volverá a ${parent}.`,
     clauseCondition: (kind, value) => {
       switch (kind) {
         case 10:
