@@ -568,7 +568,7 @@ impl HeapLayout {
 }
 
 /// Addresses that change with every build of the game plugin.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BuildProfile {
     pub name: String,
@@ -624,13 +624,16 @@ impl fmt::Display for PluginFingerprint {
             PluginFingerprint::Pe { size_of_image, link_timestamp } => {
                 write!(f, "size of image {size_of_image:#x}, link timestamp {link_timestamp:#010x}")
             }
-            PluginFingerprint::MachO { uuid } => {
-                let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02X}")).collect::<String>();
-                let (a, b, c, d, e) = (&uuid[..4], &uuid[4..6], &uuid[6..8], &uuid[8..10], &uuid[10..]);
-                write!(f, "UUID {}-{}-{}-{}-{}", hex(a), hex(b), hex(c), hex(d), hex(e))
-            }
+            PluginFingerprint::MachO { uuid } => write!(f, "UUID {}", uuid_text(uuid)),
         }
     }
+}
+
+/// A UUID as macOS writes it, e.g. "9E8E47DE-F704-314C-917D-C32D12637678".
+fn uuid_text(uuid: &[u8; 16]) -> String {
+    let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02X}")).collect::<String>();
+    let (a, b, c, d, e) = (&uuid[..4], &uuid[4..6], &uuid[6..8], &uuid[8..10], &uuid[10..]);
+    format!("{}-{}-{}-{}-{}", hex(a), hex(b), hex(c), hex(d), hex(e))
 }
 
 /// A UUID as macOS writes it, e.g. "9E8E47DE-F704-314C-917D-C32D12637678".
@@ -645,7 +648,7 @@ fn uuid_from_text<'de, D: Deserializer<'de>>(deserializer: D) -> Result<[u8; 16]
 }
 
 /// RVAs in the game plugin of the `(begin, end)` pairs of the entity arrays.
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ArrayRvas {
     pub players: u64,
@@ -678,11 +681,61 @@ pub fn layout_for(edition: u32) -> Option<Layout> {
 
 /// The built-in build profile matching `fingerprint`, if there is one.
 pub fn profile_for(fingerprint: PluginFingerprint) -> Option<BuildProfile> {
-    BUILDS.iter().map(|text| parse::<BuildProfile>(text)).find(|profile| profile.plugin == fingerprint)
+    built_in_profiles().find(|profile| profile.plugin == fingerprint)
+}
+
+/// Every built-in build profile, those of macOS among them.
+pub fn built_in_profiles() -> impl Iterator<Item = BuildProfile> {
+    BUILDS.iter().map(|text| parse::<BuildProfile>(text))
 }
 
 fn parse<T: serde::de::DeserializeOwned>(text: &str) -> T {
     toml::from_str(text).expect("built-in profiles are checked by the unit tests")
+}
+
+/// What `fmlibre-probe profile` writes in comments around the values of a build profile.
+#[derive(Debug, Clone, Default)]
+pub struct ProfileNotes {
+    /// Lines at the top of the file.
+    pub header: Vec<String>,
+    /// Lines above the in-game date and above the static pointer to the retirement manager.
+    pub current_date: Vec<String>,
+    pub retirement_manager: Vec<String>,
+}
+
+/// The text of a build profile file, laid out as the built-in ones, with `notes` as comments.
+pub fn profile_text(profile: &BuildProfile, notes: &ProfileNotes) -> String {
+    let comments = |lines: &[String]| lines.iter().map(|line| format!("# {line}\n")).collect::<String>();
+    let quoted = |text: &str| format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""));
+    let mut text = comments(&notes.header);
+    text += &format!("name = {}\nedition = {}\n", quoted(&profile.name), profile.edition);
+    let storefront = match profile.storefront {
+        Storefront::GamePass => "gamePass",
+        Storefront::Steam => "steam",
+        Storefront::Epic => "epic",
+        Storefront::Unknown => "unknown",
+    };
+    text += &format!("storefront = \"{storefront}\"\n");
+    if let Some(version) = &profile.package_version {
+        text += &format!("package_version = {}\n", quoted(version));
+    }
+    if let Some(rva) = profile.current_date {
+        text += &format!("\n{}current_date = {rva:#X}\n", comments(&notes.current_date));
+    }
+    if let Some(rva) = profile.retirement_manager {
+        text += &format!("\n{}retirement_manager = {rva:#X}\n", comments(&notes.retirement_manager));
+    }
+    text += "\n# game_plugin as mapped in memory; these values identify the build.\n[plugin]\n";
+    match profile.plugin {
+        PluginFingerprint::Pe { size_of_image, link_timestamp } => {
+            text += &format!("size_of_image = {size_of_image:#X}\nlink_timestamp = {link_timestamp:#X}\n");
+        }
+        PluginFingerprint::MachO { uuid } => text += &format!("uuid = \"{}\"\n", uuid_text(&uuid)),
+    }
+    let ArrayRvas { players, staff, clubs } = profile.arrays;
+    text += "\n# RVAs in game_plugin of the (begin, end) pointer pairs of the entity arrays.\n[arrays]\n";
+    text += &format!("players = {players:#X}\nstaff = {staff:#X}\nclubs = {clubs:#X}\n");
+    text
 }
 
 #[cfg(test)]
@@ -860,5 +913,50 @@ mod tests {
         // On Windows the Launch Preview's date sits with the arrays.
         let fingerprint = PluginFingerprint::Pe { size_of_image: 0x19E6_9000, link_timestamp: 0x6ADF_B11C };
         assert_eq!(profile_for(fingerprint).and_then(|profile| profile.current_date), None);
+    }
+
+    /// A profile file left out of [`BUILDS`] would leave its build unknown to the editor.
+    #[test]
+    fn every_profile_file_is_built_in() {
+        let folder = concat!(env!("CARGO_MANIFEST_DIR"), "/../../profiles/fm27");
+        let mut files = 0;
+        for entry in std::fs::read_dir(folder).expect("the profiles folder") {
+            let path = entry.expect("a file of the profiles folder").path();
+            let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+            if !name.ends_with(".toml") || name.starts_with("layout") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).expect("a profile file");
+            assert!(BUILDS.contains(&text.as_str()), "{name} is not built in: add it to BUILDS in profile.rs");
+            files += 1;
+        }
+        assert_eq!(files, BUILDS.len());
+        // One profile per build, each for an edition with a layout.
+        let profiles: Vec<BuildProfile> = built_in_profiles().collect();
+        for (i, profile) in profiles.iter().enumerate() {
+            assert!(profiles[i + 1..].iter().all(|other| other.plugin != profile.plugin), "{} twice", profile.name);
+            assert_eq!(profile.edition, 27, "{}", profile.name);
+        }
+    }
+
+    #[test]
+    fn profile_text_reads_back() {
+        let notes = ProfileNotes {
+            header: vec!["FM27 Steam build 1 \"test\"".to_owned()],
+            current_date: vec!["13 August 2027 on the save.".to_owned()],
+            retirement_manager: vec!["0xDAC0 before the players pair.".to_owned()],
+        };
+        for profile in built_in_profiles() {
+            let text = profile_text(&profile, &notes);
+            let read: BuildProfile = toml::from_str(&text).unwrap_or_else(|err| panic!("{text}\n{err}"));
+            assert_eq!(read, profile);
+        }
+        let steam = profile_for(PluginFingerprint::Pe { size_of_image: 0x1821_C000, link_timestamp: 0x6AE5_65AF })
+            .expect("Steam build 26340721");
+        let text = profile_text(&steam, &notes);
+        assert!(text.starts_with("# FM27 Steam build 1 \"test\"\nname = \"FM27 Steam build 26340721 (27.0.0)\"\n"));
+        assert!(text.contains("# 13 August 2027 on the save.\ncurrent_date = 0x56AF378\n"), "{text}");
+        assert!(text.contains("\n[plugin]\nsize_of_image = 0x1821C000\nlink_timestamp = 0x6AE565AF\n"), "{text}");
+        assert!(text.ends_with("[arrays]\nplayers = 0x57057D0\nstaff = 0x5705818\nclubs = 0x5705988\n"), "{text}");
     }
 }

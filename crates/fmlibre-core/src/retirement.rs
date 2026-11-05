@@ -1,7 +1,8 @@
 //! The retirements the game has planned, and keeping a player from retiring.
 //!
 //! The game decides ahead of time who retires and when, and keeps those plans in its retirement manager, one object
-//! a static points at, which the build profile places ([`BuildProfile::retirement_manager`]). The manager lists them
+//! a static points at, which the build profile places ([`BuildProfile::retirement_manager`]) or the editor looks for
+//! (see [`crate::locate`]). The manager lists them
 //! twice: as pointers to the 24-byte entries, and as an index of the same entries sorted by person id. An entry names
 //! the person by the id the game gives him (player `player_person`), not by a pointer, and holds the date he retires.
 //!
@@ -16,12 +17,11 @@ use serde::Serialize;
 
 use crate::date::FmDate;
 use crate::players::PlayerSummary;
-use crate::rtti::{class_of, mangled};
 use crate::session::Session;
 use crate::transfer::{MoveError, Patch, Patches, PointerList, removal_patches};
 
 /// The class of the retirement manager, as written in C++.
-const MANAGER_CLASS: &str = "RETIREMENT_MANAGER";
+pub(crate) const MANAGER_CLASS: &str = "RETIREMENT_MANAGER";
 
 /// The traits (bits of player `traits`) "Will retire at top" and "Will play football as long as possible".
 const RETIRE_AT_TOP: u32 = 48;
@@ -251,20 +251,13 @@ impl Session {
         self.write_patches(&patches.0)
     }
 
-    /// The retirement manager, found from its static and checked by its class; `None` when this build's profile and
-    /// layout do not place it or it does not check out.
+    /// The retirement manager, found from its static and checked by its class; `None` when the layout does not place
+    /// its lists, or the static cannot be found or does not lead to it now.
     fn retirement_manager(&self) -> Option<u64> {
         self.layout.retirement.as_ref()?;
-        let rva = self.profile.as_ref()?.retirement_manager?;
+        let rva = self.retirement_place()?.rva;
         let manager = self.process.read_u64(self.plugin.base + rva).ok().filter(|&at| is_user_pointer(at))?;
-        let vtable = self.process.read_u64(manager).ok()?;
-        if self.retirement_class.get() != Some(&vtable) {
-            if class_of(&self.process, &self.plugin, manager)? != mangled(MANAGER_CLASS) {
-                return None;
-            }
-            let _ = self.retirement_class.set(vtable);
-        }
-        Some(manager)
+        self.is_retirement_manager(manager).then_some(manager)
     }
 
     /// The manager's lists, checked: as many entries in the index as in the list. `None` when the manager cannot be

@@ -4,8 +4,10 @@
 //! that moved reads the bytes of another. Each check samples players, staff or clubs and asks whether what the layout
 //! reads looks like the game's own data, beyond the range one value has to keep: birth dates people are born on,
 //! goalkeepers better at goalkeeping than the rest, contracts that point back at their players. A check that does not
-//! pass keeps what it covers from being written ([`Check::of_field`], [`STRUCTURE`]), and an in-game date that does
-//! not fit the contracts the game has signed is not used. Only reads memory.
+//! pass keeps what it covers from being written ([`Check::of_field`], [`STRUCTURE`]). The in-game date is only used
+//! where it fits what the game's own data says about today: contracts signed before it, and injuries begun before it
+//! and not over yet. Where the build's own place for it does not hold such a date, the values in the plugin's
+//! writable data that read as dates are weighed the same way (see [`crate::locate`]). Only reads memory.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -15,6 +17,8 @@ use serde::Serialize;
 
 use crate::date::FmDate;
 use crate::edit::{Entity, Field};
+use crate::game::GAME_PLUGIN;
+use crate::locate::{DatePlace, Found, date_candidates};
 use crate::profile::Layout;
 use crate::session::Session;
 
@@ -24,12 +28,18 @@ const SAMPLES: u64 = 2_000;
 /// Fewer objects than this tell nothing: the check does not pass.
 const LEAST_SAMPLED: u64 = 50;
 
+/// Fewer current injuries than this among the players sampled tell nothing about the date.
+const LEAST_INJURIES: u64 = 20;
+
+/// The longest list of current injuries read.
+const MOST_INJURIES: u64 = 16;
+
 /// What the editor checks before it writes, and what each check keeps from being written when it does not pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Check {
-    /// The in-game date is set, and the contracts the game holds were signed before it. Without it the editor shows
-    /// no ages and dates no contract.
+    /// The in-game date is set, the contracts the game holds were signed before it, and its current injuries began
+    /// before it and are not over by then. Without it the editor shows no ages and dates no contract.
     GameDate,
     /// Players' birth dates, heights, abilities and reputations hold values people have, and their current ability is
     /// within their potential without being it for most. Guards those fields and the rest of the player's own
@@ -146,6 +156,90 @@ pub struct CheckResult {
 #[serde(rename_all = "camelCase")]
 pub struct Health {
     pub results: Vec<CheckResult>,
+    /// Where the in-game date was found, and what it read then; `None` when no date passed [`Check::GameDate`].
+    #[serde(skip)]
+    pub date: Option<DatePlace>,
+    /// What the date was weighed against.
+    #[serde(skip)]
+    pub evidence: DateEvidence,
+}
+
+/// What the game's own data says about the in-game date: when contracts were signed and players joined their clubs,
+/// none of it after the date, and the current injuries, each begun on or before the date and not over by then.
+#[derive(Debug, Clone, Default)]
+pub struct DateEvidence {
+    /// The dates contracts were signed and players joined their clubs.
+    pub signed: Vec<FmDate>,
+    /// Each current injury: the day it began, and the day he is back at the latest.
+    pub injuries: Vec<(FmDate, FmDate)>,
+}
+
+impl DateEvidence {
+    /// How `date` fits the evidence.
+    pub fn fit(&self, date: FmDate) -> DateFit {
+        let before: Vec<FmDate> = self.signed.iter().copied().filter(|&day| day <= date).collect();
+        let within = self.injuries.iter().filter(|&&(began, back)| began <= date && date <= back).count();
+        DateFit {
+            before: before.len() as u64,
+            contracts: self.signed.len() as u64,
+            since_latest: before.iter().max().map(|&latest| days_between(latest, date)),
+            within: within as u64,
+            injuries: self.injuries.len() as u64,
+        }
+    }
+}
+
+/// How a date fits [`DateEvidence`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DateFit {
+    /// The contract dates on or before it, of how many.
+    pub before: u64,
+    pub contracts: u64,
+    /// Days from the latest contract date on or before it.
+    pub since_latest: Option<i64>,
+    /// The current injuries it falls within, begun on or before it and not over by then, of how many.
+    pub within: u64,
+    pub injuries: u64,
+}
+
+impl DateFit {
+    /// Enough contracts, nearly none of them dated after it, and the latest before it less than a year earlier. A date
+    /// read from the wrong place passes neither way: an unset or old one comes before many contracts, a later one long
+    /// after the last.
+    pub fn contracts_hold(&self) -> bool {
+        let after = self.contracts - self.before;
+        self.contracts >= LEAST_SAMPLED && after * 100 <= self.contracts && self.since_latest.is_some_and(|d| d <= 366)
+    }
+
+    /// Whether nearly all current injuries have begun by it and are not over, with enough of them to tell (`None`
+    /// otherwise). A date some days off fails: the injuries begun since, or over meanwhile, no longer fit it.
+    pub fn injuries_hold(&self) -> Option<bool> {
+        (self.injuries >= LEAST_INJURIES).then_some(self.within * 10 >= self.injuries * 9)
+    }
+
+    /// What a date where the build places it must meet: the contracts, and the injuries when they tell.
+    pub fn holds(&self) -> bool {
+        self.contracts_hold() && self.injuries_hold() != Some(false)
+    }
+
+    /// What a date found by searching must meet: the contracts, and enough injuries that fit it.
+    pub fn holds_strictly(&self) -> bool {
+        self.contracts_hold() && self.injuries_hold() == Some(true)
+    }
+
+    fn note(&self) -> String {
+        let latest = match self.since_latest {
+            Some(days) => format!("the latest before it {days} days earlier"),
+            None => "none before it".to_owned(),
+        };
+        format!(
+            "{} of {} contract dates after it; {latest}; {} of {} current injuries fit it",
+            self.contracts - self.before,
+            self.contracts,
+            self.within,
+            self.injuries
+        )
+    }
 }
 
 impl Health {
@@ -367,8 +461,8 @@ const GOALKEEPING: [&str; 9] = [
 /// attributes read one byte off, the first three were 23, -4 and -5.
 const GAP: f64 = 20.0;
 
-/// Runs every check on the running game.
-pub(crate) fn check(session: &Session, date: Option<FmDate>) -> Health {
+/// Runs every check on the running game, and finds the in-game date.
+pub(crate) fn check(session: &Session) -> Health {
     let layout = &session.layout;
     let process = &session.process;
     let players = sample_players(session);
@@ -391,8 +485,8 @@ pub(crate) fn check(session: &Session, date: Option<FmDate>) -> Health {
     let (mut keepers, mut outfield) = (Mean::default(), Mean::default());
     let (mut striker_finishing, mut defender_finishing) = (Mean::default(), Mean::default());
     let (mut striker_tackling, mut defender_tackling) = (Mean::default(), Mean::default());
-    // The dates contracts were signed and players joined their clubs: none after the in-game date.
-    let mut signed: Vec<FmDate> = Vec::new();
+    // The dates contracts were signed and players joined their clubs, and the current injuries.
+    let mut evidence = DateEvidence::default();
 
     let p = &layout.player;
     let attribute = |player: &SampledPlayer, key: &str| p.attributes.get(key).map(|&at| player.u8(layout, at));
@@ -453,8 +547,14 @@ pub(crate) fn check(session: &Session, date: Option<FmDate>) -> Health {
                 if let (Some(signing), Some(joining)) = (signing, joining) {
                     renewed.add(signing > joining);
                 }
-                signed.extend([signing, joining].into_iter().flatten());
+                evidence.signed.extend([signing, joining].into_iter().flatten());
             }
+        }
+
+        // His current injuries, when he was ever injured.
+        let record = player.u64(layout, p.injuries);
+        if is_user_pointer(record) {
+            evidence.injuries.extend(current_injuries(process, layout, record));
         }
 
         // His team belongs to a club and lists him.
@@ -470,7 +570,7 @@ pub(crate) fn check(session: &Session, date: Option<FmDate>) -> Health {
     let shown = |gap: Option<f64>| gap.map_or_else(|| "-".to_owned(), |gap| format!("{gap:.0}"));
     let signature = gaps.iter().all(|gap| gap.is_some_and(|gap| gap >= GAP));
 
-    let (date_holds, date_note) = date_fits(date, &signed);
+    let (date, date_result) = find_date(session, &evidence);
     let staff = check_staff(session);
     let clubs = check_clubs(session);
 
@@ -494,13 +594,7 @@ pub(crate) fn check(session: &Session, date: Option<FmDate>) -> Health {
 
     Health {
         results: vec![
-            CheckResult {
-                check: Check::GameDate,
-                passed: date_holds,
-                fit: signed.iter().filter(|&&day| date.is_some_and(|date| day <= date)).count() as u64,
-                sampled: signed.len() as u64,
-                note: date_note,
-            },
+            date_result,
             own,
             positions,
             attributes,
@@ -511,7 +605,107 @@ pub(crate) fn check(session: &Session, date: Option<FmDate>) -> Health {
             staff,
             clubs,
         ],
+        date,
+        evidence,
     }
+}
+
+/// The current injuries that the injury record at `record` lists: the day each began, and the day he is back at the
+/// latest. None when the list does not look like one.
+fn current_injuries(process: &Process, layout: &Layout, record: u64) -> Vec<(FmDate, FmDate)> {
+    let Ok(header) = process.read_bytes(record, 16) else {
+        return Vec::new();
+    };
+    let begin = u64::from_le_bytes(header[..8].try_into().expect("8 bytes"));
+    let end = u64::from_le_bytes(header[8..].try_into().expect("8 bytes"));
+    let listed = is_user_pointer(begin) && end > begin && (end - begin).is_multiple_of(8);
+    if !listed || end - begin > 8 * MOST_INJURIES {
+        return Vec::new();
+    }
+    let Ok(list) = process.read_bytes(begin, (end - begin) as usize) else {
+        return Vec::new();
+    };
+    let i = &layout.injury;
+    list.as_chunks::<8>()
+        .0
+        .iter()
+        .map(|word| u64::from_le_bytes(*word))
+        .filter(|&injury| is_user_pointer(injury))
+        .filter_map(|injury| {
+            let bytes = process.read_bytes(injury, i.end() as usize).ok()?;
+            let u16_at = |at: u64| u16::from_le_bytes([bytes[at as usize], bytes[at as usize + 1]]);
+            let began = FmDate::from_raw(u16_at(i.started), u16_at(i.started + 2))?;
+            Some((began, began.plus_days(i64::from(u16_at(i.longest)))))
+        })
+        .collect()
+}
+
+/// Finds the in-game date: where the build places it when that fits the evidence, or else the one date among the
+/// values in the plugin's writable data that fits it strictly. When the evidence cannot tell such values apart, the
+/// editor goes without a date.
+fn find_date(session: &Session, evidence: &DateEvidence) -> (Option<DatePlace>, CheckResult) {
+    let result = |place: Option<DatePlace>, note: String| CheckResult {
+        check: Check::GameDate,
+        passed: place.is_some(),
+        fit: place.map_or(0, |place| evidence.fit(place.date).before),
+        sampled: evidence.signed.len() as u64,
+        note,
+    };
+    let placed = session.placed_date().map(|(rva, found)| (rva, session.read_date_at(rva), found));
+    let mut why = String::new();
+    match placed {
+        Some((rva, Some(date), found)) => {
+            let fit = evidence.fit(date);
+            if fit.holds() {
+                let place = DatePlace { rva, date, found };
+                return (Some(place), result(Some(place), fit.note()));
+            }
+            why = format!("{} where the build puts it does not fit ({}); ", iso(date), fit.note());
+        }
+        Some((_, None, _)) => why = "no date where the build puts it; ".to_owned(),
+        None => {}
+    }
+    match pick_date(&date_candidates(session), evidence) {
+        Ok(place) => {
+            let note = format!(
+                "{}; read at {GAME_PLUGIN}+{:#x}, {}",
+                evidence.fit(place.date).note(),
+                place.rva,
+                place.found.describe()
+            );
+            (Some(place), result(Some(place), note))
+        }
+        Err(search) => (None, result(None, why + &search)),
+    }
+}
+
+/// The one date among `candidates` that fits `evidence` strictly, and the best place to read it: the profile's, else
+/// a variable of its own rather than the field beside the arrays, which the game leaves unset after a load.
+fn pick_date(candidates: &[DatePlace], evidence: &DateEvidence) -> Result<DatePlace, String> {
+    let fitting: Vec<DatePlace> =
+        candidates.iter().copied().filter(|place| evidence.fit(place.date).holds_strictly()).collect();
+    let mut dates: Vec<FmDate> = fitting.iter().map(|place| place.date).collect();
+    dates.sort_unstable();
+    dates.dedup();
+    let rank = |place: &DatePlace| match place.found {
+        Found::Profile => 0,
+        Found::Searched | Found::Guessed => 1,
+        Found::BesideArrays => 2,
+    };
+    match dates.as_slice() {
+        [] => Err(format!("{} values in the plugin's data read as dates, and none fits", candidates.len())),
+        [_] => Ok(fitting.into_iter().min_by_key(|place| (rank(place), place.rva)).expect("a date fits")),
+        several => Err(format!(
+            "values in the plugin's data read as {} dates that fit, so none is used: {}",
+            several.len(),
+            several.iter().map(|&date| iso(date)).collect::<Vec<_>>().join(", ")
+        )),
+    }
+}
+
+/// A date as YYYY-MM-DD.
+fn iso(date: FmDate) -> String {
+    format!("{:04}-{:02}-{:02}", date.year, date.month, date.day)
 }
 
 /// Whether the contract at `contract` points back at the identity block at `owner`; if so, the date it was signed and
@@ -550,23 +744,6 @@ fn team_lists(process: &Process, layout: &Layout, team: u64, player: u64) -> boo
     process
         .read_bytes(begin, (end - begin) as usize)
         .is_ok_and(|list| list.as_chunks::<8>().0.iter().any(|slot| u64::from_le_bytes(*slot) == player))
-}
-
-/// Whether `date`, the in-game date read, fits the contracts sampled: set, and no earlier than nearly every date
-/// they were signed or their players joined, and the latest of those not long before it. A date read from the wrong
-/// place passes neither way: an unset or old one comes before many contracts, a later one long after the last.
-fn date_fits(date: Option<FmDate>, signed: &[FmDate]) -> (bool, String) {
-    let Some(date) = date else {
-        return (false, "no date set".to_owned());
-    };
-    let after = signed.iter().filter(|&&day| day > date).count();
-    let Some(&latest) = signed.iter().filter(|&&day| day <= date).max() else {
-        return (false, format!("{} contract dates, none before it", signed.len()));
-    };
-    let days = days_between(latest, date);
-    let note = format!("{after} of {} contract dates after it; the latest before it {days} days earlier", signed.len());
-    let fits = signed.len() as u64 >= LEAST_SAMPLED && after * 100 <= signed.len() && days <= 366;
-    (fits, note)
 }
 
 /// Days from `from` to `to`.
@@ -731,24 +908,82 @@ mod tests {
         FmDate { year, month, day }
     }
 
+    /// Contracts signed over the year before `today`, as on the test save, and 60 current injuries begun over the six
+    /// weeks before it, with a few days to three weeks still to go.
+    fn evidence_on(today: FmDate) -> DateEvidence {
+        let signed = (0..300).map(|k| today.plus_days(-k)).collect();
+        let injuries = (0..60)
+            .map(|k| {
+                let began = today.plus_days(-(k % 42));
+                (began, today.plus_days(1 + k % 20))
+            })
+            .collect();
+        DateEvidence { signed, injuries }
+    }
+
     #[test]
     fn the_date_must_come_after_the_contracts() {
-        // Contracts signed over the year before 9 September 2026, as on the test save.
         let today = date(2026, 9, 9);
-        let signed: Vec<FmDate> = (0..300).map(|k| today.plus_days(-k)).collect();
-        assert!(date_fits(Some(today), &signed).0);
-        // The date unset, a date from before most contracts, and one long after the last.
-        assert!(!date_fits(None, &signed).0);
-        assert!(!date_fits(Some(date(2026, 7, 1)), &signed).0);
-        assert!(!date_fits(Some(date(2031, 1, 1)), &signed).0);
+        let evidence = evidence_on(today);
+        assert!(evidence.fit(today).contracts_hold());
+        // A date from before most contracts, and one long after the last.
+        assert!(!evidence.fit(date(2026, 7, 1)).contracts_hold());
+        assert!(!evidence.fit(date(2031, 1, 1)).contracts_hold());
         // A few contracts dated after it are tolerated, many are not.
-        let mut early = signed.clone();
-        early.extend((1..=3).map(|k| today.plus_days(k)));
-        assert!(date_fits(Some(today), &early).0);
-        early.extend((1..=10).map(|k| today.plus_days(k)));
-        assert!(!date_fits(Some(today), &early).0);
+        let mut early = evidence.clone();
+        early.signed.extend((1..=3).map(|k| today.plus_days(k)));
+        assert!(early.fit(today).contracts_hold());
+        early.signed.extend((1..=10).map(|k| today.plus_days(k)));
+        assert!(!early.fit(today).contracts_hold());
         // Too few contracts tell nothing.
-        assert!(!date_fits(Some(today), &signed[..10]).0);
+        let few = DateEvidence { signed: evidence.signed[..10].to_vec(), ..evidence.clone() };
+        assert!(!few.fit(today).contracts_hold());
+    }
+
+    #[test]
+    fn the_date_must_fall_within_the_current_injuries() {
+        let today = date(2027, 8, 13);
+        let evidence = evidence_on(today);
+        assert_eq!(evidence.fit(today).injuries_hold(), Some(true));
+        // Contracts cannot tell a date some weeks off: the latest before it is less than a year earlier, and nearly
+        // none come after it. The injuries can: begun since, or over by then.
+        for days in [-19, -6, 19, 200] {
+            let fit = evidence.fit(today.plus_days(days));
+            assert_eq!(fit.injuries_hold(), Some(false), "{days} days off");
+            assert!(!fit.holds_strictly(), "{days} days off");
+        }
+        assert!(evidence.fit(today.plus_days(200)).contracts_hold());
+        // Too few injuries tell nothing: where the build puts the date, the contracts are enough; a date found by
+        // searching needs both.
+        let few = DateEvidence { injuries: evidence.injuries[..10].to_vec(), ..evidence.clone() };
+        assert_eq!(few.fit(today).injuries_hold(), None);
+        assert!(few.fit(today).holds() && !few.fit(today).holds_strictly());
+    }
+
+    #[test]
+    fn a_searched_date_must_be_the_only_one_that_fits() {
+        let today = date(2027, 8, 13);
+        let evidence = evidence_on(today);
+        let place = |rva, date, found| DatePlace { rva, date, found };
+        // As on the Steam test save: the date's own variable, the field beside the arrays, the database's timestamp
+        // and two dates the game keeps for later.
+        let candidates = [
+            place(0x56C_C45C, date(2030, 10, 21), Found::Searched),
+            place(0x570_6018, today, Found::BesideArrays),
+            place(0x56A_F378, today, Found::Searched),
+            place(0x570_5E08, today.plus_days(-19), Found::Searched),
+            place(0x56B_B968, date(2029, 1, 1), Found::Searched),
+        ];
+        assert_eq!(pick_date(&candidates, &evidence), Ok(candidates[2]));
+        // The field beside the arrays alone, as right after a load it would not be.
+        assert_eq!(pick_date(&candidates[..2], &evidence), Ok(candidates[1]));
+        // A second date that fits leaves the editor without one, as does a date the injuries cannot vouch for.
+        let mut two = candidates.to_vec();
+        two.push(place(0x100, today.plus_days(1), Found::Searched));
+        assert!(pick_date(&two, &evidence).is_err());
+        let few = DateEvidence { injuries: evidence.injuries[..10].to_vec(), ..evidence.clone() };
+        assert!(pick_date(&candidates, &few).is_err());
+        assert!(pick_date(&[], &evidence).is_err());
     }
 
     #[test]

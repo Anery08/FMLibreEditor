@@ -12,9 +12,22 @@ use crate::details::{PlayerDetails, read_player_details};
 use crate::edit::Field;
 use crate::game::{GAME_EXE, GAME_PLUGIN, GameInfo};
 use crate::health::{Check, Health, Lock, STRUCTURE};
+use crate::locate::{DatePlace, Found, Place, find_retirement_manager, game_date_from};
 use crate::players::{PlayerSummary, read_players};
 use crate::profile::{BuildProfile, Layout, PluginFingerprint, layout_for, profile_for};
+use crate::retirement::MANAGER_CLASS;
+use crate::rtti::{class_of, mangled};
 use crate::staff::{StaffDetails, StaffSummary, read_staff, read_staff_details};
+
+/// The environment variable that has the editor treat every build as one it has no profile for, e.g. `1`: to
+/// rehearse an update of the game on a build it knows. It only takes away; nothing is written that would not be
+/// written to a new build.
+pub const IGNORE_PROFILES: &str = "FMLIBRE_IGNORE_PROFILES";
+
+/// Whether [`IGNORE_PROFILES`] is set to anything but `0`.
+pub fn profiles_ignored() -> bool {
+    std::env::var_os(IGNORE_PROFILES).is_some_and(|value| !value.is_empty() && value != "0")
+}
 
 #[derive(Debug)]
 pub enum SessionError {
@@ -99,12 +112,13 @@ pub fn find_game(pid: Option<u32>) -> Result<u32, SessionError> {
     }
 }
 
-/// How [`Session::connect`] locates the entity arrays.
+/// How [`Session::connect`] locates the game's data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArraySource {
-    /// Use the build profile's RVAs when they check out, scan otherwise.
+    /// Use the build profile's places when they check out, and look for the rest.
     ProfileFirst,
-    /// Always scan, as for a build without a profile.
+    /// Look for everything as for a build without a profile: scan for the entity arrays, and search for the in-game
+    /// date and the retirement manager. The profile still says whether the build is known.
     ScanOnly,
 }
 
@@ -123,7 +137,10 @@ pub struct Session {
     /// The class of stadiums, found the first time it is needed.
     stadium_class: OnceLock<Option<u64>>,
     /// The vtable of the retirement manager, once its class name has been checked.
-    pub(crate) retirement_class: OnceLock<u64>,
+    retirement_class: OnceLock<u64>,
+    /// Where the static pointer to the retirement manager is, once looked for: kept when found, and looked for again
+    /// after [`Session::recheck`] when it was not.
+    retirement_place: Mutex<Option<Option<Place>>>,
     /// The vtables of the class that holds a human manager's selections, found by its name the first time they are
     /// needed: none when the layout does not place them or the game does not name that class.
     pub(crate) selection_class: OnceLock<Vec<u64>>,
@@ -131,6 +148,8 @@ pub struct Session {
     health: Mutex<Option<Arc<Health>>>,
     /// Whether editing a build without a profile was allowed.
     unknown_build_allowed: AtomicBool,
+    /// Whether the places the profile names are passed over, as for a build without one ([`ArraySource::ScanOnly`]).
+    search_all: bool,
 }
 
 impl Session {
@@ -142,7 +161,7 @@ impl Session {
             .find(|m| m.name.eq_ignore_ascii_case(GAME_PLUGIN))
             .ok_or(SessionError::PluginNotLoaded)?;
         let fingerprint = PluginFingerprint::read(&process, &plugin)?;
-        let profile = profile_for(fingerprint);
+        let profile = if profiles_ignored() { None } else { profile_for(fingerprint) };
         let edition = profile.as_ref().map(|p| p.edition).or(game.edition);
         let layout = edition.and_then(layout_for).ok_or(SessionError::UnsupportedEdition(edition))?;
         let hint = profile.as_ref().filter(|_| source == ArraySource::ProfileFirst).map(|p| &p.arrays);
@@ -161,9 +180,11 @@ impl Session {
             finance_class: OnceLock::new(),
             stadium_class: OnceLock::new(),
             retirement_class: OnceLock::new(),
+            retirement_place: Mutex::new(None),
             selection_class: OnceLock::new(),
             health: Mutex::new(None),
             unknown_build_allowed: AtomicBool::new(false),
+            search_all: source == ArraySource::ScanOnly,
         })
     }
 
@@ -185,12 +206,18 @@ impl Session {
     /// What the checks found on this game, worked out the first time it is asked for.
     pub fn health(&self) -> Arc<Health> {
         let mut health = self.health.lock().unwrap_or_else(PoisonError::into_inner);
-        health.get_or_insert_with(|| Arc::new(crate::health::check(self, self.read_game_date()))).clone()
+        health.get_or_insert_with(|| Arc::new(crate::health::check(self))).clone()
     }
 
-    /// Runs the checks again, e.g. once the game has moved on or a save has been loaded meanwhile.
+    /// Runs the checks again, e.g. once the game has moved on or a save has been loaded meanwhile. A retirement
+    /// manager that was not found is looked for again.
     pub fn recheck(&self) -> Arc<Health> {
-        let fresh = Arc::new(crate::health::check(self, self.read_game_date()));
+        let mut place = self.retirement_place.lock().unwrap_or_else(PoisonError::into_inner);
+        if *place == Some(None) {
+            *place = None;
+        }
+        drop(place);
+        let fresh = Arc::new(crate::health::check(self));
         *self.health.lock().unwrap_or_else(PoisonError::into_inner) = Some(fresh.clone());
         fresh
     }
@@ -231,21 +258,59 @@ impl Session {
         })
     }
 
-    /// The current in-game date, when it can be read and fits the contracts the game has signed (see
-    /// [`Check::GameDate`]); `None` rather than a date read from the wrong place.
+    /// The current in-game date, read now where the checks found it (see [`Check::GameDate`]); `None` rather than a
+    /// date read from the wrong place.
     pub fn game_date(&self) -> Option<FmDate> {
-        let date = self.read_game_date()?;
-        self.health().passed(Check::GameDate).then_some(date)
+        self.read_date_at(self.health().date?.rva)
     }
 
-    /// The in-game date where the build places it, when it looks like a real date.
-    pub(crate) fn read_game_date(&self) -> Option<FmDate> {
-        let rva = match self.profile.as_ref().and_then(|profile| profile.current_date) {
-            Some(rva) => rva,
-            None => self.arrays.players.as_ref()?.pair_rva + self.layout.cluster.current_date,
+    /// Where the checks found the in-game date, and the date it read then.
+    pub fn date_place(&self) -> Option<DatePlace> {
+        self.health().date
+    }
+
+    /// Where the build places the in-game date: its profile's variable, or for a profile without one the field beside
+    /// the arrays. `None` for a build without a profile, or when every place is searched for.
+    pub(crate) fn placed_date(&self) -> Option<(u64, Found)> {
+        let profile = self.profile.as_ref().filter(|_| !self.search_all)?;
+        match profile.current_date {
+            Some(rva) => Some((rva, Found::Profile)),
+            None => {
+                Some((self.arrays.players.as_ref()?.pair_rva + self.layout.cluster.current_date, Found::BesideArrays))
+            }
+        }
+    }
+
+    /// The date at `rva` in the plugin, when it is one the game could be on.
+    pub(crate) fn read_date_at(&self, rva: u64) -> Option<FmDate> {
+        game_date_from(self.process.read_u32(self.plugin.base + rva).ok()?)
+    }
+
+    /// Where the build profile puts the static pointer to the retirement manager, unless every place is searched for.
+    pub(crate) fn placed_retirement_manager(&self) -> Option<u64> {
+        self.profile.as_ref().filter(|_| !self.search_all)?.retirement_manager
+    }
+
+    /// Where the static pointer to the retirement manager is, and how it was found: looked for the first time it is
+    /// needed (see [`crate::locate`]). `None` when it cannot be found in this build.
+    pub fn retirement_place(&self) -> Option<Place> {
+        let mut place = self.retirement_place.lock().unwrap_or_else(PoisonError::into_inner);
+        *place.get_or_insert_with(|| find_retirement_manager(self))
+    }
+
+    /// Whether `object` is the retirement manager, by the name of its class.
+    pub(crate) fn is_retirement_manager(&self, object: u64) -> bool {
+        let Ok(vtable) = self.process.read_u64(object) else {
+            return false;
         };
-        let raw = self.process.read_u32(self.plugin.base + rva).ok()?;
-        FmDate::from_raw(raw as u16, (raw >> 16) as u16).filter(|date| (2000..=2200).contains(&date.year))
+        if self.retirement_class.get() == Some(&vtable) {
+            return true;
+        }
+        if class_of(&self.process, &self.plugin, object).is_none_or(|class| class != mangled(MANAGER_CLASS)) {
+            return false;
+        }
+        let _ = self.retirement_class.set(vtable);
+        true
     }
 
     /// Reads every player, with ages on the current in-game date. Only reads memory.

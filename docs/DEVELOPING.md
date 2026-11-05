@@ -37,7 +37,23 @@ If any check fails, nothing changes.
 
 Each build of the game moves its static data. A build profile in `profiles/` (identified by `game_plugin`'s headers)
 places the entity arrays, the in-game date and the retirement manager for each build the editor was checked with.
-For a build without one, the editor still finds the arrays by scanning, and then:
+For a build without one, or where a place a profile names does not check out, the editor looks for them itself
+(`crates/fmlibre-core/src/locate.rs`):
+- **The entity arrays** by scanning the plugin, in about half a second.
+- **The in-game date** among the values in the plugin's writable data that read as dates: 76 on the Steam test save
+  of August 2027. Only a date that two independent witnesses agree with is used:
+  - nearly every sampled contract was signed before it, and the latest not long before;
+  - nine in ten of the current injuries began on or before it and are not over by then.
+
+  Contracts alone cannot rule out a later date the game keeps for something else: 22 September and 11 October 2027
+  on that save. The injuries can, as only 12 and 3 of 110 fitted those. When values that fit read as several dates,
+  none is used.
+- **The retirement manager's static** where other builds keep it, as far from the players' array, checked by the
+  name of the class its object has. Otherwise the plugin's writable data is searched for a pointer to an object of
+  the class `RETIREMENT_MANAGER`, which takes about half a second.
+
+With those, a build that keeps the object layout of the last one (as both updates of November 2026 did) shows ages
+and planned retirements as before. What stays different for such a build:
 - **No writes by default.** The app says that this version of the game is new to it. It writes nothing until the user
   presses Edit anyway, which lasts until the app is closed or connects again.
 - **Checks before any write** (`crates/fmlibre-core/src/health.rs`), on every build. Each check samples up to 2,000
@@ -50,14 +66,28 @@ For a build without one, the editor still finds the arrays by scanning, and then
 
   A check that does not pass leaves what it covers read-only: its fields, or for the contracts, teams, staff and clubs,
   every change to the game's lists and records. The app lists such checks under the masthead.
-- **No date read from the wrong place.** The in-game date is only used when nearly every sampled contract was signed
-  before it, and the latest not long before. Otherwise the app shows no ages, rather than wrong ones.
+- **No date read from the wrong place.** Even where a profile places the in-game date, it is only used when the
+  contracts fit it, and the current injuries too when there are enough of them to tell. Otherwise the app shows no
+  ages, rather than wrong ones, and a transfer leaves the dates of the contract as they were.
 
 Each check was tried against a layout broken on purpose (a field group moved by a byte or a pointer's width), and each
-such layout failed its check. After an update, `fmlibre-probe health` shows what the checks find, and `calibrate`
-where the arrays are. A new build profile takes their RVAs and the date's, which `find` locates as in the
-[Game Pass 0.9.2409.0 notes](recon/fm27-gamepass-0.9.2409.md), or on macOS as in the
-[notes on 27.0.0 there](recon/fm27-steam-macos.md#2700-steam-build-26340721).
+such layout failed its check. A layout that changed is not found again automatically: its checks keep what they cover
+read-only until `profiles/fm27/layout.toml` is fixed.
+
+#### On the day of an update
+
+1. Load a save in the updated game. Right after a load is best: then the field beside the arrays is unset, and the
+   date's own variable is the only place that holds the date.
+2. `fmlibre-probe profile --out profiles/fm27/<storefront>-<version>.toml` looks for everything as for a build
+   without a profile, runs the checks with what it found, and writes the profile. It lists the values that read as a
+   plausible date, and whether the guessed and the searched place of the retirement manager agree.
+3. Add the file to `BUILDS` in `crates/fmlibre-core/src/profile.rs`; a unit test fails until it is there.
+4. Build the app (`npm run release`), and run the smoke tests on both storefronts (see
+   [`tools/smoke`](../tools/smoke/README.md)).
+
+To rehearse this on a build the editor knows, set `FMLIBRE_IGNORE_PROFILES=1` before starting the app or the probe:
+every build is then one without a profile. On both builds of November 2026, the search finds exactly the places their
+profiles name, and `fmlibre-probe profile` says so ("the same places").
 
 ### On macOS
 
@@ -104,6 +134,7 @@ behind the launcher; another tool's launcher among them is started in turn.
 | `crates/fmlibre-probe` | Command-line probe |
 | `profiles/` | Object layouts per edition and addresses per game build |
 | `app/` | Tauri 2 desktop app (React + TypeScript) |
+| `tools/smoke` | Smoke tests that drive the built app against a running game |
 | `docs/` | Install guide, roadmap and reverse-engineering notes (`recon/`) |
 | `docs/design/` | The interface's design system (`DESIGN.md`) and product notes (`PRODUCT.md`) |
 
@@ -213,8 +244,9 @@ Start FM27, load a save, then run:
 
 ```powershell
 fmlibre-probe info                                   # process, storefront, modules, game_plugin.dll layout
-fmlibre-probe calibrate                              # identify the build and locate players, staff, clubs
+fmlibre-probe calibrate                              # identify the build; locate players, staff, clubs, the date
 fmlibre-probe health                                 # the checks the editor makes before it writes, and what each found
+fmlibre-probe profile                                # a build profile for this build, looked for as for a new build
 fmlibre-probe players "arda guler"                   # search players (accents ignored), best first
 fmlibre-probe players --position st --max-age 20 --min-pa 170 --sort pa   # wonderkid strikers
 fmlibre-probe players --max-age 21 --export young.csv   # every match to a file, as the app's Export writes it (.json: JSON; --semicolon)
@@ -252,7 +284,7 @@ fmlibre-probe find "c7 80 ea 07" --as hex --module game_plugin.dll
 
 Addresses and lengths are hexadecimal. Add `--json report.json` to `info` or `scan`
 to save the results. `calibrate --scan` ignores the build profile and finds the
-arrays the way it would on an unknown build.
+arrays, the in-game date and the retirement manager the way it would on an unknown build.
 
 Only `set`, `move`, `swap`, `release`, `staff-move`, `staff-job`, `heal --heal`,
 `bans --lift`, `tie-set`, `tie-add`, `tie-remove` and `captain` write to the game. Unlike the app, the probe writes to

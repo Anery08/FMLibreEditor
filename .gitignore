@@ -12,3 +12,6 @@ node_modules/
 # Impeccable's working files: review captures and decision-page logs.
 /.impeccable/
 .DS_Store
+
+# Smoke test runs: screenshots and results.
+/tools/smoke/out/
