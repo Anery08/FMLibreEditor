@@ -798,6 +798,10 @@ mod tests {
             (mac.player.positions, mac.player.morale, mac.player.jadedness),
             (windows.player.positions - 8, windows.player.morale - 8, windows.player.jadedness - 8)
         );
+        assert_eq!(
+            (mac.player.transfer_value, mac.player.asking_price),
+            (windows.player.transfer_value.map(|offset| offset - 8), windows.player.asking_price - 8)
+        );
         assert_eq!(mac.player.date_of_birth, windows.player.date_of_birth - 0x40);
         assert_eq!(mac.player.traits, windows.player.traits - 0x40);
         assert_eq!(mac.player.relations, windows.player.relations - 0x40);

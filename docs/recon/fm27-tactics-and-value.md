@@ -24,6 +24,12 @@ know the player fully: the range starts at the stored value.
 300,000,000 marks a player who is not for sale (Messi; Saka and Mbappé read it too). Colpani's and Mota's single
 values sit below the conversion (0.80 of it): how the game rounds a fully known value is not worked out.
 
+**On the Mac** (Steam build 26340721, Apple silicon) the value sits 8 bytes earlier, at **`player +0x22C`**, like the
+player's other own fields, right before the asking price (`+0x230`). On the Arsenal save of 4 July 2027, 1,017 players
+read 300,000,000 (Lamine Yamal, Alexia Putellas), Phil Foden 144,244,816, Cole Palmer 154,739,659 and Florian Wirtz
+122,385,266. 335 players read `-1`, nearly all from that summer's youth intake (16 on average): the game has not
+valued them yet.
+
 ## Where a club's tactic is
 
 The match engine's selections (`simatch::PREPARED_TACTICS_CREATOR_ARRAY`, see `fm27-transfers.md`) keep a list at
@@ -90,6 +96,15 @@ BCB / CB, CB / CB, FB / FB, AM / ?, DM / DM, ? / PDM, ? / ?, IF / ?, CFD / CFD w
 Shaw, Güler, Tielemans, Baleba, Mbeumo, Rashford and Šeško in them. Four masks there are not named yet:
 in possession `0x408000` (bit 15 / 22) and `0x2000000400000` (bit 49 / 22), out of possession `0x40400000`
 (bit 30 / 22) and `0x800400000` (bit 35 / 22, in two slots).
+
+**On the Mac** (Steam build 26340721, Apple silicon, the Arsenal save of 4 July 2027) the block is laid out alike up
+to the style tag (`+0x100`, `VERT` here), but the slot entries sit 8 bytes later: the in-possession role masks from
+`+0x160`, the out-of-possession ones from `+0x480`, `0x48` apart. Each of the manager's three selections pointed at
+two blocks of `0x800` bytes, one after the other (`+0x104` read `03 04` in the first and `03 05` in the second). The
+second matched the eleven of the selection: BGK Raya, NCB Konsa, BCB Saliba and Gabriel, CFD Haaland, DM Guimarães,
+PW Saka, AM Ødegaard, W Musiala, DLF Kane. The first held other roles (IWB, IFB, AP, WFD). Which block the game plays
+was not checked against the tactics screen, so the Mac layout has no `[tactic]` section yet and the probe's
+`scout --tactics` says it cannot read the tactics there. The Scouting tab does not read them.
 
 ### Not found yet
 
