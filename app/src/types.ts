@@ -893,8 +893,6 @@ export type Line =
   | "wide"
   | "striker";
 
-export type Side = "right" | "left";
-
 /** A role of the tactics screen whose mask the editor knows. */
 export interface Role {
   /** The game's abbreviation in lower case, e.g. "ifb"; the same key in both phases names the same kind of role. */
@@ -911,39 +909,6 @@ export interface ScoutPosition {
   /** A position key, e.g. "dr" (see positionLabel). */
   key: string;
   lines: Line[];
-}
-
-/** One slot of a tactic, goalkeeper first. */
-export interface TacticSlot {
-  index: number;
-  /** Role keys; null for a role whose mask the editor does not know yet. */
-  inPossession: string | null;
-  outOfPossession: string | null;
-  /** The masks as stored, in hex. */
-  inPossessionMask: string;
-  outOfPossessionMask: string;
-  line: Line | null;
-  /** For a wide line: the side the player in the slot plays best. */
-  side: Side | null;
-  /** The position the slot most likely is (a position key), from its line and side. */
-  position: string | null;
-  /** The UID of the player in the slot. */
-  player: number | null;
-}
-
-export interface ClubTactic {
-  /** The style code it was made from: "CONT", "TIKI", "DIRE", "GEGE"... */
-  style: string | null;
-  slots: TacticSlot[];
-  /** How many of the game's copies hold it; the first tactic is the one in use. */
-  copies: number;
-}
-
-/** What `scouting_tactics` returns: shortcuts to the positions and roles of the tactics the manager plays. */
-export interface ScoutingTactics {
-  tactics: ClubTactic[];
-  /** Why no tactic could be read, when none was. */
-  problem: Failure | null;
 }
 
 export type DepthStatus = "missing" | "thin" | "fine" | "crowded";
@@ -1084,6 +1049,9 @@ export interface Suggestion extends Fitting {
   value: number | null;
   /** Fit and probability together, as the purpose weighs them: the default order. */
   score: number;
+  /** The club his contract is with, when it is not the one he plays for (he is on loan, or in its second team). */
+  ownerClub: string | null;
+  ownerClubUid: number | null;
 }
 
 /** What `scouting_suggest` returns. */
@@ -1094,6 +1062,8 @@ export interface Scouted {
   transferBudget: number | null;
   /** Pounds a week the club can still add to its wage bill. */
   wageRoom: number | null;
+  /** Players looked at, those who can play the position, and those of them who meet the purpose. */
   examined: number;
   candidates: number;
+  eligible: number;
 }

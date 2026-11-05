@@ -3729,13 +3729,14 @@ fn scout(
     for s in &scouted.suggestions {
         let reasons: Vec<String> = s.reasons.iter().map(|r| format!("{}{:+}", r.code, r.points)).collect();
         println!(
-            "  {}  prob {:>3}  score {:>3}  fee {:>11}  wage {:>8}  {}",
+            "  {}  prob {:>3}  score {:>3}  fee {:>11}  wage {:>8}  {}{}",
             fitting(&s.fitting),
             s.probability,
             s.score,
             s.fee.map_or_else(|| "-".to_owned(), |fee| fee.to_string()),
             s.wage.map_or_else(|| "-".to_owned(), |wage| wage.to_string()),
-            reasons.join(" ")
+            reasons.join(" "),
+            s.owner_club.as_deref().map_or_else(String::new, |owner| format!("  (contract with {owner})"))
         );
     }
     Ok(())

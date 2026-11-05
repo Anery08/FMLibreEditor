@@ -9,7 +9,7 @@
 //!
 //! Everything here only reads memory.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use fmlibre_mem::{Error as MemoryError, is_user_pointer};
@@ -22,9 +22,10 @@ use crate::date::FmDate;
 use crate::details::{ATTRIBUTE_GROUPS, PERSONALITY, read_clauses};
 use crate::filter::attribute_keys;
 use crate::index::SearchIndex;
-use crate::players::{PlayerIndex, PlayerSummary};
+use crate::players::{PlayerIndex, PlayerSummary, club_uid_of_team};
 use crate::rtti;
 use crate::session::Session;
+use crate::squad::Loan;
 use crate::transfer::PointerList;
 
 /// What a slot holds when nobody fills it.
@@ -941,6 +942,10 @@ pub struct Suggestion {
     pub value: Option<i32>,
     /// Fit and probability together, as the purpose weighs them, for the default order.
     pub score: u8,
+    /// The club his contract is with, when it is not the one he plays for: the club that lent him out (or whose
+    /// second team he plays in), which would sell him.
+    pub owner_club: Option<String>,
+    pub owner_club_uid: Option<u32>,
 }
 
 /// The recommendations and what they were measured against.
@@ -953,9 +958,10 @@ pub struct Scouted {
     /// The club's transfer budget and the wages it can still add, pounds (a week), when its finances are known.
     pub transfer_budget: Option<i64>,
     pub wage_room: Option<i64>,
-    /// Players looked at, and those who can play the position.
+    /// Players looked at, those who can play the position, and those of them who meet the purpose.
     pub examined: usize,
     pub candidates: usize,
+    pub eligible: usize,
 }
 
 /// What scouting needs to know about the buying club.
@@ -1133,7 +1139,7 @@ impl Session {
         let squad: Vec<Fitting> = own.iter().take(5).map(|&(player, m)| fitting(player, m)).collect();
 
         let mut examined = 0;
-        let mut fitting_players: Vec<(&PlayerSummary, Measured)> = Vec::new();
+        let mut fitting_players: Vec<(&PlayerSummary, Measured, Option<u32>)> = Vec::new();
         for player in players.iter() {
             examined += 1;
             let own = player.club_uid == Some(buyer.club.uid);
@@ -1163,7 +1169,12 @@ impl Session {
             let Some(m) = measure.of(player) else {
                 continue;
             };
-            fitting_players.push((player, m));
+            // A player the club, or another human manager's, has lent out or plays in its second team is its own.
+            let owner = self.contract_club(player);
+            if owner == Some(buyer.club.uid) || owner.is_some_and(|club| human_clubs.contains(&club)) {
+                continue;
+            }
+            fitting_players.push((player, m, owner));
         }
         let candidates = fitting_players.len();
         let purpose_fits = |player: &PlayerSummary, m: &Measured| match request.purpose {
@@ -1172,7 +1183,8 @@ impl Session {
             Purpose::Future => i32::from(player.potential_ability) - i32::from(player.current_ability) >= 15,
             Purpose::Any => true,
         };
-        fitting_players.retain(|(player, m)| purpose_fits(player, m));
+        fitting_players.retain(|(player, m, _)| purpose_fits(player, m));
+        let eligible = fitting_players.len();
         let rank = |player: &PlayerSummary, m: &Measured| match request.purpose {
             Purpose::Future => f32::from(m.fit) + potential(player),
             _ => f32::from(m.fit),
@@ -1184,7 +1196,7 @@ impl Session {
         let looking = Looking { buyer, clubs, today, wage_room };
         let mut suggestions: Vec<Suggestion> = fitting_players
             .into_iter()
-            .map(|(player, m)| self.suggestion(player, m, request.purpose, &looking))
+            .map(|(player, m, owner)| self.suggestion(player, m, owner, request.purpose, &looking))
             .filter(|s| request.max_fee.is_none_or(|max| s.fee.is_some_and(|fee| fee <= max)))
             .filter(|s| request.min_probability.is_none_or(|min| s.probability >= min))
             .collect();
@@ -1203,7 +1215,26 @@ impl Session {
             }),
         }
         suggestions.truncate(request.limit.unwrap_or(50).clamp(1, 200));
-        Ok(Scouted { suggestions, squad, transfer_budget: buyer.transfer_budget, wage_room, examined, candidates })
+        Ok(Scouted {
+            suggestions,
+            squad,
+            transfer_budget: buyer.transfer_budget,
+            wage_room,
+            examined,
+            candidates,
+            eligible,
+        })
+    }
+
+    /// The UID of the club a player's contract is with: the club he plays for, or the one that lent him out.
+    fn contract_club(&self, player: &PlayerSummary) -> Option<u32> {
+        let p = &self.layout.player;
+        let contract = self.process.read_u64(player.address + p.at(p.contract, player.shift)).ok()?;
+        if !is_user_pointer(contract) {
+            return None;
+        }
+        let team = self.process.read_u64(contract + self.layout.contract.team).ok()?;
+        club_uid_of_team(&self.process, &self.layout, team)
     }
 
     /// The wages the club can still add a week: its wage budget less what its players earn now, pounds.
@@ -1211,12 +1242,21 @@ impl Session {
         buyer.wage_budget.zip(self.wage_bill(buyer.club, players)).map(|(budget, bill)| budget - bill)
     }
 
-    /// The weekly wages of the players under contract with the club, pounds.
+    /// The weekly wages of the players under contract with the club, pounds: those in its teams' lists, the ones it
+    /// has lent out too, but not those it has on loan.
     fn wage_bill(&self, club: &ClubSummary, players: &PlayerIndex) -> Option<i64> {
         let p = &self.layout.player;
         let c = &self.layout.contract;
+        let teams = self.club_teams(club, players).ok()?;
+        let mut counted = HashSet::new();
         let mut bill = 0i64;
-        for player in players.iter().filter(|player| player.club_uid == Some(club.uid)) {
+        for member in teams.iter().flat_map(|team| &team.players) {
+            if member.loan == Some(Loan::In) || !counted.insert(member.uid) {
+                continue;
+            }
+            let Some(player) = players.get(member.uid) else {
+                continue;
+            };
             let contract = self.process.read_u64(player.address + p.at(p.contract, player.shift)).ok()?;
             if is_user_pointer(contract) {
                 bill += i64::from(self.process.read_u32(contract + c.wage).ok()? as i32);
@@ -1225,8 +1265,17 @@ impl Session {
         Some(bill)
     }
 
-    fn suggestion(&self, player: &PlayerSummary, m: Measured, purpose: Purpose, looking: &Looking<'_>) -> Suggestion {
-        let seller = player.club_uid.and_then(|uid| looking.clubs.get(uid));
+    fn suggestion(
+        &self,
+        player: &PlayerSummary,
+        m: Measured,
+        owner: Option<u32>,
+        purpose: Purpose,
+        looking: &Looking<'_>,
+    ) -> Suggestion {
+        // The club that would sell him: the one his contract is with.
+        let seller = owner.or(player.club_uid).and_then(|uid| looking.clubs.get(uid));
+        let lent = owner.filter(|&uid| Some(uid) != player.club_uid);
         let facts = self.facts(player);
         let (probability, reasons, fee, wage) = probability(player, &facts, seller, looking);
         Suggestion {
@@ -1237,6 +1286,8 @@ impl Session {
             wage,
             value: player.transfer_value,
             score: score(purpose, m.fit, probability, player),
+            owner_club: lent.and_then(|uid| looking.clubs.get(uid)).map(|club| club.name.clone()),
+            owner_club_uid: lent,
         }
     }
 

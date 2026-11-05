@@ -90,8 +90,23 @@ export function PlayerName({
   );
 }
 
-/** The player's club under his name: its logo and name, or "Free agent". */
-export function ClubLine({ player }: { player: PlayerSummary }) {
+/**
+ * The player's club under his name: its logo and name, or "Free agent". For a player on loan, or in a club's second
+ * team, `owner` is the club his contract is with, which would sell him; the club he plays for follows it.
+ */
+export function ClubLine({ player, owner }: { player: PlayerSummary; owner?: { uid: number; name: string } | null }) {
+  if (owner) {
+    const title = player.club === null ? owner.name : `${owner.name} · ${text.onLoanAt(player.club)}`;
+    return (
+      <span className="scout-club-line" title={title}>
+        <ClubLogo uid={owner.uid} name={owner.name} size={PICTURE_SIZE.textLogo} />
+        <span className="name-text">
+          {owner.name}
+          {player.club !== null && <span className="muted"> · {text.onLoanAt(player.club)}</span>}
+        </span>
+      </span>
+    );
+  }
   if (player.club === null || player.clubUid === null) {
     return <span className="scout-club-line muted">{text.freeAgent}</span>;
   }
@@ -128,11 +143,10 @@ export function RoleAbbreviations({ inPossession, outOfPossession }: { inPossess
   );
 }
 
-/** The title of a column that holds a note: the label and an (i) button. */
-export function ProbabilityHeader() {
+/** The (i) beside the Probability column's title, which says what the probability is. */
+export function ProbabilityInfo() {
   return (
     <span className="scout-th-info">
-      {text.columns.probability}
       <InfoTip label={text.probabilityInfoLabel} note={text.probabilityInfo} />
     </span>
   );

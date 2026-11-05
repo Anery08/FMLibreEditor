@@ -1,44 +1,44 @@
 // "Transfer advice": the brief (a position, roles, a purpose, filters) and what the scout recommends for it. The
-// tactic is only a shortcut to a position and its roles.
+// scout picks its recommendations in the core (see `Session::scout`); the table can sort them by any column.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toPounds } from "./currency";
-import { scoutingSuggest, scoutingTactics } from "./editing";
-import { currencySymbol, describeError, formatMoney, formatPercent } from "./format";
+import { scoutingSuggest } from "./editing";
+import { currencySymbol, describeError, fold, formatMoney, formatNumber, formatPercent } from "./format";
+import { InfoTip } from "./InfoTip";
+import { intlLocale } from "./i18n";
 import { positionLabel, scoutingText as text } from "./labels";
-import { PersonFace, PICTURE_SIZE, WithPicture } from "./Picture";
 import {
   ClubLine,
+  depthLineName,
   familiarity,
   FitBar,
   LINE_OF_POSITION,
   PlayerName,
-  ProbabilityHeader,
+  ProbabilityInfo,
   reasonText,
   roleAbbreviation,
   RoleAbbreviations,
   roleName,
+  shortMoney,
   signed,
   StatusDot,
-  depthLineName,
-  shortMoney,
 } from "./ScoutParts";
+import { type ColumnOrder, SortHeader } from "./SortHeader";
 import type {
   DepthLine,
   DepthStatus,
   Fitting,
   Line,
+  Phase,
   PlayerSummary,
   Purpose,
   Role,
-  ScoutOrder,
   Scouted,
   ScoutingOverview,
-  ScoutingTactics,
   ScoutPosition,
   ScoutRequest,
   Suggestion,
-  Phase,
 } from "./types";
 
 /** What the user asks the scout for; the fields typed into are kept as typed. */
@@ -54,11 +54,9 @@ export interface Brief {
   maxFee: string;
   minProbability: string;
   noFreeAgents: boolean;
-  order: ScoutOrder;
 }
 
 export const PURPOSES: Purpose[] = ["firstTeam", "rotation", "future", "any"];
-export const ORDERS: ScoutOrder[] = ["score", "fit", "probability", "fee"];
 const PROBABILITIES = ["30", "50", "70"];
 
 export const DEFAULT_BRIEF: Brief = {
@@ -71,7 +69,6 @@ export const DEFAULT_BRIEF: Brief = {
   maxFee: "",
   minProbability: "",
   noFreeAgents: false,
-  order: "score",
 };
 
 /** The positions in the order of the pitch, attack at the top: [key, column, row]. */
@@ -106,6 +103,18 @@ const LINES: Line[] = [
 
 const DEBOUNCE_MS = 300;
 
+/** How many recommendations are asked for at first, and at most (the core gives up to 200). */
+const PAGE = 50;
+const MOST = 200;
+
+/** The columns the advice can be sorted by; `rank` is the scout's own order, best first. */
+type AdviceSort = "rank" | "name" | "age" | "ca" | "pa" | "fit" | "probability" | "fee";
+
+/** The columns that sort from the lowest first when picked; the others start with the highest. */
+const ASCENDING_FIRST: ReadonlySet<AdviceSort> = new Set(["rank", "name", "age", "fee"]);
+
+const SCOUT_ORDER: ColumnOrder<AdviceSort> = { by: "rank", ascending: true };
+
 /** A whole number from what was typed, or null when it is empty or not a number. */
 function wholeNumber(typed: string): number | null {
   const number = typed.trim() === "" ? NaN : Number(typed);
@@ -129,6 +138,49 @@ function rolesAt(roles: Role[], position: ScoutPosition | undefined, phase: Phas
 
 const roleAvailable = (roles: Role[], position: ScoutPosition | undefined, phase: Phase, key: string) =>
   rolesAt(roles, position, phase).some((group) => group.roles.some((role) => role.key === key));
+
+/** A recommendation and its place in the scout's own order. */
+interface Ranked {
+  suggestion: Suggestion;
+  rank: number;
+}
+
+/** What a recommendation is sorted by in a column; a missing value sorts last either way. */
+function sortValue(entry: Ranked, by: AdviceSort): number | string | null {
+  const s = entry.suggestion;
+  switch (by) {
+    case "rank":
+      return entry.rank;
+    case "name":
+      return fold(s.player.name);
+    case "age":
+      return s.player.age;
+    case "ca":
+      return s.player.currentAbility;
+    case "pa":
+      return s.player.potentialAbility;
+    case "fit":
+      return s.fit;
+    case "probability":
+      return s.probability;
+    case "fee":
+      return s.fee;
+  }
+}
+
+function sortAdvice(list: Ranked[], order: ColumnOrder<AdviceSort>): Ranked[] {
+  const direction = order.ascending ? 1 : -1;
+  return [...list].sort((a, b) => {
+    const x = sortValue(a, order.by);
+    const y = sortValue(b, order.by);
+    if (x === null || y === null) {
+      return x === y ? a.rank - b.rank : x === null ? 1 : -1;
+    }
+    const compared =
+      typeof x === "string" && typeof y === "string" ? x.localeCompare(y, intlLocale) : Number(x) - Number(y);
+    return compared === 0 ? a.rank - b.rank : compared * direction;
+  });
+}
 
 interface Props {
   overview: ScoutingOverview;
@@ -155,7 +207,10 @@ export function ScoutRecommendations({ overview, version, brief, onBrief, onOpen
     });
   };
 
-  // What to ask for, as the scout's request.
+  // What to ask for: the brief, and how many recommendations; a new brief starts again from the first page.
+  const briefKey = JSON.stringify(brief);
+  const [limit, setLimit] = useState(PAGE);
+  useEffect(() => setLimit(PAGE), [briefKey]);
   const request: ScoutRequest = useMemo(() => {
     const fee = wholeNumber(brief.maxFee);
     return {
@@ -168,10 +223,10 @@ export function ScoutRecommendations({ overview, version, brief, onBrief, onOpen
       maxFee: fee === null ? null : toPounds(Math.max(0, fee)),
       minProbability: wholeNumber(brief.minProbability),
       noFreeAgents: brief.noFreeAgents,
-      order: brief.order,
-      limit: 50,
+      order: "score",
+      limit,
     };
-  }, [brief]);
+  }, [brief, limit]);
   const requestKey = JSON.stringify(request);
 
   const [result, setResult] = useState<Scouted | null>(null);
@@ -205,7 +260,30 @@ export function ScoutRecommendations({ overview, version, brief, onBrief, onOpen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestKey, overview, version]);
 
+  // The table's order: the scout's own until a column is picked; a new brief goes back to it.
+  const [order, setOrder] = useState<ColumnOrder<AdviceSort>>(SCOUT_ORDER);
+  useEffect(() => setOrder(SCOUT_ORDER), [briefKey]);
+  const sortBy = (by: AdviceSort) =>
+    setOrder({ by, ascending: order.by === by ? !order.ascending : ASCENDING_FIRST.has(by) });
+  const rows = useMemo(
+    () => sortAdvice((result?.suggestions ?? []).map((suggestion, i) => ({ suggestion, rank: i + 1 })), order),
+    [result, order],
+  );
+  const header = (by: AdviceSort, label: string, className?: string, extra?: ReactNode) => (
+    <SortHeader
+      by={by}
+      order={order}
+      onSort={sortBy}
+      label={label}
+      title={text.sortBy(text.sortNames[by])}
+      className={className}
+    >
+      {extra}
+    </SortHeader>
+  );
+
   const roleNames = [brief.inPossession, brief.outOfPossession].filter(Boolean).map(roleName);
+  const more = result !== null && result.suggestions.length >= limit && limit < MOST && result.eligible > limit;
 
   return (
     <div className="scout-recommend" hidden={hidden}>
@@ -217,14 +295,13 @@ export function ScoutRecommendations({ overview, version, brief, onBrief, onOpen
             {PITCH.filter(([key]) => overview.positions.some((p) => p.key === key)).map(([key, column, row]) => {
               const line = statusOf.get(LINE_OF_POSITION[key] ?? "");
               const status: DepthStatus | null = line?.status ?? null;
-              const selected = key === brief.position;
               return (
                 <button
                   key={key}
                   type="button"
                   className="scout-spot"
                   data-position={key}
-                  aria-pressed={selected}
+                  aria-pressed={key === brief.position}
                   title={
                     line && status
                       ? text.positionTip(depthLineName(line.key), line.players.length, line.target, text.status[status])
@@ -292,24 +369,6 @@ export function ScoutRecommendations({ overview, version, brief, onBrief, onOpen
             </label>
           ))}
         </section>
-
-        <TacticShortcut
-          current={brief.position}
-          onPick={(key, inPossession, outOfPossession) => {
-            const next = overview.positions.find((p) => p.key === (key ?? brief.position));
-            onBrief({
-              position: key ?? brief.position,
-              inPossession:
-                inPossession !== null && roleAvailable(overview.roles, next, "inPossession", inPossession)
-                  ? inPossession
-                  : "",
-              outOfPossession:
-                outOfPossession !== null && roleAvailable(overview.roles, next, "outOfPossession", outOfPossession)
-                  ? outOfPossession
-                  : "",
-            });
-          }}
-        />
 
         <details className="scout-filters">
           <summary>{text.brief.filters}</summary>
@@ -388,19 +447,22 @@ export function ScoutRecommendations({ overview, version, brief, onBrief, onOpen
 
         <div className="scout-toolbar">
           <span className="scout-summary muted" aria-live="polite">
-            {result ? text.summary(result.candidates, result.suggestions.length) : searching ? text.searching : ""}
+            {result
+              ? text.summary(result.candidates, result.eligible, result.suggestions.length, text.purposes[brief.purpose])
+              : searching
+                ? text.searching
+                : ""}
             {result && searching && ` · ${text.searching}`}
           </span>
-          <label className="scout-order">
-            <span className="muted">{text.order.label}</span>
-            <select value={brief.order} onChange={(e) => onBrief({ order: e.currentTarget.value as ScoutOrder })}>
-              {ORDERS.map((order) => (
-                <option key={order} value={order}>
-                  {text.order[order]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <span className="scout-how">
+            <InfoTip label={text.how.label} note={text.how.note(text.purposeRules[brief.purpose], formatNumber(limit))} />
+            <span className="muted">{text.how.label}</span>
+          </span>
+          {order.by !== "rank" && (
+            <button type="button" className="scout-reset-order" onClick={() => setOrder(SCOUT_ORDER)}>
+              {text.backToScoutOrder}
+            </button>
+          )}
         </div>
 
         {result &&
@@ -410,91 +472,32 @@ export function ScoutRecommendations({ overview, version, brief, onBrief, onOpen
             <table className="grid scout-grid">
               <thead>
                 <tr>
-                  <th className="col-name">{text.columns.player}</th>
-                  <th className="num">{text.columns.age}</th>
-                  <th>{text.columns.fit}</th>
-                  <th>{text.columns.role}</th>
-                  <th className="num">
-                    <ProbabilityHeader />
-                  </th>
-                  <th className="num">{text.columns.money}</th>
+                  {header("rank", text.columns.rank, "num scout-col-rank")}
+                  {header("name", text.columns.player, "col-name")}
+                  {header("age", text.columns.age, "num")}
+                  {header("ca", text.columns.ca, "num")}
+                  {header("pa", text.columns.pa, "num")}
+                  {header("fit", text.columns.fit)}
+                  {header("probability", text.columns.probability, "num scout-col-probability", <ProbabilityInfo />)}
+                  {header("fee", text.columns.money, "num")}
                   <th>{text.columns.note}</th>
                 </tr>
               </thead>
               <tbody>
-                {result.suggestions.map((s) => (
-                  <SuggestionRow key={s.player.uid} suggestion={s} onOpen={onOpen} />
+                {rows.map(({ suggestion, rank }) => (
+                  <SuggestionRow key={suggestion.player.uid} rank={rank} suggestion={suggestion} onOpen={onOpen} />
                 ))}
               </tbody>
             </table>
           ))}
+        {more && (
+          <button type="button" className="scout-more" onClick={() => setLimit(Math.min(MOST, limit + PAGE))}>
+            {text.showMore(PAGE)}
+          </button>
+        )}
         <p className="scout-note muted">{text.note}</p>
       </div>
     </div>
-  );
-}
-
-/** Reading the tactic takes a few seconds, so it is read only when asked; its slots are shortcuts. */
-function TacticShortcut({
-  current,
-  onPick,
-}: {
-  current: string;
-  onPick: (position: string | null, inPossession: string | null, outOfPossession: string | null) => void;
-}) {
-  const [tactics, setTactics] = useState<ScoutingTactics | null>(null);
-  const [reading, setReading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const tactic = tactics?.tactics[0] ?? null;
-
-  const read = () => {
-    setReading(true);
-    setError(null);
-    scoutingTactics().then(
-      (found) => {
-        setTactics(found);
-        setReading(false);
-      },
-      (e) => {
-        setError(describeError(e));
-        setReading(false);
-      },
-    );
-  };
-
-  return (
-    <details className="scout-tactic">
-      <summary>{text.brief.tactic}</summary>
-      <div className="scout-tactic-body">
-        <div className="scout-tactic-read-row">
-          <button type="button" className="scout-tactic-read" disabled={reading} onClick={read}>
-            {reading ? text.brief.tacticReading : text.brief.tacticRead}
-          </button>
-          <span className="muted">{text.brief.tacticHint}</span>
-        </div>
-        {error && <p className="muted">{error}</p>}
-        {tactics?.problem && <p className="muted">{describeError(tactics.problem)}</p>}
-        {tactic && (
-          <ul className="scout-tactic-slots">
-            {tactic.slots.map((slot) => (
-              <li key={slot.index}>
-                <button
-                  type="button"
-                  className="scout-tactic-slot"
-                  title={text.brief.tacticSlotTitle}
-                  aria-pressed={slot.position !== null && slot.position === current}
-                  onClick={() => onPick(slot.position, slot.inPossession, slot.outOfPossession)}
-                >
-                  {slot.position === null ? "?" : positionLabel(slot.position)} · {roleAbbreviation(slot.inPossession)}
-                  {" / "}
-                  {roleAbbreviation(slot.outOfPossession)}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </details>
   );
 }
 
@@ -527,7 +530,9 @@ function OwnOptions({
         <ul>
           <li className="scout-own-head" aria-hidden="true">
             <span>{text.columns.player}</span>
-            <span className="scout-own-age">{text.columns.age}</span>
+            <span className="num">{text.columns.age}</span>
+            <span className="num">{text.columns.ca}</span>
+            <span className="num">{text.columns.pa}</span>
             <span>{text.columns.fit}</span>
             <span>{text.columns.role}</span>
             <span>{text.own.position}</span>
@@ -535,19 +540,11 @@ function OwnOptions({
           {squad.slice(0, 5).map((f) => (
             <li key={f.player.uid}>
               <span className="scout-own-name">
-                <WithPicture picture={<PersonFace uid={f.player.uid} name={f.player.name} size={PICTURE_SIZE.rowFace} />}>
-                  <button
-                    type="button"
-                    className="name name-link"
-                    aria-haspopup="dialog"
-                    title={text.openProfile}
-                    onClick={() => onOpen(f.player)}
-                  >
-                    {f.player.name}
-                  </button>
-                </WithPicture>
+                <PlayerName player={f.player} onOpen={onOpen} />
               </span>
-              <span className="scout-own-age muted">{f.player.age ?? text.none}</span>
+              <span className="num muted">{f.player.age ?? text.none}</span>
+              <span className="num">{f.player.currentAbility}</span>
+              <span className="num muted">{f.player.potentialAbility}</span>
               <FitBar fit={f.fit} title={fitTitle(f)} />
               <RoleAbbreviations inPossession={f.inPossessionRole} outOfPossession={f.outOfPossessionRole} />
               <span className="muted">{familiarity(f.positionRating)}</span>
@@ -561,6 +558,13 @@ function OwnOptions({
 
 const rating = (value: number | null) => (value === null ? null : value.toFixed(1));
 
+const fitTitle = (f: Fitting) =>
+  text.fitTitle(
+    rating(f.inPossession),
+    rating(f.outOfPossession),
+    `${f.positionRating.toFixed(0)} · ${familiarity(f.positionRating)}`,
+  );
+
 /** The hover of the fee and wage: the amounts in full, and his transfer value. */
 const moneyTitle = (s: Suggestion) =>
   [
@@ -571,10 +575,15 @@ const moneyTitle = (s: Suggestion) =>
     .filter(Boolean)
     .join("\n") || undefined;
 
-const fitTitle = (f: Fitting) =>
-  text.fitTitle(rating(f.inPossession), rating(f.outOfPossession), `${f.positionRating.toFixed(1)} · ${familiarity(f.positionRating)}`);
-
-function SuggestionRow({ suggestion: s, onOpen }: { suggestion: Suggestion; onOpen: (player: PlayerSummary) => void }) {
+function SuggestionRow({
+  rank,
+  suggestion: s,
+  onOpen,
+}: {
+  rank: number;
+  suggestion: Suggestion;
+  onOpen: (player: PlayerSummary) => void;
+}) {
   const level = s.probability >= 70 ? "good" : s.probability >= 50 ? "ok" : "poor";
   const shown = s.reasons.slice(0, 2);
   const more = s.reasons.length - shown.length;
@@ -583,17 +592,22 @@ function SuggestionRow({ suggestion: s, onOpen }: { suggestion: Suggestion; onOp
     .filter((key): key is string => key !== null)
     .map(roleName)
     .join(" / ");
+  const owner = s.ownerClub !== null && s.ownerClubUid !== null ? { uid: s.ownerClubUid, name: s.ownerClub } : null;
   return (
     <tr>
+      <td className="num muted scout-col-rank">{rank}</td>
       <td className="col-name">
-        <PlayerName player={s.player} onOpen={onOpen} sub={<ClubLine player={s.player} />} />
+        <PlayerName player={s.player} onOpen={onOpen} sub={<ClubLine player={s.player} owner={owner} />} />
       </td>
       <td className="num">{s.player.age ?? text.none}</td>
+      <td className="num scout-ca">{s.player.currentAbility}</td>
+      <td className="num muted">{s.player.potentialAbility}</td>
       <td>
         <FitBar fit={s.fit} title={fitTitle(s)} />
-      </td>
-      <td title={roleTitle || undefined}>
-        <RoleAbbreviations inPossession={s.inPossessionRole} outOfPossession={s.outOfPossessionRole} />
+        {/* The roles he was measured for: those asked for, or the best of the position's for him. */}
+        <div className="sub scout-fit-roles" title={roleTitle || undefined}>
+          <RoleAbbreviations inPossession={s.inPossessionRole} outOfPossession={s.outOfPossessionRole} />
+        </div>
       </td>
       <td className={`num scout-probability ${level}`} title={all || undefined}>
         {formatPercent(s.probability)}

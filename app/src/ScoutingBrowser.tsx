@@ -15,7 +15,6 @@ import {
   type Brief,
   DEFAULT_BRIEF,
   defaultPosition,
-  ORDERS,
   PURPOSES,
   ScoutRecommendations,
 } from "./ScoutRecommendations";
@@ -50,7 +49,6 @@ function readSaved(value: unknown): Saved {
       maxFee: readText(brief.maxFee),
       minProbability: readText(brief.minProbability),
       noFreeAgents: brief.noFreeAgents === true,
-      order: ORDERS.find((order) => order === brief.order) ?? DEFAULT_BRIEF.order,
     },
   };
 }

@@ -7,13 +7,13 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use fmlibre_core::{
     ArraySource, Buyer, CaptainRole, CaptainSet, Change, Clause, ClauseSet, ClubDetails, ClubFilter, ClubIndex,
-    ClubMove, ClubSummary, ClubTactic, Coded, EditError, Entity, EntityArrays, ExportFormat, ExportHeader, FeePlan,
-    Field, FmDate, GAME_EXE, GAME_PLUGIN, GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health,
-    Kind, Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation, Operation, Paid, Picture, Planned,
-    PlayerDetails, PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary, ROLES, RelationSet, RetirementSet, Role,
-    SCOUT_POSITIONS, STAFF_JOBS, ScoutError, ScoutPosition, ScoutRequest, Scouted, SearchIndex, Session, SessionError,
-    Skipped, SquadReport, StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffOrder, StaffPlan, Target, Tie,
-    TieTarget, find_game, nations, sort_players, sort_staff,
+    ClubMove, ClubSummary, Coded, EditError, Entity, EntityArrays, ExportFormat, ExportHeader, FeePlan, Field, FmDate,
+    GAME_EXE, GAME_PLUGIN, GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind, Lifted,
+    Listed, Loan, MoveError, MovePlan, MoveTerms, Nation, Operation, Paid, Picture, Planned, PlayerDetails,
+    PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary, ROLES, RelationSet, RetirementSet, Role, SCOUT_POSITIONS,
+    STAFF_JOBS, ScoutError, ScoutPosition, ScoutRequest, Scouted, SearchIndex, Session, SessionError, Skipped,
+    SquadReport, StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffOrder, StaffPlan, Target, Tie, TieTarget,
+    find_game, nations, sort_players, sort_staff,
 };
 use fmlibre_mem::{Process, find_processes, is_current_process_elevated, list_modules};
 use serde::{Deserialize, Serialize};
@@ -2535,29 +2535,6 @@ fn scouting_overview(state: State<'_, AppState>) -> Result<ScoutingOverview, Fai
     })
 }
 
-/// The tactics the human manager plays, as shortcuts to the positions and roles to ask for.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ScoutingTactics {
-    tactics: Vec<ClubTactic>,
-    /// Why no tactic could be read, when none was.
-    problem: Option<Failure>,
-}
-
-/// The human manager's tactics, read now: one pass over the game's memory, a few seconds.
-#[tauri::command]
-fn scouting_tactics(state: State<'_, AppState>) -> Result<ScoutingTactics, Failure> {
-    let guard = state.0.lock()?;
-    let connection = guard.as_ref().ok_or_else(not_connected)?;
-    let club = scouting_club(connection)?;
-    let (tactics, problem) = match connection.session.club_tactics(club, &connection.players) {
-        Ok(tactics) => (tactics, None),
-        Err(err @ (ScoutError::NoTactic { .. } | ScoutError::NotPlaced)) => (Vec::new(), Some(Failure::from(err))),
-        Err(err) => return Err(err.into()),
-    };
-    Ok(ScoutingTactics { tactics, problem })
-}
-
 /// Players a scout would recommend for the position `request` describes, for the human manager's club. Only reads
 /// memory.
 #[tauri::command]
@@ -2940,7 +2917,6 @@ pub fn run() {
             homegrown_rules,
             club_squads,
             scouting_overview,
-            scouting_tactics,
             scouting_suggest,
             set_captain,
             team_action,

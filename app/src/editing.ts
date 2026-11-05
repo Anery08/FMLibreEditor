@@ -8,7 +8,6 @@ import type {
   CaptainRole,
   Scouted,
   ScoutingOverview,
-  ScoutingTactics,
   ScoutRequest,
   ClubTeam,
   EditField,
@@ -317,9 +316,6 @@ export const teamAction = (club: number, team: number, action: TeamAction) =>
 
 /** The human manager's club, its money, its squad line by line and the players to let go; fast. */
 export const scoutingOverview = () => call<ScoutingOverview>("scouting_overview");
-
-/** The tactics the human manager plays, as shortcuts to positions and roles; takes a few seconds. */
-export const scoutingTactics = () => call<ScoutingTactics>("scouting_tactics");
 
 /** Players a scout would recommend for the position `request` describes, for the human manager's club. */
 export const scoutingSuggest = (request: ScoutRequest) => call<Scouted>("scouting_suggest", { request });

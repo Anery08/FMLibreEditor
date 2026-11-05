@@ -4847,15 +4847,13 @@ button.danger:hover:not(:disabled) {
   font-size: 13px;
 }
 
-/* The two collapsible parts of the brief. */
-.scout-tactic,
+/* The collapsible filters of the brief. */
 .scout-filters {
   margin-bottom: 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
 
-.scout-tactic summary,
 .scout-filters summary {
   padding: 7px 10px;
   font-size: 13px;
@@ -4863,51 +4861,12 @@ button.danger:hover:not(:disabled) {
   cursor: pointer;
 }
 
-.scout-tactic[open] summary,
 .scout-filters[open] summary {
   border-bottom: 1px solid var(--border);
 }
 
-.scout-tactic-body,
 .scout-filter-grid {
   padding: 10px;
-}
-
-.scout-tactic-body p {
-  margin: 8px 0 0;
-  font-size: 12.5px;
-}
-
-.scout-tactic-read-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-  font-size: 12.5px;
-}
-
-.scout-tactic-slots {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin: 10px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.scout-tactic-slot,
-.scout-tactic-slot:hover:not(:disabled) {
-  min-height: 26px;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-stretch: 90%;
-  font-weight: 750;
-}
-
-.scout-tactic-slot[aria-pressed="true"],
-.scout-tactic-slot[aria-pressed="true"]:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--accent-soft);
 }
 
 .scout-filter-grid {
@@ -5020,7 +4979,7 @@ button.danger:hover:not(:disabled) {
 
 .scout-own li {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) 30px 110px minmax(70px, auto) minmax(80px, auto);
+  grid-template-columns: minmax(0, 1.5fr) 34px 34px 34px 110px minmax(80px, auto) minmax(80px, auto);
   align-items: center;
   gap: 4px 12px;
   padding: 3px 0;
@@ -5093,9 +5052,63 @@ button.danger:hover:not(:disabled) {
   font-size: 12px;
 }
 
+.scout-own .num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* "How is this list made?": an (i) and its question, beside the summary. */
+.scout-how {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  font-size: 12.5px;
+}
+
+/* Its note is longer than the question it hangs under. */
+.scout-how .info-tip-note {
+  right: auto;
+  width: min(460px, 70vw);
+}
+
+.scout-reset-order {
+  min-height: 26px;
+  padding: 1px 10px;
+  font-size: 12.5px;
+}
+
+.scout-more {
+  display: block;
+  margin: 10px auto 0;
+}
+
+/* The scout's own order, and the abilities. */
+.scout-grid .scout-col-rank {
+  width: 34px;
+  font-variant-numeric: tabular-nums;
+}
+
+.scout-grid .scout-ca {
+  font-weight: 750;
+}
+
 .scout-grid td {
-  padding: 6px 10px;
+  padding: 6px 8px;
   vertical-align: middle;
+}
+
+.scout-grid th {
+  padding: 0 8px;
+}
+
+.scout-grid .scout-fit-roles {
+  margin-top: 1px;
+  font-size: 11.5px;
+  font-stretch: 90%;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .scout-grid tbody tr {
@@ -5103,7 +5116,7 @@ button.danger:hover:not(:disabled) {
 }
 
 .scout-grid td.col-name {
-  max-width: 250px;
+  max-width: 200px;
   white-space: normal;
 }
 
@@ -5175,7 +5188,7 @@ button.danger:hover:not(:disabled) {
 
 .scout-bar {
   flex: none;
-  width: 56px;
+  width: 48px;
   height: 6px;
   border-radius: 3px;
   background: var(--raised);
@@ -5219,7 +5232,7 @@ button.danger:hover:not(:disabled) {
 }
 
 .scout-note-cell {
-  width: 230px;
+  width: 180px;
   white-space: normal;
 }
 
@@ -5228,7 +5241,7 @@ button.danger:hover:not(:disabled) {
   display: flex;
   flex-wrap: wrap;
   gap: 3px 4px;
-  max-width: 230px;
+  max-width: 180px;
 }
 
 .scout-reason {
@@ -5263,39 +5276,18 @@ button.danger:hover:not(:disabled) {
   color: var(--tier-1);
 }
 
-/* Squad depth: ten lines laid out like a pitch, attack at the top. */
+/* Squad depth: one table, a line to a row, goalkeepers first. */
 .scout-depth-summary {
-  margin: 0 0 10px;
+  margin: 0 0 6px;
 }
 
-.scout-pitch-lines {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.scout-line-card {
-  min-width: 0;
-  padding: 7px 10px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel);
-}
-
-.scout-line-card header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-}
-
-.scout-line-card h3 {
-  margin: 0;
+.scout-depth-attention {
+  margin: 0 0 12px;
   font-size: 13.5px;
-  font-weight: 800;
 }
 
 .scout-status {
+  display: inline-block;
   padding: 0 7px;
   border: 1px solid var(--status);
   border-radius: 2px;
@@ -5307,88 +5299,155 @@ button.danger:hover:not(:disabled) {
   letter-spacing: 0.3px;
   line-height: 16px;
   text-transform: uppercase;
-}
-
-.scout-count {
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .scout-flag {
   height: auto;
+  margin-left: 6px;
   line-height: 16px;
   text-transform: none;
-}
-
-.scout-advice-button {
-  min-height: 24px;
-  margin-left: auto;
-  padding: 1px 9px;
-  font-size: 12px;
-}
-
-.scout-line-players {
-  display: grid;
-  gap: 1px;
-  margin: 6px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.scout-line-card.single .scout-line-players {
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  column-gap: 20px;
-}
-
-.scout-line-players li {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto auto 30px;
-  align-items: center;
-  gap: 8px;
-  min-height: 24px;
-  font-size: 13px;
-}
-
-.scout-line-players .name-link {
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.scout-line-players li:not(:has(.tag)) .name-link {
-  grid-column: span 2;
+.scout-depth-table {
+  width: 100%;
+  table-layout: fixed;
 }
 
-.scout-line-age {
-  text-align: right;
+/* The players take what the other columns leave, and wrap. */
+.scout-depth-col-line {
+  width: 170px;
 }
 
-.scout-line-ability {
+.scout-depth-col-status {
+  width: 200px;
+}
+
+.scout-depth-col-count {
+  width: 80px;
+}
+
+.scout-depth-col-cover {
+  width: 200px;
+}
+
+.scout-depth-col-age {
+  width: 80px;
+}
+
+.scout-depth-col-action {
+  width: 110px;
+}
+
+.scout-depth-table td {
+  overflow-wrap: anywhere;
+}
+
+.scout-depth-table td,
+.scout-depth-table th {
+  padding: 8px 10px;
+  vertical-align: middle;
+}
+
+/* The line's name leads its row; a line that needs a look is marked at its edge. */
+.scout-depth-table td.scout-depth-line {
+  border-left: 3px solid transparent;
+  font-size: 13.5px;
+  font-weight: 800;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.scout-depth-table tbody tr:is([data-status="missing"], [data-status="thin"], [data-status="crowded"]) td.scout-depth-line {
+  border-left-color: var(--status);
+}
+
+.scout-depth-table tbody tr[data-status="missing"] {
+  --status: var(--tier-1);
+}
+
+.scout-depth-table tbody tr[data-status="thin"] {
+  --status: var(--tier-2);
+}
+
+.scout-depth-table tbody tr[data-status="crowded"] {
+  --status: var(--accent-text);
+}
+
+.scout-depth-count {
   font-variant-numeric: tabular-nums;
-  font-weight: 750;
-  text-align: right;
+  white-space: nowrap;
 }
 
-.scout-line-empty {
-  margin: 6px 0 0;
-  font-size: 13px;
+.scout-depth-table td.scout-depth-players {
+  line-height: 1.6;
+  white-space: normal;
 }
 
-.scout-line-players li.scout-line-more {
-  display: block;
+.scout-depth-player {
+  white-space: nowrap;
+}
+
+.scout-depth-players .name-link {
   min-height: 0;
-  padding: 2px 0 0 30px;
-  font-size: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-weight: 650;
+  text-decoration: underline transparent;
+  text-underline-offset: 3px;
 }
 
-.scout-depth-legend::before {
-  content: " · ";
+.scout-depth-players .name-link:is(:hover, :focus-visible):not(:disabled) {
+  background: none;
+  color: var(--accent-text);
+  text-decoration-color: currentColor;
 }
 
-.scout-cover {
-  margin: 6px 0 0;
+.scout-depth-ability {
   font-size: 12px;
-  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  opacity: 0.75;
+}
+
+.scout-depth-players .tag.loan {
+  margin-left: 4px;
+}
+
+.scout-depth-table td.scout-depth-cover {
+  font-size: 12.5px;
+  white-space: normal;
+}
+
+.scout-depth-action {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.scout-advice-button {
+  min-height: 26px;
+  padding: 1px 10px;
+  font-size: 12.5px;
+}
+
+/* What the statuses mean, under the table. */
+.scout-depth-help {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin: 12px 0 0;
+  padding: 0;
+  font-size: 12.5px;
+  list-style: none;
+}
+
+.scout-depth-help li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* Players to let go. */

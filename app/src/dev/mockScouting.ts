@@ -4,7 +4,6 @@
 
 import type {
   ClubSummary,
-  ClubTactic,
   Departure,
   DepartureReason,
   DepthLine,
@@ -18,7 +17,6 @@ import type {
   ScoutPosition,
   Scouted,
   ScoutingOverview,
-  ScoutingTactics,
   ScoutRequest,
   Suggestion,
 } from "../types";
@@ -117,22 +115,6 @@ const LINES: [string, string[], number][] = [
   ["leftWing", ["aml", "ml"], 2],
   ["amc", ["amc"], 2],
   ["st", ["st"], 3],
-];
-
-/** The slots of the fixture tactic: Monza's 4-3-3 from the research, [in possession, out of possession, line, position]. */
-const SLOTS: [string | null, string, Line, string][] = [
-  ["bgk", "sk", "goalkeeper", "gk"],
-  ["ifb", "pfb", "fullBack", "dr"],
-  ["cb", "cb", "centreBack", "dc"],
-  ["bcb", "cb", "centreBack", "dc"],
-  ["iwb", "fb", "wingBack", "dl"],
-  ["dm", "dm", "defensiveMidfield", "dm"],
-  ["ap", "cm", "centralMidfield", "mc"],
-  // An unknown mask, as the Game Pass save had, so the tab shows what it does with one.
-  [null, "pcm", "centralMidfield", "mc"],
-  ["wfd", "w", "wide", "amr"],
-  ["w", "tw", "wide", "aml"],
-  ["cfd", "cfd", "striker", "st"],
 ];
 
 export interface ScoutingFixtures {
@@ -261,34 +243,6 @@ export function scoutingOverview(f: ScoutingFixtures): ScoutingOverview {
   };
 }
 
-export function scoutingTactics(f: ScoutingFixtures): ScoutingTactics {
-  const club = humanClub(f);
-  const squad = f.players.filter((p) => p.clubUid === club.uid);
-  const taken = new Set<number>();
-  const tactic: ClubTactic = {
-    style: "CONT",
-    copies: 3,
-    slots: SLOTS.map(([inPossession, outOfPossession, line, position], index) => {
-      const pick = squad
-        .filter((p) => !taken.has(p.uid))
-        .sort((a, b) => rating(f, b.uid, position) - rating(f, a.uid, position))[0];
-      if (pick) taken.add(pick.uid);
-      return {
-        index,
-        inPossession,
-        outOfPossession,
-        inPossessionMask: inPossession === null ? "408000" : "200002",
-        outOfPossessionMask: "200008",
-        line,
-        side: position.endsWith("r") ? "right" : position.endsWith("l") ? "left" : null,
-        position,
-        player: pick?.uid ?? null,
-      };
-    }),
-  };
-  return { tactics: [tactic], problem: null };
-}
-
 /** A made-up but steady measure of how a fixture player suits a position. */
 function measure(f: ScoutingFixtures, player: PlayerSummary, request: ScoutRequest): Fitting {
   const position = POSITIONS.find((p) => p.key === request.position)!;
@@ -340,7 +294,19 @@ function suggestion(f: ScoutingFixtures, player: PlayerSummary, request: ScoutRe
     purpose === "rotation" ? (0.5 * fitting.fit + 0.5 * probability) * years
     : purpose === "future" ? 0.35 * fitting.fit + 0.35 * potential + 0.3 * probability
     : (0.7 * fitting.fit + 0.3 * probability) * years;
-  return { ...fitting, probability, reasons, fee, wage: wageOf(player), value, score: Math.round(score) };
+  // Every ninth player plays on loan from another club, which would sell him.
+  const lender = player.uid % 9 === 0 ? f.clubs.find((c) => !c.women && c.uid !== club.uid && c.uid !== player.clubUid) : undefined;
+  return {
+    ...fitting,
+    probability,
+    reasons,
+    fee,
+    wage: wageOf(player),
+    value,
+    score: Math.round(score),
+    ownerClub: player.clubUid !== null && lender ? lender.name : null,
+    ownerClubUid: player.clubUid !== null && lender ? lender.uid : null,
+  };
 }
 
 export function scoutingSuggest(f: ScoutingFixtures, request: ScoutRequest): Scouted {
@@ -379,5 +345,6 @@ export function scoutingSuggest(f: ScoutingFixtures, request: ScoutRequest): Sco
     wageRoom: WAGE_ROOM,
     examined: f.players.length,
     candidates: fitting.length,
+    eligible: suggestions.length,
   };
 }
