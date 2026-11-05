@@ -12,11 +12,11 @@ use std::time::Instant;
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use fmlibre_core::{
-    ATTRIBUTE_GROUPS, ArrayCandidate, ArraySource, AttributeBound, CaptainRole, ClubIndex, Entity, ExportFormat,
-    ExportHeader, Field, FmDate, GAME_EXE, GAME_PLUGIN, GameInfo, GraphicsIndex, Kind, Loan, MoveTerms, PERSONALITY,
-    POSITIONS, Picture, PlayerFilter, PlayerIndex, PlayerOrder, PlayerSort, STAFF_ATTRIBUTE_GROUPS, SUPPORTER_MIX,
-    SUPPORTER_TRAITS, Scale, ScanOptions, Session, SessionError, StaffIndex, Target, Tie, TieTarget, find_game,
-    job_name, nations, scan_object_arrays, sort_players,
+    ATTRIBUTE_GROUPS, ArrayCandidate, ArrayRvas, ArraySource, AttributeBound, BuildProfile, CaptainRole, ClubIndex,
+    Entity, ExportFormat, ExportHeader, Field, FmDate, Found, GAME_EXE, GAME_PLUGIN, GameInfo, GraphicsIndex, Kind,
+    Loan, MoveTerms, PERSONALITY, POSITIONS, Picture, PlayerFilter, PlayerIndex, PlayerOrder, PlayerSort, ProfileNotes,
+    STAFF_ATTRIBUTE_GROUPS, SUPPORTER_MIX, SUPPORTER_TRAITS, Scale, ScanOptions, Session, SessionError, StaffIndex,
+    Target, Tie, TieTarget, find_game, job_name, nations, profile_text, scan_object_arrays, sort_players,
 };
 #[cfg(target_os = "macos")]
 use fmlibre_mem::MachImage;
@@ -76,11 +76,19 @@ enum Command {
     Info,
     /// Run the checks the editor makes before it writes, and show what each found.
     Health,
-    /// Identify the build and locate the player, staff and club arrays.
+    /// Identify the build and locate the player, staff and club arrays, the in-game date and the retirement manager.
     Calibrate {
-        /// Ignore the build profile and find the arrays by scanning, as for an unknown build.
+        /// Ignore the build profile and look for everything, as for an unknown build.
         #[arg(long)]
         scan: bool,
+    },
+    /// Work out a build profile for the running game as for a build without one: the entity arrays, the in-game date
+    /// and the retirement manager, looked for and checked as the editor checks before it writes. Prints the profile,
+    /// and compares it with the built-in one when there is one.
+    Profile {
+        /// Also write the profile to this file, e.g. profiles/fm27/steam-26340721.toml.
+        #[arg(long, value_name = "FILE")]
+        out: Option<PathBuf>,
     },
     /// Show everything FMLibreEditor reads for the player with this UID.
     Player {
@@ -814,6 +822,7 @@ fn run(cli: Cli) -> Result<()> {
             let source = if scan { ArraySource::ScanOnly } else { ArraySource::ProfileFirst };
             calibrate(&connect(process, source)?)
         }
+        Command::Profile { out } => profile(&connect(process, ArraySource::ScanOnly)?, out.as_deref()),
         Command::Player { uid } => player(&connect(process, ArraySource::ProfileFirst)?, uid),
         Command::Staff { text, limit } => staff(&connect(process, ArraySource::ProfileFirst)?, text.as_deref(), limit),
         Command::StaffMember { uid } => staff_member(&connect(process, ArraySource::ProfileFirst)?, uid),
@@ -2181,13 +2190,35 @@ fn health(session: &Session) -> Result<()> {
     let started = Instant::now();
     let health = session.recheck();
     println!("Checks ({:.0?}):", started.elapsed());
+    print_checks(&health);
+    println!("In-game date: {}", date_line(session));
+    Ok(())
+}
+
+fn print_checks(health: &fmlibre_core::Health) {
     for result in &health.results {
         let verdict = if result.passed { "pass" } else { "FAIL" };
         let note = if result.note.is_empty() { String::new() } else { format!("; {}", result.note) };
         println!("  {verdict}  {:<12} {:>5} of {:>5} fit{note}", result.check.key(), result.fit, result.sampled);
     }
-    println!("In-game date: {}", iso_date(session.game_date()));
-    Ok(())
+}
+
+/// The in-game date, where it was read and how that place was found.
+fn date_line(session: &Session) -> String {
+    match session.date_place() {
+        Some(place) => {
+            format!("{} ({GAME_PLUGIN}+{:#x}, {})", iso_date(session.game_date()), place.rva, place.found.describe())
+        }
+        None => "- (see the gameDate check of `health`)".to_owned(),
+    }
+}
+
+/// Where the static pointer to the retirement manager is, and how it was found.
+fn retirement_line(session: &Session) -> String {
+    match session.retirement_place() {
+        Some(place) => format!("{GAME_PLUGIN}+{:#x} ({})", place.rva, place.found.describe()),
+        None => "not found".to_owned(),
+    }
 }
 
 fn calibrate(session: &Session) -> Result<()> {
@@ -2196,7 +2227,13 @@ fn calibrate(session: &Session) -> Result<()> {
         Some(profile) => println!("Build profile: {}", profile.name),
         None => println!("Build profile: none for this build"),
     }
-    println!("In-game date: {}", iso_date(session.game_date()));
+    println!("In-game date: {}", date_line(session));
+    println!("Retirement manager: {}", retirement_line(session));
+    print_arrays(session);
+    Ok(())
+}
+
+fn print_arrays(session: &Session) {
     let source = if session.arrays.from_profile { "from the build profile, checked" } else { "found by scanning" };
     println!("Entity arrays ({source}):");
     let arrays = &session.arrays;
@@ -2211,7 +2248,195 @@ fn calibrate(session: &Session) -> Result<()> {
             None => println!("  {label:<8} not found"),
         }
     }
+}
+
+/// `profile`: everything looked for as for a build without a profile (the session was connected with
+/// [`ArraySource::ScanOnly`]), checked, and written out as a build profile.
+fn profile(session: &Session, out: Option<&Path>) -> Result<()> {
+    println!("{GAME_PLUGIN} build: {}", session.fingerprint);
+    println!("Game: {}", session.game.name());
+    println!("Everything is looked for as for a build without a profile.");
+    print_arrays(session);
+    let arrays = &session.arrays;
+    let (Some(players), Some(staff), Some(clubs)) = (&arrays.players, &arrays.staff, &arrays.clubs) else {
+        bail!("not every entity array was found, so there is no profile to write");
+    };
+
+    let started = Instant::now();
+    let health = session.recheck();
+    let candidates = fmlibre_core::date_candidates(session);
+    let fitting: Vec<_> = candidates.iter().filter(|place| health.evidence.fit(place.date).holds_strictly()).collect();
+    println!(
+        "In-game date: {} values in the plugin's writable data read as dates, {} of them fit the contracts and the \
+         current injuries ({:.0?}):",
+        candidates.len(),
+        fitting.len(),
+        started.elapsed()
+    );
+    // The values the contracts cannot rule out, the ones that fit among them.
+    for place in candidates.iter().filter(|place| health.evidence.fit(place.date).contracts_hold()) {
+        let fit = health.evidence.fit(place.date);
+        let verdict = if fit.holds_strictly() { "fits" } else { "    " };
+        let beside = if place.found == Found::BesideArrays { "  (the field beside the arrays)" } else { "" };
+        println!(
+            "  {verdict}  {GAME_PLUGIN}+{:#x}  {}  {} of {} contract dates after it, {} of {} injuries fit{beside}",
+            place.rva,
+            iso_date(Some(place.date)),
+            fit.contracts - fit.before,
+            fit.contracts,
+            fit.within,
+            fit.injuries
+        );
+    }
+    println!("  -> {}", date_line(session));
+    if fitting.len() > 1 {
+        println!(
+            "  note: {} places hold the date now. Right after a save is loaded the field beside the arrays is unset, and \
+             perhaps others: run `profile` again then to see which place the game keeps the date in for good.",
+            fitting.len()
+        );
+    }
+
+    let started = Instant::now();
+    let guesses = fmlibre_core::retirement_guesses(session);
+    let guessed: Vec<u64> =
+        guesses.iter().copied().filter(|&rva| fmlibre_core::holds_retirement_manager(session, rva)).collect();
+    let searched = fmlibre_core::search_retirement_manager(session);
+    let hex = |rvas: &[u64]| {
+        if rvas.is_empty() {
+            "none".to_owned()
+        } else {
+            rvas.iter().map(|rva| format!("{GAME_PLUGIN}+{rva:#x}")).collect::<Vec<_>>().join(", ")
+        }
+    };
+    println!("Retirement manager ({:.1} s):", started.elapsed().as_secs_f64());
+    println!(
+        "  as far from the players' array as in other builds: {} of {} guesses hold it",
+        guessed.len(),
+        guesses.len()
+    );
+    println!("  pointers to it in the plugin's writable data: {}", hex(&searched));
+    let agree = guessed.first().is_none_or(|rva| searched.contains(rva));
+    if !agree {
+        println!("  note: the guess and the search disagree");
+    }
+    let retirement = session.retirement_place();
+    let planned = session.planned_retirements().ok().flatten().map(|planned| planned.len());
+    println!(
+        "  -> {}{}",
+        retirement_line(session),
+        planned.map_or_else(String::new, |count| format!(", {count} planned retirements"))
+    );
+
+    println!("Checks with what was found:");
+    print_checks(&health);
+
+    let edition = session.layout.edition;
+    let game = &session.game;
+    let mut name = match (&game.package_version, &game.steam_build) {
+        (Some(version), _) => format!("FM{edition} {version} (Game Pass)"),
+        (None, Some(build)) => format!("FM{edition} Steam build {build}"),
+        (None, None) => game.name(),
+    };
+    if cfg!(target_os = "macos") {
+        name += " (macOS)";
+    }
+    let date = health.date.filter(|place| place.found != Found::BesideArrays);
+    let found = BuildProfile {
+        name,
+        edition,
+        storefront: game.storefront,
+        package_version: game.package_version.clone(),
+        plugin: session.fingerprint,
+        arrays: ArrayRvas { players: players.pair_rva, staff: staff.pair_rva, clubs: clubs.pair_rva },
+        current_date: date.map(|place| place.rva),
+        retirement_manager: retirement.map(|place| place.rva),
+    };
+
+    let failed = health.failed();
+    let checks = if failed.is_empty() {
+        format!("all {} checks passed", health.results.len())
+    } else {
+        let keys: Vec<&str> = failed.iter().map(|check| check.key()).collect();
+        format!("checks that did not pass: {}", keys.join(", "))
+    };
+    let mut notes = ProfileNotes {
+        header: vec![
+            format!("{}, worked out by fmlibre-probe {} on a save", game.name(), env!("CARGO_PKG_VERSION")),
+            format!("of {}: {checks}.", iso_date(health.date.map(|place| place.date))),
+        ],
+        ..ProfileNotes::default()
+    };
+    if let Some(place) = date {
+        let fit = health.evidence.fit(place.date);
+        notes.current_date = vec![
+            format!(
+                "The in-game date, {} on the save: {} of {} contract dates",
+                iso_date(Some(place.date)),
+                fit.before,
+                fit.contracts
+            ),
+            format!("before it, and {} of {} current injuries begun by then and not over.", fit.within, fit.injuries),
+        ];
+    }
+    if let Some(place) = retirement {
+        let before = players.pair_rva.wrapping_sub(place.rva);
+        notes.retirement_manager = vec![
+            "The static pointer to the retirement manager (RETIREMENT_MANAGER),".to_owned(),
+            format!(
+                "{before:#X} before the players pair{}.",
+                planned.map_or_else(String::new, |count| format!("; {count} planned retirements on the save"))
+            ),
+        ];
+    }
+    let text = profile_text(&found, &notes);
+
+    match &session.profile {
+        Some(built_in) => {
+            let mut differences = Vec::new();
+            if built_in.arrays != found.arrays {
+                differences.push(format!("arrays {:x?} built in, {:x?} found", built_in.arrays, found.arrays));
+            }
+            if built_in.current_date != found.current_date {
+                differences.push(format!(
+                    "current_date {} built in, {} found",
+                    hex_or_none(built_in.current_date),
+                    hex_or_none(found.current_date)
+                ));
+            }
+            if built_in.retirement_manager != found.retirement_manager {
+                differences.push(format!(
+                    "retirement_manager {} built in, {} found",
+                    hex_or_none(built_in.retirement_manager),
+                    hex_or_none(found.retirement_manager)
+                ));
+            }
+            if differences.is_empty() {
+                println!("Built-in profile \"{}\": the same places.", built_in.name);
+            } else {
+                println!("Built-in profile \"{}\" differs:", built_in.name);
+                for difference in differences {
+                    println!("  {difference}");
+                }
+            }
+        }
+        None => println!("Built-in profile: none for this build."),
+    }
+    if found.current_date.is_none() && health.date.is_none() {
+        println!("note: no in-game date was found, so the profile leaves it out; see the gameDate check above");
+    }
+    println!();
+    print!("{text}");
+    if let Some(path) = out {
+        std::fs::write(path, &text).with_context(|| format!("writing {}", path.display()))?;
+        println!();
+        println!("Written to {}. Add it to BUILDS in crates/fmlibre-core/src/profile.rs.", path.display());
+    }
     Ok(())
+}
+
+fn hex_or_none(rva: Option<u64>) -> String {
+    rva.map_or_else(|| "none".to_owned(), |rva| format!("{rva:#x}"))
 }
 
 fn players(

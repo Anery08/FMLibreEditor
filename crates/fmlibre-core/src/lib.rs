@@ -18,6 +18,7 @@ mod game;
 mod graphics;
 mod health;
 mod index;
+mod locate;
 mod mass;
 mod medical;
 mod players;
@@ -53,19 +54,22 @@ pub use filter::{
 };
 pub use game::{GAME_EXE, GAME_PLUGIN, GameInfo, Storefront};
 pub use graphics::{GraphicsCounts, GraphicsIndex, Picture};
-pub use health::{Check, CheckResult, Health, Lock, STRUCTURE};
+pub use health::{Check, CheckResult, DateEvidence, DateFit, Health, Lock, STRUCTURE};
 pub use index::{Listed, SearchIndex};
+pub use locate::{
+    DatePlace, Found, Place, date_candidates, holds_retirement_manager, retirement_guesses, search_retirement_manager,
+};
 pub use mass::{Operation, Plan, Planned, Skipped};
 pub use medical::{Ban, HealPlan, Healed, Injury, LiftPlan, Lifted};
 pub use players::{Nation, PLAYABLE_RATING, PlayerIndex, PlayerSummary, is_woman, nations, read_players};
 pub use profile::{
-    ArrayRvas, BuildProfile, ContractLayout, Layout, PlayerLayout, PluginFingerprint, SelectionLayout, StaffLayout,
-    layout_for, profile_for,
+    ArrayRvas, BuildProfile, ContractLayout, Layout, PlayerLayout, PluginFingerprint, ProfileNotes, SelectionLayout,
+    StaffLayout, built_in_profiles, layout_for, profile_for, profile_text,
 };
 pub use relations::{HOMEGROWN_RULES, Relation, RelationPlan, RelationSet, Tie, TieTarget};
 pub use retirement::{PlannedRetirement, RetirementPlan, RetirementSet};
 pub use scan::{ArrayCandidate, ScanOptions, VtableCount, scan_object_arrays};
-pub use session::{ArraySource, Session, SessionError, find_game};
+pub use session::{ArraySource, IGNORE_PROFILES, Session, SessionError, find_game, profiles_ignored};
 pub use squad::{CaptainPlan, CaptainRole, CaptainSet, ClubTeam, Loan, SquadMember};
 pub use staff::{
     STAFF_ATTRIBUTE_GROUPS, StaffContract, StaffDetails, StaffIndex, StaffSummary, job_name, read_staff,
