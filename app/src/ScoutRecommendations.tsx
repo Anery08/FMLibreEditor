@@ -121,9 +121,16 @@ function wholeNumber(typed: string): number | null {
   return Number.isFinite(number) ? Math.round(number) : null;
 }
 
-/** The position to start with: the first line that is missing or thin, else the strikers. */
+/**
+ * The position to start with: the first line that is missing or thin, else one below the squad's level, else an
+ * ageing one, else the strikers. A line that needs nobody may have no one better than its best player to show.
+ */
 export function defaultPosition(overview: ScoutingOverview): string {
-  const needy = overview.report.lines.find((line) => line.status === "missing" || line.status === "thin");
+  const { lines } = overview.report;
+  const needy =
+    lines.find((line) => line.status === "missing" || line.status === "thin") ??
+    lines.find((line) => line.weak) ??
+    lines.find((line) => line.ageing);
   const wanted = needy?.positions[0] ?? "st";
   return overview.positions.some((p) => p.key === wanted) ? wanted : (overview.positions[0]?.key ?? "st");
 }

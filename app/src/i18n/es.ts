@@ -1827,7 +1827,7 @@ export const es: Strings = {
     },
     backToScoutOrder: "Volver al orden del ojeador",
     showMore: (count) => `Mostrar ${format(count)} más`,
-    onLoanAt: (club) => `cedido en ${club}`,
+    playsFor: (club) => `juega en ${club}`,
     empty: "Sin consejos para esta posición con estos ajustes. Prueba con el objetivo Todos o con filtros más amplios.",
     columns: {
       rank: "#",

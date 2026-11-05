@@ -2002,7 +2002,8 @@ export const en = {
     },
     backToScoutOrder: "Back to the scout's order",
     showMore: (count: number) => `Show ${format(count)} more`,
-    onLoanAt: (club: string) => `on loan at ${club}`,
+    /** Under a player whose contract is with another club: the club he plays for, on loan or in its second team. */
+    playsFor: (club: string) => `plays for ${club}`,
     empty: "No advice for this position with these settings. Try the purpose All or looser filters.",
     columns: {
       rank: "#",

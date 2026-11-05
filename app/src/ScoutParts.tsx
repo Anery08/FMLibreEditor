@@ -96,13 +96,13 @@ export function PlayerName({
  */
 export function ClubLine({ player, owner }: { player: PlayerSummary; owner?: { uid: number; name: string } | null }) {
   if (owner) {
-    const title = player.club === null ? owner.name : `${owner.name} · ${text.onLoanAt(player.club)}`;
+    const title = player.club === null ? owner.name : `${owner.name} · ${text.playsFor(player.club)}`;
     return (
       <span className="scout-club-line" title={title}>
         <ClubLogo uid={owner.uid} name={owner.name} size={PICTURE_SIZE.textLogo} />
         <span className="name-text">
           {owner.name}
-          {player.club !== null && <span className="muted"> · {text.onLoanAt(player.club)}</span>}
+          {player.club !== null && <span className="muted"> · {text.playsFor(player.club)}</span>}
         </span>
       </span>
     );

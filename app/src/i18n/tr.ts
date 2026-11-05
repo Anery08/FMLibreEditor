@@ -1758,7 +1758,7 @@ export const tr: Strings = {
     },
     backToScoutOrder: "Gözlemcinin sırasına dön",
     showMore: (count) => `${format(count)} öneri daha göster`,
-    onLoanAt: (club) => `${club} kulübünde kiralık`,
+    playsFor: (club) => `${club} takımında oynuyor`,
     empty: "Bu mevki ve ayarlarla öneri yok. Hedefi Hepsi yapmayı ya da filtreleri gevşetmeyi dene.",
     columns: {
       rank: "#",

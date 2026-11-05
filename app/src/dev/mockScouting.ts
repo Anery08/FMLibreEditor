@@ -210,7 +210,9 @@ export function scoutingOverview(f: ScoutingFixtures): ScoutingOverview {
       if (p.uid % 11 === 0) add("lowMorale", 1, 5);
       const blocked = age <= 21 && p.potentialAbility - p.currentAbility >= 15 && rank > line.target;
       if (blocked) add("blocked", 2, p.potentialAbility);
-      if (priority === 0 || d.onLoan) return;
+      // As the core: low morale alone does not put a regular (one of his line's starters) on the list.
+      const onlyMood = reasons.every((r) => r.code === "unhappy" || r.code === "lowMorale");
+      if (priority === 0 || d.onLoan || (rank <= starters && onlyMood)) return;
       const value = valueOf(p);
       // One fixture player stands for those the game keeps as not for sale.
       const notForSale = p.uid % 7 === 0;
