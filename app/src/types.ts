@@ -945,7 +945,7 @@ export type DepartureAction = "sell" | "loan" | "release";
 /**
  * Why a player could go: `surplus` (value: the players of his line), `belowLevel` (his ability), `ageing` (his age),
  * `expiring` (days left), `highWage` (pounds a week), `unhappy` (his reasons to be), `lowMorale` (1–20), `blocked`
- * (his potential ability), `listed`.
+ * (his potential ability), `unwanted` (squad status surplus to requirements), `listed`.
  */
 export interface DepartureReason {
   code: string;
@@ -1015,9 +1015,9 @@ export interface ScoutRequest {
 
 /**
  * Why a move looks more or less likely: `listed`, `freeAgent`, `expiring` (value: days left), `releaseClause` (pounds),
- * `fringe` / `keyPlayer` (value: squad status code), `overBudget` / `stretch` (pounds over), `wageHigh` (pounds a week
- * over), `biggerClub` / `smallerClub` (his club's reputation), `reputationGap` (his reputation), `ambitious`
- * (ambition), `notForSale`.
+ * `fringe` / `keyPlayer` / `unwanted` (value: squad status code), `overBudget` / `stretch` (pounds over), `wageHigh`
+ * (pounds a week over), `biggerClub` / `smallerClub` (his club's reputation), `reputationGap` (his reputation),
+ * `ambitious` (ambition), `notForSale`.
  */
 export interface Reason {
   code: string;

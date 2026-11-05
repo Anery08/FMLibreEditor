@@ -19,7 +19,7 @@ use crate::clauses::RELEASE_CLAUSE;
 use crate::clubs::ClubSummary;
 use crate::coded::Coded;
 use crate::date::FmDate;
-use crate::details::{ATTRIBUTE_GROUPS, PERSONALITY, read_clauses};
+use crate::details::{ATTRIBUTE_GROUPS, Clause, PERSONALITY, read_clauses};
 use crate::filter::attribute_keys;
 use crate::index::SearchIndex;
 use crate::players::{PlayerIndex, PlayerSummary, club_uid_of_team};
@@ -38,6 +38,39 @@ pub const NOT_FOR_SALE: i32 = 300_000_000;
 /// player is not for sale.
 pub(crate) fn known_value(value: Option<i32>) -> Option<i32> {
     value.filter(|&value| value >= 0 && value != NOT_FOR_SALE)
+}
+
+/// What a contract's squad status says about a player's place at his club. The codes, as the game's English contract
+/// screen names them (Steam build 26340721): 1 Star Player, 2 Important Player, 3 Regular Starter, 4 Squad Player,
+/// 5 Impact Sub, 7 Fringe Player, 9 Emergency Backup, 10 Breakthrough Prospect, 11 Future Prospect, 13 Youngster,
+/// 14 B Team Regular, 15 First-Choice Goalkeeper, 16 Cup Goalkeeper, 17 Domestic Cup Goalkeeper, 20 Backup,
+/// 21 Emergency Backup (goalkeepers), 22 Surplus to Requirements. 6, 8, 12, 18 and 19 were not seen in use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Standing {
+    /// A star, an important player or the first-choice goalkeeper: his club counts on him.
+    Key,
+    /// A regular starter.
+    Regular,
+    /// Not a regular: a squad player, an impact sub, a fringe player, a backup, a cup goalkeeper or a B team regular.
+    Fringe,
+    /// A prospect or a youngster.
+    Prospect,
+    /// Surplus to requirements: his club has no use for him.
+    Surplus,
+}
+
+impl Standing {
+    /// The standing a squad status code gives; none for a code not seen in use.
+    pub(crate) fn of(code: u8) -> Option<Self> {
+        Some(match code {
+            1 | 2 | 15 => Self::Key,
+            3 => Self::Regular,
+            4 | 5 | 7 | 9 | 14 | 16 | 17 | 20 | 21 => Self::Fringe,
+            10 | 11 | 13 => Self::Prospect,
+            22 => Self::Surplus,
+            _ => return None,
+        })
+    }
 }
 
 /// When the team has the ball, or when it has not.
@@ -906,8 +939,8 @@ pub struct ScoutRequest {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Reason {
-    /// `listed`, `freeAgent`, `expiring`, `releaseClause`, `fringe`, `keyPlayer`, `overBudget`, `stretch`,
-    /// `wageHigh`, `biggerClub`, `smallerClub`, `reputationGap`, `ambitious`, `notForSale`.
+    /// `listed`, `freeAgent`, `expiring`, `releaseClause`, `fringe`, `keyPlayer`, `unwanted`, `overBudget`,
+    /// `stretch`, `wageHigh`, `biggerClub`, `smallerClub`, `reputationGap`, `ambitious`, `notForSale`.
     pub code: &'static str,
     /// Its effect on the probability, in points.
     pub points: i32,
@@ -1283,7 +1316,7 @@ impl Session {
         // The club that would sell him: the one his contract is with.
         let seller = owner.or(player.club_uid).and_then(|uid| looking.clubs.get(uid));
         let lent = owner.filter(|&uid| Some(uid) != player.club_uid);
-        let facts = self.facts(player);
+        let facts = self.facts(player, looking.today);
         let (probability, reasons, fee, wage) = probability(player, &facts, seller, looking);
         Suggestion {
             fitting: fitting(player, m),
@@ -1298,8 +1331,8 @@ impl Session {
         }
     }
 
-    /// What decides a move that the player list does not hold.
-    fn facts(&self, player: &PlayerSummary) -> Facts {
+    /// What decides a move that the player list does not hold, on the game's date `today`.
+    fn facts(&self, player: &PlayerSummary, today: Option<FmDate>) -> Facts {
         let p = &self.layout.player;
         let c = &self.layout.contract;
         let at = |offset: u64| player.address + p.at(offset, player.shift);
@@ -1312,10 +1345,10 @@ impl Session {
             Some(contract) => {
                 let wage = self.process.read_u32(contract + c.wage).ok().map(|wage| wage as i32);
                 let status = self.process.read_bytes(contract + c.squad_status, 1).ok().map(|b| b[0]);
-                let clause = read_clauses(&self.process, &self.layout, contract)
-                    .into_iter()
-                    .find(|clause| clause.kind == RELEASE_CLAUSE)
-                    .and_then(|clause| clause.amount);
+                // The day of the year in the low half, the year in the high half.
+                let signed = self.process.read_u32(contract + c.signed).ok();
+                let signed = signed.and_then(|raw| FmDate::from_raw(raw as u16, (raw >> 16) as u16));
+                let clause = release_fee(&read_clauses(&self.process, &self.layout, contract), signed, today);
                 (wage, status, clause)
             }
             None => (None, None, None),
@@ -1341,8 +1374,9 @@ struct Facts {
     ambition: Option<u8>,
     /// Pounds a week.
     wage: Option<i32>,
-    /// The contract's squad status code (1 star player, 2 important player, ... 5 impact sub).
+    /// The contract's squad status code (see [`Standing`]).
     squad_status: Option<u8>,
+    /// The fee a release clause lets a club pay, pounds (see [`release_fee`]).
     release_clause: Option<u32>,
 }
 
@@ -1372,12 +1406,13 @@ fn probability(
             add("listed", 15, None);
             fee = fee.map(|fee| fee * 4 / 5);
         }
-        match facts.squad_status {
-            Some(1 | 2) => {
+        match facts.squad_status.and_then(Standing::of) {
+            Some(Standing::Key) => {
                 add("keyPlayer", -15, facts.squad_status.map(i64::from));
                 fee = fee.map(|fee| fee * 7 / 5);
             }
-            Some(4..=7) => add("fringe", 10, facts.squad_status.map(i64::from)),
+            Some(Standing::Fringe) => add("fringe", 10, facts.squad_status.map(i64::from)),
+            Some(Standing::Surplus) => add("unwanted", 15, facts.squad_status.map(i64::from)),
             _ => fee = fee.map(|fee| fee * 23 / 20),
         }
         match days_left {
@@ -1439,6 +1474,25 @@ fn probability(
 
     let points: i32 = 55 + reasons.iter().map(|reason| reason.points).sum::<i32>();
     (points.clamp(0, 100) as u8, reasons, fee, wage)
+}
+
+/// The fee a release clause of the contract lets a club pay, if one holds: the lowest minimum fee release clause above
+/// nothing whose time has not run out. A release clause's condition, when it has one, is the days from the contract's
+/// start (`signed`) until it expires: one signed on 3 July 2027 with 791 runs out on 1 September 2029, as the game's
+/// contract screen says. A release clause of 0 is left out: the game shows it, but whether it takes a bid of nothing is
+/// not known.
+fn release_fee(clauses: &[Clause], signed: Option<FmDate>, today: Option<FmDate>) -> Option<u32> {
+    let holds = |clause: &&Clause| match (clause.condition, signed, today) {
+        (Some(days), Some(signed), Some(today)) => today < signed.plus_days(i64::from(days)),
+        _ => true,
+    };
+    clauses
+        .iter()
+        .filter(|clause| clause.kind == RELEASE_CLAUSE)
+        .filter(holds)
+        .filter_map(|clause| clause.amount)
+        .filter(|&amount| amount > 0)
+        .min()
 }
 
 /// Days from `from` to `to`, by the calendar.
@@ -1548,6 +1602,48 @@ mod tests {
         assert_eq!(known_value(Some(-1)), None);
         assert_eq!(known_value(Some(NOT_FOR_SALE)), None);
         assert_eq!(known_value(None), None);
+    }
+
+    #[test]
+    fn squad_statuses_by_their_codes() {
+        for (codes, standing) in [
+            (&[1, 2, 15][..], Standing::Key),
+            (&[3], Standing::Regular),
+            (&[4, 5, 7, 9, 14, 16, 17, 20, 21], Standing::Fringe),
+            (&[10, 11, 13], Standing::Prospect),
+            (&[22], Standing::Surplus),
+        ] {
+            for &code in codes {
+                assert_eq!(Standing::of(code), Some(standing), "{code}");
+            }
+        }
+        // Not seen in use.
+        for code in [0, 6, 8, 12, 18, 19, 255] {
+            assert_eq!(Standing::of(code), None, "{code}");
+        }
+    }
+
+    #[test]
+    fn release_clauses_that_hold() {
+        let clause = |kind, amount, condition| Clause { index: 0, kind, amount, condition };
+        let on = |year, month, day| Some(FmDate { year, month, day });
+        let signed = on(2027, 7, 3);
+        // Signed on 3 July 2027 with 791 days: the game says it expires on 1 September 2029.
+        let expiring = [clause(RELEASE_CLAUSE, Some(20_000_000), Some(791))];
+        assert_eq!(release_fee(&expiring, signed, on(2029, 8, 31)), Some(20_000_000));
+        assert_eq!(release_fee(&expiring, signed, on(2029, 9, 1)), None);
+        // Without the dates it is taken to hold.
+        assert_eq!(release_fee(&expiring, None, on(2030, 1, 1)), Some(20_000_000));
+        assert_eq!(release_fee(&expiring, signed, None), Some(20_000_000));
+        // Without a condition it never expires; one of 0 and other kinds are left out; the lowest counts.
+        let list = [
+            clause(RELEASE_CLAUSE, Some(0), None),
+            clause(27, Some(5_000_000), None),
+            clause(RELEASE_CLAUSE, Some(30_000_000), None),
+            clause(RELEASE_CLAUSE, Some(25_000_000), None),
+        ];
+        assert_eq!(release_fee(&list, signed, on(2040, 1, 1)), Some(25_000_000));
+        assert_eq!(release_fee(&list[..2], signed, on(2028, 1, 1)), None);
     }
 
     #[test]

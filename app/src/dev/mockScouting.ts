@@ -210,6 +210,8 @@ export function scoutingOverview(f: ScoutingFixtures): ScoutingOverview {
       if (p.uid % 11 === 0) add("lowMorale", 1, 5);
       const blocked = age <= 21 && p.potentialAbility - p.currentAbility >= 15 && rank > line.target;
       if (blocked) add("blocked", 2, p.potentialAbility);
+      // One fixture player in a few stands for those whose squad status is surplus to requirements.
+      if (p.uid % 13 === 0 && rank > starters) add("unwanted", 3, null);
       // As the core: his mood only adds to other reasons.
       const onlyMood = reasons.every((r) => r.code === "unhappy" || r.code === "lowMorale");
       if (onlyMood || d.onLoan) return;
@@ -283,6 +285,7 @@ function suggestion(f: ScoutingFixtures, player: PlayerSummary, request: ScoutRe
   }
   if (player.uid % 5 === 0) reasons.push({ code: "fringe", points: 10, value: 4 });
   else if (player.uid % 11 === 0) reasons.push({ code: "keyPlayer", points: -15, value: 1 });
+  else if (player.uid % 17 === 0) reasons.push({ code: "unwanted", points: 15, value: 22 });
   if (player.uid % 13 === 0) reasons.push({ code: "expiring", points: 15, value: 140 });
   if (fee !== null && fee > TRANSFER_BUDGET * 1.3) reasons.push({ code: "overBudget", points: -40, value: fee - TRANSFER_BUDGET });
   else if (fee !== null && fee > TRANSFER_BUDGET) reasons.push({ code: "stretch", points: -15, value: fee - TRANSFER_BUDGET });

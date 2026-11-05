@@ -9,7 +9,7 @@ use serde::Serialize;
 use crate::clubs::ClubSummary;
 use crate::details::{POSITIONS, read_player_details};
 use crate::players::{PLAYABLE_RATING, PlayerIndex, PlayerSummary};
-use crate::scouting::{NOT_FOR_SALE, ScoutError, days_between, known_value};
+use crate::scouting::{NOT_FOR_SALE, ScoutError, Standing, days_between, known_value};
 use crate::session::Session;
 use crate::squad::Loan;
 
@@ -271,10 +271,11 @@ impl Session {
             let room = i32::from(p.potential_ability) - i32::from(ability);
             let contract = details.as_ref().and_then(|d| d.contract.as_ref());
             let wage = contract.map(|c| c.wage);
-            // Among the first of his line, or a regular by his contract: a star (1), an important player (2) or a
-            // regular starter (3).
+            // Among the first of his line, or a regular by his contract: a star, an important player, the first-choice
+            // goalkeeper or a regular starter (see `Standing`).
+            let standing = contract.and_then(|c| Standing::of(c.squad_status));
             let first_choice =
-                rank <= starters(line.target) || contract.is_some_and(|c| (1..=3).contains(&c.squad_status));
+                rank <= starters(line.target) || matches!(standing, Some(Standing::Key | Standing::Regular));
 
             let mut reasons = Vec::new();
             let mut priority = 0u8;
@@ -319,6 +320,10 @@ impl Session {
             let blocked = age <= 21 && room >= 15 && !first_choice && rank > line.target;
             if blocked {
                 add("blocked", 2, Some(i64::from(p.potential_ability)));
+            }
+            // His contract says the club has no use for him: surplus to requirements.
+            if standing == Some(Standing::Surplus) {
+                add("unwanted", 3, None);
             }
             if p.transfer_listed {
                 add("listed", 1, None);
