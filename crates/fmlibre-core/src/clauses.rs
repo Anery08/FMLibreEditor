@@ -12,6 +12,7 @@
 
 use fmlibre_mem::is_user_pointer;
 
+use crate::date::FmDate;
 use crate::details::Clause;
 use crate::players::PlayerSummary;
 use crate::session::Session;
@@ -19,6 +20,24 @@ use crate::transfer::{MoveError, Patch, Patches};
 
 /// The kind of a release clause (FMRTE's "Minimum Fee Release Clause"), the one the editor adds.
 pub const RELEASE_CLAUSE: u16 = 0;
+
+/// The kinds of release clause, as the game's English contract screen names them (Steam build 26340721): Minimum Fee
+/// (0), Relegation (1), Non Promotion (2), Minimum Fee for foreign clubs (16), domestic clubs in a higher division
+/// (17), domestic clubs (18), clubs in the UEFA Champions League (27) or in a continental competition (31), and an
+/// Active Relegation Release Clause (55). Their condition, when they have one, is when they expire (see
+/// [`release_clause_expiry`]).
+pub const RELEASE_CLAUSES: [u16; 9] = [0, 1, 2, 16, 17, 18, 27, 31, 55];
+
+/// The day a release clause expires: its condition counts the days from the contract's start (`signed`), and one
+/// without a condition never expires. Ben Schlicke's release clause for domestic clubs in a higher division, signed on
+/// 3 July 2027 with 791, expires on 1 September 2029, as the game's contract screen says. None for another kind of
+/// clause, or when the contract's start is not known.
+pub fn release_clause_expiry(clause: &Clause, signed: Option<FmDate>) -> Option<FmDate> {
+    if !RELEASE_CLAUSES.contains(&clause.kind) {
+        return None;
+    }
+    Some(signed?.plus_days(i64::from(clause.condition?)))
+}
 
 /// The most an amount may be, in pounds: the dearest release clause on the test save was 859,031,872 (a billion
 /// euros), and the most a transfer fee may be is 2 billion.
@@ -238,5 +257,19 @@ mod tests {
         assert!(check(MOST_CLAUSE_AMOUNT.into(), "clause.amount", MOST_CLAUSE_AMOUNT.into()).is_ok());
         assert!(check(i64::from(MOST_CLAUSE_AMOUNT) + 1, "clause.amount", MOST_CLAUSE_AMOUNT.into()).is_err());
         assert!(check(1_001, "clause.condition", MOST_CLAUSE_CONDITION.into()).is_err());
+    }
+
+    #[test]
+    fn release_clauses_expire_days_after_signing() {
+        let date = |year, month, day| FmDate { year, month, day };
+        let clause = |kind, condition| Clause { index: 0, kind, amount: Some(10_000_000), condition };
+        // As the game's contract screen shows them: Ben Schlicke (17, signed 3 July 2027, 791) and Eli Junior Kroupi
+        // (27, signed 15 January 2027, 960) both expire on 1 September 2029.
+        assert_eq!(release_clause_expiry(&clause(17, Some(791)), Some(date(2027, 7, 3))), Some(date(2029, 9, 1)));
+        assert_eq!(release_clause_expiry(&clause(27, Some(960)), Some(date(2027, 1, 15))), Some(date(2029, 9, 1)));
+        // Without a condition it never expires; another kind's condition is no date.
+        assert_eq!(release_clause_expiry(&clause(0, None), Some(date(2027, 7, 3))), None);
+        assert_eq!(release_clause_expiry(&clause(3, Some(10)), Some(date(2027, 7, 3))), None);
+        assert_eq!(release_clause_expiry(&clause(0, Some(791)), None), None);
     }
 }

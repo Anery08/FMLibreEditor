@@ -136,7 +136,7 @@ wage = 0x20               # i32, pounds per week
 signed = 0x44             # date
 expires = 0x48            # date
 joined = 0x4C             # date the player joined the club (Messi: 15 July 2023)
-squad_status = 0x54       # u8 (1 star player, 2 important player, 5 impact sub)
+squad_status = 0x54       # u8 (1 star player, 2 important player, 5 impact sub; see docs/recon/fm27-contracts.md)
 listing = 0x57            # u8; bit 0 transfer listed, bit 1 loan listed
 squad_number = 0x5D       # u8; 255 = none
 team = 0x10               # team pointer (the employer, for staff); its club is at team+0x30
@@ -158,6 +158,11 @@ playing_time_happiness = 0x5C # i8
 # Thibaut Courtois: 1 entry from 17 August 2026, motive 0x39E ("doesn't believe Dean Huijsen deserves the playing
 # time he wants"); Malick Yalcouyé: left out of the UEFA Conference League squad from 4 September (0x254, internal).
 unhappiness = 0x30
+# u8, the kind of contract, as the game's contract screen names it (English UI, Steam build 26340721): 0 Part-Time,
+# 1 Full-Time, 2 Amateur, 3 Youth, 4 Non-Contract, 10 Senior Minimum Salary and 11 Senior (MLS). On one save of 33,670
+# players: 23,506 full-time, 4,472 youth, 1,820 part-time, 1,043 amateur, 932 non-contract (see
+# docs/recon/fm27-contracts.md).
+contract_type = 0xC3
 
 # Static data in game_plugin.dll next to the entity arrays. Offsets are relative to
 # the players (begin, end) pair: the cluster moves as one block between builds.

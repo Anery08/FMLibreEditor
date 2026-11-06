@@ -125,6 +125,13 @@ const PLAYABLE_RATING = 15;
 /** Every eleventh fixture player is a goalkeeper. */
 const isKeeper = (uid: number) => uid % 11 === 0;
 
+/**
+ * The squad status of a fixture contract: `drawn` (1 to 5), but the first-choice goalkeeper (15) for a few keepers,
+ * surplus to requirements (22) or a fringe player (7) for a few others.
+ */
+const squadStatusOf = (uid: number, drawn: number) =>
+  isKeeper(uid) && uid % 2 === 0 ? 15 : uid % 19 === 0 ? 22 : uid % 23 === 0 ? 7 : drawn;
+
 /** How well a fixture player plays each position (1–20): one natural position, a few that come close, the rest low. */
 function positionRatings(next: () => number, keeper: boolean): Record<string, number> {
   const natural = keeper ? "gk" : POSITIONS[1 + Math.floor(next() * (POSITIONS.length - 1))];
@@ -258,7 +265,8 @@ function details(player: PlayerSummary): PlayerDetails {
           signed: { year: 2024, month: 7, day: 1 },
           expires: player.contractExpires,
           joined: { year: 2022, month: 8, day: 15 },
-          squadStatus: 1 + Math.floor(next() * 5),
+          squadStatus: squadStatusOf(player.uid, 1 + Math.floor(next() * 5)),
+          contractType: player.uid % 13 === 0 ? 3 : player.uid % 17 === 0 ? 0 : 1,
           squadNumber: 1 + Math.floor(next() * 40),
           transferListed: next() < 0.1,
           loanListed: false,
@@ -271,6 +279,11 @@ function details(player: PlayerSummary): PlayerDetails {
             { index: 2, kind: 38, amount: Math.round(2000 + next() * 15000), condition: null },
             ...(next() < 0.5 ? [{ index: 3, kind: 0, amount: Math.round(50 + next() * 500) * 1_000_000, condition: null }] : []),
             ...(next() < 0.5 ? [{ index: 4, kind: 22, amount: null, condition: 1 }] : []),
+            // A few kinds more, as the game holds them: a release clause that expires 791 days after the contract's
+            // start, a sell-on clause on the profit over an amount, a new wage after a number of league games.
+            ...(player.uid % 4 === 0 ? [{ index: 5, kind: 17, amount: 30_000_000, condition: 791 }] : []),
+            ...(player.uid % 6 === 0 ? [{ index: 6, kind: 9, amount: 2_147_579, condition: 7 }] : []),
+            ...(player.uid % 10 === 0 ? [{ index: 7, kind: 13, amount: 118_462, condition: 30 }] : []),
           ]),
           // A few players have reasons to be unhappy: one over, and one or two that last.
           concerns:

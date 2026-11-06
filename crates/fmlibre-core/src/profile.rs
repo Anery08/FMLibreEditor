@@ -348,11 +348,16 @@ pub struct ContractLayout {
     pub playing_time_happiness: u64,
     /// Pointer to the record of his reasons to be unhappy: a `u64` count, then that many pointers to 28-byte entries.
     pub unhappiness: u64,
+    /// `u8`, the kind of contract (0 part-time, 1 full-time, 2 amateur, 3 youth, 4 non-contract, 10 and 11 the MLS's
+    /// senior contracts); none in a layout where it has not been checked.
+    #[serde(default)]
+    pub contract_type: Option<u64>,
 }
 
 impl ContractLayout {
     /// One past the last byte of every contract field.
     pub fn end(&self) -> u64 {
+        let contract_type = self.contract_type.map(|offset| offset + 1);
         [
             self.owner + 8,
             self.wage + 4,
@@ -371,6 +376,7 @@ impl ContractLayout {
             self.unhappiness + 8,
         ]
         .into_iter()
+        .chain(contract_type)
         .max()
         .unwrap_or(0)
     }
@@ -835,8 +841,13 @@ mod tests {
         assert_eq!(mac.staff.uid - mac.staff.identity(), windows.staff.uid - windows.staff.identity());
         assert_eq!(mac.player.identity() - mac.player.person_block, mac.staff.identity() - mac.staff.person_block);
 
-        // The records the people point at are laid out alike.
-        assert_eq!(mac.contract.end(), windows.contract.end());
+        // The records the people point at are laid out alike. The kind of contract is left out of a layout until it
+        // has been read on that system; where both have it, it sits at the same place.
+        let without_kind = |c: &ContractLayout| ContractLayout { contract_type: None, ..c.clone() }.end();
+        assert_eq!(without_kind(&mac.contract), without_kind(&windows.contract));
+        if mac.contract.contract_type.is_some() {
+            assert_eq!(mac.contract.contract_type, windows.contract.contract_type);
+        }
         assert_eq!(mac.team.end(), windows.team.end());
         assert_eq!(mac.club_finance.end(), windows.club_finance.end());
         assert_eq!(

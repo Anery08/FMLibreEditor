@@ -143,6 +143,10 @@ loyalty_bonus = 0x38
 happiness = 0x5A
 playing_time_happiness = 0x5C
 unhappiness = 0x30
+# As on Windows. On the Arsenal save (Steam build 26340721, Apple silicon): 21,759 full-time (Mbappé, Haaland),
+# 8,110 youth (16 on average), 1,812 part-time (Lucas Beltrán), 1,176 amateur, 758 non-contract and one 11, Mark
+# McKenzie's MLS senior contract: the players the Windows readings name.
+contract_type = 0xC3
 
 # Relative to the players (begin, end) pair, as on Windows; the static data between them is
 # laid out differently, so this sits 0xC0 further. It read the date in a new game, but an
