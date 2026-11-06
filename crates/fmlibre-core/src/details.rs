@@ -7,7 +7,7 @@ use crate::date::FmDate;
 use crate::medical::{Ban, Injury};
 use crate::players::PlayerSummary;
 use crate::profile::Layout;
-use crate::relations::{ClubOpinion, Relation};
+use crate::relations::Relation;
 
 /// Position ratings in the order FM stores them.
 pub const POSITIONS: [&str; 15] =
@@ -122,9 +122,9 @@ pub struct PlayerDetails {
     /// has room for.
     pub ties: Vec<Relation>,
     pub tie_room: usize,
-    /// The clubs he favours or dislikes, which a tie may take the place of where his list has no room (see
-    /// [`crate::Session::club_opinions`]).
-    pub club_opinions: Vec<ClubOpinion>,
+    /// Whether a tie can be added though his list has no room: the editor grows it (see
+    /// [`crate::Session::relations_grow`]).
+    pub ties_grow: bool,
     /// Whether the editor can read the retirements the game has planned (see
     /// [`crate::Session::planned_retirement`]), and the date he retires on when the game has planned it.
     pub retirement_known: bool,
@@ -333,7 +333,7 @@ pub fn read_player_details(
         bans: Vec::new(),
         ties: Vec::new(),
         tie_room: 0,
-        club_opinions: Vec::new(),
+        ties_grow: false,
         retirement_known: false,
         retires: None,
         clause_room: 0,

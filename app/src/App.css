@@ -4192,8 +4192,8 @@ button.danger:hover:not(:disabled) {
   gap: 6px;
 }
 
-/* Under the clubs he was trained at: Add a club, or the search that picks a club, its rule, and where his list has no
-   room the opinion it takes the place of, with Add and Cancel at its foot. */
+/* Under the clubs he was trained at: Add a club, or the search that picks a club and its rule, with Add and Cancel at
+   its foot. */
 .tie-rows + .heal-toggle,
 .tie-none + .tie-rows + .heal-toggle {
   margin-top: 8px;
@@ -4216,21 +4216,6 @@ button.danger:hover:not(:disabled) {
 
 .tie-pick .move-results-box {
   margin: 0;
-}
-
-/* The (i) of "In place of" opens its note over the row: under it, Add and the dialog's foot would cut it off. */
-.tie-in-place {
-  position: relative;
-}
-
-.tie-in-place .info-tip-note {
-  top: auto;
-  bottom: calc(100% + 6px);
-}
-
-.tie-in-place label {
-  color: var(--muted);
-  font-size: 13px;
 }
 
 .tie-pick-foot {

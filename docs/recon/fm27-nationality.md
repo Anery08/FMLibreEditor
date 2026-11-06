@@ -66,13 +66,23 @@ lists had room for one more entry. Of the 2,283 players trained at no club, 58 h
 favoured or disliked a club (relations 3 and 4), 463 only favoured or disliked people (1 and 2),
 and 984 had none of those.
 
-So a club he was trained at can take the place of a club he favours or dislikes: the entry is
-written over as a new one would be (`plan_relation_replace`), and he no longer has that opinion.
-His relations to people are left alone, because they are kept on both sides: Bukayo Saka's
-list holds Ezri Konsa (relation 1, count 5, value 60), and Konsa's holds Saka with the same
-values. Such an entry points into the person's object, not at its start: a player's at
-`+0x288` (plus his person block's shift: `+0x380` for a player who is also staff), a member of
-staff's at `+0x100` (Saka's other one is Mikel Arteta's).
+None of the 10,655 lists had room past its length: after a load, every list is exactly as long
+as what it holds (`fmlibre-probe relation-kinds`). Their buffers have no header: buffers of 16
+to 160 bytes sit side by side, their own size apart, in blocks the game's allocator carves from
+large regions; above that, in the size classes `layout.toml` names (`relation-blocks`). So no
+other list has a bigger block to lend.
+
+The editor grows a full list on Windows (`plan_relation_add`): it writes the entries and the new
+one into memory of its own (`own_memory.rs`), with room for three more, and points the list's
+begin, end and capacity at it. The old buffer stays as it was; the undo points the list back at
+it. The game reads the list where it points, and keeps it in the save, which it writes from the
+entries; on loading, it makes the list again in its own memory.
+
+Relations to people are kept on both sides: Bukayo Saka's list holds Ezri Konsa (relation 1,
+count 5, value 60), and Konsa's holds Saka with the same values. Such an entry points into the
+person's object, not at its start: a player's at `+0x288` (plus his person block's shift:
+`+0x380` for a player who is also staff), a member of staff's at `+0x100` (Saka's other one is
+Mikel Arteta's).
 
 ## Checked in the game
 

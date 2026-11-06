@@ -14,10 +14,10 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use fmlibre_core::{
     ATTRIBUTE_GROUPS, ArrayCandidate, ArrayRvas, ArraySource, AttributeBound, BuildProfile, Buyer, CaptainRole,
     ClubIndex, Entity, ExportFormat, ExportHeader, Field, FmDate, Found, GAME_EXE, GAME_PLUGIN, GameInfo,
-    GraphicsIndex, Kind, Loan, MoveTerms, Opinion, PERSONALITY, POSITIONS, Picture, PlayerFilter, PlayerIndex,
-    PlayerOrder, PlayerSort, ProfileNotes, Purpose, STAFF_ATTRIBUTE_GROUPS, SUPPORTER_MIX, SUPPORTER_TRAITS, Scale,
-    ScanOptions, ScoutOrder, ScoutRequest, Session, SessionError, StaffIndex, Target, Tie, TieTarget, find_game,
-    job_name, nations, profile_text, scan_object_arrays, sort_players,
+    GraphicsIndex, Kind, Loan, MoveTerms, PERSONALITY, POSITIONS, Picture, PlayerFilter, PlayerIndex, PlayerOrder,
+    PlayerSort, ProfileNotes, Purpose, STAFF_ATTRIBUTE_GROUPS, SUPPORTER_MIX, SUPPORTER_TRAITS, Scale, ScanOptions,
+    ScoutOrder, ScoutRequest, Session, SessionError, StaffIndex, Target, Tie, TieTarget, find_game, job_name, nations,
+    profile_text, scan_object_arrays, sort_players,
 };
 #[cfg(target_os = "macos")]
 use fmlibre_mem::MachImage;
@@ -384,27 +384,10 @@ enum Command {
         #[command(flatten)]
         restore: RestoreArgs,
     },
-    /// Give a player another tie, where his list has room.
+    /// Give a player another tie: where his list has no room, it is grown into memory the editor takes (Windows).
     TieAdd {
         /// The player's UID.
         uid: u32,
-        #[arg(value_enum)]
-        tie: TieArg,
-        /// The UID of the nation, or of the club for a club he was trained at.
-        target: u32,
-        /// The homegrown rule of a training: 1 for 15-21, 2 for 0-21, 5 for 15-21 excluding loans, 10 for 0-19.
-        #[arg(long)]
-        rule: Option<u8>,
-        #[command(flatten)]
-        restore: RestoreArgs,
-    },
-    /// Give a player a tie in place of a club he favours or dislikes (`ties` lists them), where his list has no room
-    /// for another.
-    TieReplace {
-        /// The player's UID.
-        uid: u32,
-        /// The number of the club he favours or dislikes, from `ties`.
-        index: usize,
         #[arg(value_enum)]
         tie: TieArg,
         /// The UID of the nation, or of the club for a club he was trained at.
@@ -935,7 +918,6 @@ fn run(cli: Cli) -> Result<()> {
                 | Command::TieSet { .. }
                 | Command::TieRemove { .. }
                 | Command::TieAdd { .. }
-                | Command::TieReplace { .. }
                 | Command::Captain { .. }
         )
     );
@@ -1058,15 +1040,6 @@ fn run(cli: Cli) -> Result<()> {
                 TieArg::Club => (Tie::TrainedAtClub, TieUid::Club(target)),
             };
             tie_change(&session, uid, Some(TieAction::Add { tie, target, rule }), restore)
-        }
-        Command::TieReplace { uid, index, tie, target, rule, restore } => {
-            let session = connect(process, ArraySource::ProfileFirst)?;
-            let (tie, target) = match tie {
-                TieArg::Nationality => (Tie::Nationality, TieUid::Nation(target)),
-                TieArg::Nation => (Tie::TrainedInNation, TieUid::Nation(target)),
-                TieArg::Club => (Tie::TrainedAtClub, TieUid::Club(target)),
-            };
-            tie_change(&session, uid, Some(TieAction::Replace { index, tie, target, rule }), restore)
         }
         Command::Swap { uid, other, restore } => {
             swap_players(&connect(process, ArraySource::ProfileFirst)?, uid, other, restore)
@@ -1413,7 +1386,7 @@ fn relation_blocks(session: &Session, entries: u64, show: usize) -> Result<()> {
             }
         }
         let mut top: Vec<_> = gaps.into_iter().collect();
-        top.sort_by(|a, b| b.1.cmp(&a.1));
+        top.sort_by_key(|entry| std::cmp::Reverse(entry.1));
         let top: Vec<String> = top.iter().take(5).map(|(gap, n)| format!("{gap}x{n}")).collect();
         println!("  {capacity:>4}: {:>5}  gaps {}", begins.len(), top.join(" "));
     }
@@ -1430,7 +1403,7 @@ fn relation_blocks(session: &Session, entries: u64, show: usize) -> Result<()> {
         *before.entry(word).or_default() += 1;
     }
     let mut top: Vec<_> = before.into_iter().collect();
-    top.sort_by(|a, b| b.1.cmp(&a.1));
+    top.sort_by_key(|entry| std::cmp::Reverse(entry.1));
     println!("the 8 bytes before a buffer of {capacity} bytes, commonest first:");
     for (word, n) in top.iter().take(6) {
         println!("  {word}  x{n}");
@@ -1453,7 +1426,7 @@ fn relation_blocks(session: &Session, entries: u64, show: usize) -> Result<()> {
             *offsets.entry((begin & (chunk - 1)) % stride).or_default() += 1;
         }
         let mut top: Vec<_> = offsets.into_iter().collect();
-        top.sort_by(|a, b| b.1.cmp(&a.1));
+        top.sort_by_key(|entry| std::cmp::Reverse(entry.1));
         let top: Vec<String> = top.iter().take(6).map(|(o, n)| format!("{o}x{n}")).collect();
         println!("  in chunks of {chunk:#x}: offset mod {stride}: {}", top.join(" "));
     }
@@ -1474,11 +1447,20 @@ fn relation_blocks(session: &Session, entries: u64, show: usize) -> Result<()> {
         let at = start + i * stride;
         let bytes = process.read_bytes(at, 16).map(|b| hex(&b)).unwrap_or_else(|_| "unreadable".into());
         let first = process.read_u64(at).unwrap_or(0);
-        let tag = if known.contains(&at) { "list" } else if is_user_pointer(first) && first.abs_diff(at) < 0x100000 { "near ptr" } else { "" };
+        let tag = if known.contains(&at) {
+            "list"
+        } else if is_user_pointer(first) && first.abs_diff(at) < 0x100000 {
+            "near ptr"
+        } else {
+            ""
+        };
         println!("  {at:#x}  {bytes}  {tag}");
     }
     if let Ok(region) = fmlibre_mem::regions(process, start, start + 1).into_iter().next().ok_or(()) {
-        println!("region: base {:#x} size {:#x} allocation base {:#x}", region.base, region.size, region.allocation_base);
+        println!(
+            "region: base {:#x} size {:#x} allocation base {:#x}",
+            region.base, region.size, region.allocation_base
+        );
     }
     Ok(())
 }
@@ -3823,7 +3805,6 @@ enum TieAction {
     Set { index: usize, target: Option<TieUid>, rule: Option<u8> },
     Remove { index: usize },
     Add { tie: Tie, target: TieUid, rule: Option<u8> },
-    Replace { index: usize, tie: Tie, target: TieUid, rule: Option<u8> },
 }
 
 /// Where a relation to a person points into a player's object, and into a member of staff's (Windows).
@@ -4150,11 +4131,6 @@ fn tie_change(session: &Session, uid: u32, action: Option<TieAction>, restore: R
             let rule = tie.rule.map_or(String::new(), |rule| format!(", homegrown rule {rule}"));
             println!("  #{:<3} {kind:<18} {name} (UID {}){rule}", tie.index, tie.target_uid);
         }
-        for opinion in session.club_opinions(player)? {
-            let kind = if opinion.opinion == Opinion::Favoured { "favoured club" } else { "disliked club" };
-            let name = opinion.name.as_deref().unwrap_or("?");
-            println!("  #{:<3} {kind:<18} {name} (UID {})", opinion.index, opinion.target_uid);
-        }
         Ok(())
     };
     show("now")?;
@@ -4175,11 +4151,11 @@ fn tie_change(session: &Session, uid: u32, action: Option<TieAction>, restore: R
         }
         TieAction::Remove { index } => session.plan_relation_removal(player, index)?,
         TieAction::Add { tie, target: by, rule } => session.plan_relation_add(player, tie, target(by)?, rule)?,
-        TieAction::Replace { index, tie, target: by, rule } => {
-            session.plan_relation_replace(player, index, tie, target(by)?, rule)?
-        }
     };
     let done = session.apply_relation(&plan)?;
+    if done.grew {
+        println!("  (the list had no room: grown into memory of the editor's own)");
+    }
     show("changed")?;
     if restore.restore {
         if restore.hold > 0 {

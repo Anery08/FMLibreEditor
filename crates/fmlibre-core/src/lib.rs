@@ -22,6 +22,7 @@ mod loans;
 mod locate;
 mod mass;
 mod medical;
+mod own_memory;
 mod players;
 mod profile;
 mod relations;
@@ -74,7 +75,7 @@ pub use profile::{
     ArrayRvas, BuildProfile, ContractLayout, Layout, PlayerLayout, PluginFingerprint, ProfileNotes, SelectionLayout,
     StaffLayout, TacticLayout, built_in_profiles, layout_for, profile_for, profile_text,
 };
-pub use relations::{ClubOpinion, HOMEGROWN_RULES, Opinion, Relation, RelationPlan, RelationSet, Tie, TieTarget};
+pub use relations::{HOMEGROWN_RULES, Relation, RelationPlan, RelationSet, Tie, TieTarget};
 pub use retirement::{PlannedRetirement, RetirementPlan, RetirementSet};
 pub use scan::{ArrayCandidate, ScanOptions, VtableCount, scan_object_arrays};
 pub use scouting::{

@@ -9,8 +9,8 @@ use fmlibre_core::{
     ArraySource, Buyer, CaptainRole, CaptainSet, Change, Clause, ClauseSet, ClubDetails, ClubFilter, ClubIndex,
     ClubMove, ClubSummary, Coded, EditError, Entity, EntityArrays, ExportFormat, ExportHeader, FeePlan, Field, FmDate,
     GAME_EXE, GAME_PLUGIN, GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind,
-    LOAN_EXPIRES, LOAN_OPTION_FEE, Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation, Operation, Opinion,
-    Paid, Picture, Planned, PlayerDetails, PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary, ROLES, RelationSet,
+    LOAN_EXPIRES, LOAN_OPTION_FEE, Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation, Operation, Paid,
+    Picture, Planned, PlayerDetails, PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary, ROLES, RelationSet,
     RetirementSet, Role, SCOUT_POSITIONS, STAFF_JOBS, ScoutError, ScoutPosition, ScoutRequest, Scouted, SearchIndex,
     Session, SessionError, Skipped, SquadReport, StadiumName, StadiumRename, StaffChange, StaffDetails, StaffFilter,
     StaffIndex, StaffOrder, StaffPlan, Target, Tie, TieTarget, find_game, nations, sort_players, sort_staff,
@@ -915,14 +915,7 @@ impl Connection {
             batch: None,
             moved: None,
             captaincy: None,
-            tie: Some(TieChange {
-                from: end(&done.before),
-                to: end(&done.after),
-                replaced: done.replaced.as_ref().map(|opinion| OpinionEnd {
-                    opinion: opinion.opinion,
-                    name: opinion.name.clone().unwrap_or_else(|| opinion.target_uid.to_string()),
-                }),
-            }),
+            tie: Some(TieChange { from: end(&done.before), to: end(&done.after) }),
             clause: None,
             recall: None,
             stadium: None,
@@ -1510,9 +1503,6 @@ struct LoggedStaff {
 struct TieChange {
     from: Option<TieEnd>,
     to: Option<TieEnd>,
-    /// For a tie given in place of a club the player favoured or disliked: that.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    replaced: Option<OpinionEnd>,
 }
 
 /// The nation or club of a tie, and its homegrown rule for a training.
@@ -1521,14 +1511,6 @@ struct TieChange {
 struct TieEnd {
     name: String,
     rule: Option<u8>,
-}
-
-/// A club a player favoured or disliked, which a tie took the place of.
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct OpinionEnd {
-    opinion: Opinion,
-    name: String,
 }
 
 /// A contract clause before and after a change: none before for one added, none after for one taken out.
@@ -2941,7 +2923,8 @@ fn remove_tie(state: State<'_, AppState>, uid: u32, index: usize) -> Result<Logg
 }
 
 /// Gives the player `uid` a tie of `tie` to the nation or club with the UID `target`, under the homegrown rule
-/// `rule` for a training, where his list has room. Logged and undone like any change.
+/// `rule` for a training: where his list has no room, it is grown (see `relations.rs`). Logged and undone like any
+/// change.
 #[tauri::command]
 fn add_tie(
     state: State<'_, AppState>,
@@ -2961,33 +2944,6 @@ fn add_tie(
         TieTarget::Nation(&nation)
     };
     let plan = connection.session.plan_relation_add(player, tie, target, rule)?;
-    let done = connection.session.apply_relation(&plan)?;
-    Ok(connection.log_tie(done))
-}
-
-/// Gives the player `uid` a tie of `tie` to the nation or club with the UID `target`, under the homegrown rule `rule`
-/// for a training, in place of the club he favours or dislikes at `index` in his list: for a list with no room for
-/// another. Logged and undone like any change; the undo gives him back what he thought of that club.
-#[tauri::command]
-fn replace_tie(
-    state: State<'_, AppState>,
-    uid: u32,
-    index: usize,
-    tie: Tie,
-    target: u32,
-    rule: Option<u8>,
-) -> Result<LoggedChange, Failure> {
-    let mut guard = state.0.lock()?;
-    let connection = guard.as_mut().ok_or_else(not_connected)?;
-    let player = connection.players.get(uid).ok_or_else(|| not_found(Entity::Player, uid))?;
-    let nation;
-    let target = if tie == Tie::TrainedAtClub {
-        TieTarget::Club(connection.clubs.get(target).ok_or_else(|| not_found(Entity::Club, target))?)
-    } else {
-        nation = connection.nation(target)?;
-        TieTarget::Nation(&nation)
-    };
-    let plan = connection.session.plan_relation_replace(player, index, tie, target, rule)?;
     let done = connection.session.apply_relation(&plan)?;
     Ok(connection.log_tie(done))
 }
@@ -3528,7 +3484,6 @@ pub fn run() {
             change_tie,
             remove_tie,
             add_tie,
-            replace_tie,
             change_clause,
             remove_clause,
             add_release_clause,

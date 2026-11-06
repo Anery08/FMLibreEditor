@@ -548,9 +548,6 @@ function ChangeRow({ change, field, failure, undoing, onUndo, inBatch }: ChangeR
         {change.recall !== undefined && (
           <div className="sub">{text.optionRemoved(formatMoney(change.recall.optionFee))}</div>
         )}
-        {change.tie?.replaced !== undefined && (
-          <div className="sub">{text.replacedOpinion(change.tie.replaced.opinion, change.tie.replaced.name)}</div>
-        )}
         {captaincyNotes(change).map((note) => (
           <div key={note} className="sub">
             {note}

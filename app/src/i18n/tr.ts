@@ -151,7 +151,6 @@ const errors: ErrorTexts = {
     "Oyuncunun listesinde yer yok ve düzenleyici listeyi büyütemiyor; bunun yerine kayıtlardan birini değiştirin.",
   "relation.target": () => "Bu, bu kaydın alabileceği türde oyundaki bir ülke ya da kulüp değil.",
   "relation.same": () => "Oyuncuda bu zaten var.",
-  "relation.noOpinion": () => `Bu, oyuncunun sevdiği ya da sevmediği bir kulüp değil; ${reload}.`,
   "relation.rule": (p) => `${p.rule} numaralı yerli kuralı, düzenleyicinin yazdığı kurallardan değil.`,
   "staff.you": () => "Bu sizsiniz, yönettiğiniz teknik direktör.",
   "staff.unemployed": () => "Bu personelin bir kulübü yok.",
@@ -1220,8 +1219,6 @@ export const tr: Strings = {
     released: (name) => `${name} serbest bırakıldı`,
     fee: (amount) => `Bedel ${amount}`,
     optionRemoved: (amount) => `Satın alma opsiyonu (${amount}) kaldırıldı`,
-    replacedOpinion: (opinion, name) =>
-      opinion === "favoured" ? `Sevdiği kulüp ${name} yerine` : `Sevmediği kulüp ${name} yerine`,
     healed: (count) => `${format(count)} sakatlık iyileştirildi`,
     lifted: (count) => `${format(count)} ceza kaldırıldı`,
     keptPlaying: (date) => (date === null ? "Oynamaya devam edecek" : `${date} tarihli emeklilik engellendi`),
@@ -1586,8 +1583,7 @@ export const tr: Strings = {
     hint: "Her değişiklik oyuna hemen yazılır ve Değişiklikler bölümünde listelenir; oradan geri alınabilir.",
     full:
       "Oyun bu oyuncunun listesini, tuttuğu kayıtlar kadar ayırmış: bir uyruk ya da yetiştiği yer değiştirilebilir " +
-      "veya kaldırılabilir, sevdiği ya da sevmediği bir kulübün yerine yetiştiği kulüp eklenebilir; başka bir şey " +
-      "eklenemez.",
+      "veya kaldırılabilir, ama yenisi eklenemez.",
     nationOf: (name) => `${name} yerine ülke`,
     ruleOf: (name) => `${name} için yerli kuralı`,
     remove: "Kaldır",
@@ -1604,17 +1600,6 @@ export const tr: Strings = {
     newClub: "Yeni kulüp",
     pickAnother: "Başkasını seç",
     newClubRule: "Yeni kulübün yerli kuralı",
-    inPlaceOf: "Şunun yerine",
-    opinion: (opinion, name) => (opinion === "favoured" ? `Sevdiği kulüp: ${name}` : `Sevmediği kulüp: ${name}`),
-    inPlaceOfInfoLabel: "Neden başka bir kaydın yerine?",
-    inPlaceOfInfo:
-      "Oyun bu oyuncunun listesini tuttuğu kayıtlar kadar ayırmış ve FMLibreEditor listeyi büyütmüyor. Bu yüzden " +
-      "yeni kulüp, sevdiği ya da sevmediği bir kulübün yerine yazılır: o kulüp hakkındaki görüşü gider, başka hiçbir " +
-      "şey değişmez. Kişilerle ilişkilerine dokunulmaz, çünkü aynı ilişki karşı tarafın listesinde de durur. " +
-      "Değişikliği geri almak görüşü geri verir.",
-    noOpinion:
-      "Listesinde yer yok ve yerine yeni kulüp yazılabilecek sevdiği ya da sevmediği bir kulüp de yok: bunun yerine " +
-      "kulüplerinden birini değiştirin.",
     cancel: "Vazgeç",
     working: "Oyuna yazılıyor…",
     close: "Kapat",

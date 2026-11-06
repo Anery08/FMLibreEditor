@@ -6,9 +6,8 @@
 import { useContext, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ClubSearch } from "./ClubSearch";
-import { addTie, changeTie, homegrownRules, listNations, removeTie, replaceTie } from "./editing";
+import { addTie, changeTie, homegrownRules, listNations, removeTie } from "./editing";
 import { describeError } from "./format";
-import { InfoTip } from "./InfoTip";
 import { tieText as text } from "./labels";
 import { ClubLine } from "./MoveDialog";
 import { ClubLogo, NationFlag, PICTURE_SIZE, WithPicture } from "./Picture";
@@ -117,10 +116,9 @@ type Picking = { kind: "change"; tie: Tie } | { kind: "add" } | null;
 
 /**
  * The player's ties with the controls that change them: a nation's select and a training's rule, Remove, and rows
- * that add a nationality or a nation where his list has room. A club he was trained at is changed, and one added, with
- * a search for the club; where his list has no room, the new club takes the place of a club he favours or dislikes. A
- * write keeps every control busy until the profile has read the game again; then the dialog shows the ties the game
- * holds.
+ * that add a nationality, a nation or a club, where his list has room or the app grows it (Windows). A club he was
+ * trained at is changed, and one added, with a search for the club. A write keeps every control busy until the profile
+ * has read the game again; then the dialog shows the ties the game holds.
  */
 function TiesDialog({ details, onClose }: TiesDialogProps) {
   const { onEdited } = useContext(EditorContext);
@@ -137,11 +135,10 @@ function TiesDialog({ details, onClose }: TiesDialogProps) {
   // The nation and rule of the row that adds a training.
   const [newNation, setNewNation] = useState("");
   const [newRule, setNewRule] = useState(1);
-  // The club search that is open, the club picked to add, its rule, and the club opinion it takes the place of.
+  // The club search that is open, the club picked to add, and its rule.
   const [picking, setPicking] = useState<Picking>(null);
   const [newClub, setNewClub] = useState<ClubSummary | null>(null);
   const [newClubRule, setNewClubRule] = useState(1);
-  const [inPlaceOf, setInPlaceOf] = useState<number | null>(null);
 
   useModal(dialog, !busy, onClose);
 
@@ -205,7 +202,6 @@ function TiesDialog({ details, onClose }: TiesDialogProps) {
       setNewNation("");
       setPicking(null);
       setNewClub(null);
-      setInPlaceOf(null);
       // The game has changed: the lists, the profile and the change log read it again.
       onEdited();
     } catch (e) {
@@ -300,21 +296,12 @@ function TiesDialog({ details, onClose }: TiesDialogProps) {
     );
   };
 
-  const room = details.tieRoom > 0;
-  const opinions = details.clubOpinions;
-  // Where his list has no room, the club he favours or dislikes whose place the new club takes: the first, unless
-  // another was picked.
-  const replacing = room ? null : (opinions.find((opinion) => opinion.index === inPlaceOf) ?? opinions[0] ?? null);
-  const canAddClub = newClub !== null && (room || replacing !== null);
+  // A tie can be added where his list has room, or where the app grows it.
+  const room = details.tieRoom > 0 || details.tiesGrow;
   const addClub = () => {
-    if (newClub === null) {
-      return;
+    if (newClub !== null) {
+      void write(() => addTie(uid, "trainedAtClub", newClub.uid, newClubRule));
     }
-    void write(() =>
-      replacing === null
-        ? addTie(uid, "trainedAtClub", newClub.uid, newClubRule)
-        : replaceTie(uid, replacing.index, "trainedAtClub", newClub.uid, newClubRule),
-    );
   };
   const stopPicking = () => {
     const was = picking;
@@ -374,27 +361,8 @@ function TiesDialog({ details, onClose }: TiesDialogProps) {
               {ruleOptions(null)}
             </select>
           </div>
-          {!room && replacing !== null && (
-            <div className="tie-row tie-in-place">
-              <label htmlFor={id("in-place-of")}>{text.inPlaceOf}</label>
-              <select
-                id={id("in-place-of")}
-                value={replacing.index}
-                disabled={busy}
-                onChange={(e) => setInPlaceOf(Number(e.currentTarget.value))}
-              >
-                {opinions.map((opinion) => (
-                  <option key={opinion.index} value={opinion.index}>
-                    {text.opinion(opinion.opinion, opinion.name ?? String(opinion.targetUid))}
-                  </option>
-                ))}
-              </select>
-              <InfoTip label={text.inPlaceOfInfoLabel} note={text.inPlaceOfInfo} />
-            </div>
-          )}
-          {!room && replacing === null && <p className="move-note">{text.noOpinion}</p>}
           <div className="tie-pick-foot">
-            <button type="button" className="primary" disabled={busy || !canAddClub} onClick={addClub}>
+            <button type="button" className="primary" disabled={busy || newClub === null} onClick={addClub}>
               {text.add}
             </button>
             <button type="button" disabled={busy} onClick={stopPicking}>
@@ -403,6 +371,9 @@ function TiesDialog({ details, onClose }: TiesDialogProps) {
           </div>
         </div>
       );
+    }
+    if (!room) {
+      return null;
     }
     return (
       <button

@@ -512,8 +512,8 @@ export interface PlayerDetails extends PlayerSummary {
   ties: Tie[];
   /** How many more ties his list has room for: the game sizes it to what it holds, and the editor allocates nothing. */
   tieRoom: number;
-  /** The clubs he favours or dislikes, which a new tie can take the place of where his list has no room (`replaceTie`). */
-  clubOpinions: ClubOpinion[];
+  /** Whether a tie can be added though his list has no room: the editor grows it (Windows). */
+  tiesGrow: boolean;
   /** Whether the editor can read the retirements the game has planned in this version of the game. */
   retirementKnown: boolean;
   /** The date the game plans him to retire on; null when it has planned none (or `retirementKnown` is false). */
@@ -590,18 +590,6 @@ export interface Tie {
   name: string | null;
   /** For a training, the homegrown rule it meets, by the game's code (see `homegrownRules`). */
   rule: number | null;
-}
-
-/** What a player thinks of a club. */
-export type Opinion = "favoured" | "disliked";
-
-/** A club a player favours or dislikes, which a new tie can take the place of. */
-export interface ClubOpinion {
-  /** Where it is in his list: what `replaceTie` names. */
-  index: number;
-  opinion: Opinion;
-  targetUid: number;
-  name: string | null;
 }
 
 /** One current injury of a player. */
@@ -725,8 +713,6 @@ export interface LoggedChange {
   tie?: {
     from: { name: string; rule: number | null } | null;
     to: { name: string; rule: number | null } | null;
-    /** For a tie given in place of a club he favoured or disliked (`replaceTie`): that, which the undo gives back. */
-    replaced?: { opinion: Opinion; name: string };
   };
   /**
    * Set for a change to a player's contract clauses (`change_clause`, `remove_clause`, `add_release_clause`), which is

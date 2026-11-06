@@ -1,24 +1,29 @@
-// Clubs a player was trained at: one pointed at another club, and one added in place of a club he favours or
-// dislikes where his list has no room, each read back by the probe and undone. A tie cannot take the place of a
-// relation that is not such a club. Then the same through his profile's dialog: Change club, the search, the club
-// picked.
+// Clubs a player was trained at: one pointed at another club, and one added to a list with no room, which the app
+// grows into memory of its own, each read back by the probe and undone (the grown list points back at its old buffer).
+// Then the same through his profile's dialog: Change club, the search, the club picked.
 import { SHOWN, VIS, sleep } from "../lib/app.mjs";
 import { findPlayer, topClubs } from "../lib/witness.mjs";
 
 export const name = "ties";
 export const writes = true;
 
-/** The clubs he was trained at, and those he favours or dislikes, as the probe's `ties` lists them, by their place. */
+/** The clubs he was trained at, as the probe's `ties` lists them, by their place. */
 function probedTies(probe, uid) {
   const ties = new Map();
   for (const line of probe.run(["ties", uid]).split(/\r?\n/)) {
-    const match = line.match(/^\s+#(\d+)\s+(trained at club|favoured club|disliked club)\s+.*\(UID (\d+)\)(?:, homegrown rule (\d+))?/);
+    const match = line.match(/^\s+#(\d+)\s+(trained at club)\s+.*\(UID (\d+)\)(?:, homegrown rule (\d+))?/);
     if (match) {
       const [, index, kind, target, rule] = match;
       ties.set(Number(index), { kind, target: Number(target), rule: rule === undefined ? null : Number(rule) });
     }
   }
   return ties;
+}
+
+/** How many ties the probe reads, and how many more his list has room for. */
+function probedRoom(probe, uid) {
+  const match = probe.run(["ties", uid]).match(/: (\d+) tie\(s\), room for (\d+) more/);
+  return match ? { ties: Number(match[1]), room: Number(match[2]) } : null;
 }
 
 /** What the probe reads at `index` in his list, as one line for a report. */
@@ -50,46 +55,32 @@ export async function run({ app, report, probe }) {
     report.check("the undo puts his club back", at(probe, player.uid, tie.index) === `trained at club ${tie.targetUid} rule ${tie.rule}`, at(probe, player.uid, tie.index));
   }
 
-  // A club added in place of one he favours or dislikes, where his list has no room.
-  const full = await findPlayer(app, (details) => details.tieRoom === 0 && details.clubOpinions.length > 0);
+  // A club added to a list with no room: the app grows it.
+  const full = await findPlayer(app, (details) => details.tieRoom === 0 && details.tiesGrow);
   if (!full) {
-    report.skip("adds a club in place of an opinion", "no player with a full list and a club he favours or dislikes");
+    report.skip("adds a club to a full list", "no player with a full list among the best known clubs");
   } else {
     const { player } = full;
-    const opinion = player.clubOpinions[0];
     const club = clubs.find((c) => !player.ties.some((t) => t.tie === "trainedAtClub" && t.targetUid === c.uid));
-    report.note(`witness: ${player.name} (${player.uid}), #${opinion.index} ${opinion.opinion} ${opinion.name} (${opinion.targetUid})`);
-    const was = at(probe, player.uid, opinion.index);
-    report.check("the probe reads the opinion the app reads", was === `${opinion.opinion} club ${opinion.targetUid}`, was);
-    const added = await app.invoke("add_tie", { uid: player.uid, tie: "trainedAtClub", target: club.uid, rule: 1 });
-    report.check("adding is refused, the list being full", !added.ok && added.error.code === "relation.noRoom", added.ok ? "added" : added.error.code);
-    const wrong = player.ties[0];
-    if (wrong) {
-      const refused = await app.invoke("replace_tie", { uid: player.uid, index: wrong.index, tie: "trainedAtClub", target: club.uid, rule: 1 });
-      report.check(
-        "a tie cannot take the place of a relation that is not a club he favours or dislikes",
-        !refused.ok && refused.error.code === "relation.noOpinion",
-        refused.ok ? "written" : refused.error.code,
-      );
-    }
-    const replaced = await app.must("replace_tie", { uid: player.uid, index: opinion.index, tie: "trainedAtClub", target: club.uid, rule: 1 });
+    const was = probedRoom(probe, player.uid);
+    report.note(`witness: ${player.name} (${player.uid}), ${was?.ties} ties, room for ${was?.room}`);
+    const added = await app.must("add_tie", { uid: player.uid, tie: "trainedAtClub", target: club.uid, rule: 1 });
+    const ties = (await app.must("player_details", { uid: player.uid })).ties;
+    const index = ties.find((t) => t.tie === "trainedAtClub" && t.targetUid === club.uid)?.index;
+    const now = probedRoom(probe, player.uid);
     report.check(
-      "a club takes the opinion's place, as the probe reads it",
-      at(probe, player.uid, opinion.index) === `trained at club ${club.uid} rule 1`,
-      `${was} → ${at(probe, player.uid, opinion.index)}`,
+      "adds a club to his full list, as the probe reads it",
+      index != null && at(probe, player.uid, index) === `trained at club ${club.uid} rule 1`,
+      index == null ? "not in his profile" : at(probe, player.uid, index),
     );
     report.check(
-      "the change log says what it took the place of",
-      replaced.tie?.replaced?.opinion === opinion.opinion && replaced.tie?.replaced?.name === opinion.name,
-      JSON.stringify(replaced.tie?.replaced ?? null),
+      "the list grew, with room for a few more",
+      was !== null && now !== null && now.ties === was.ties + 1 && now.room > 0,
+      `${JSON.stringify(was)} → ${JSON.stringify(now)}`,
     );
-    const after = await app.must("player_details", { uid: player.uid });
-    report.check(
-      "his profile lists the club, and the opinion no more",
-      after.ties.some((t) => t.index === opinion.index && t.targetUid === club.uid) && !after.clubOpinions.some((o) => o.index === opinion.index),
-    );
-    await app.must("undo_change", { id: replaced.id });
-    report.check("the undo gives the opinion back", at(probe, player.uid, opinion.index) === was, at(probe, player.uid, opinion.index));
+    await app.must("undo_change", { id: added.id });
+    const back = probedRoom(probe, player.uid);
+    report.check("the undo gives him his list as it was", JSON.stringify(back) === JSON.stringify(was), JSON.stringify(back));
   }
 
   // The same through the dialog: Change club, the search, Enter on the club found.
