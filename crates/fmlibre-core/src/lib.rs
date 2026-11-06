@@ -33,6 +33,7 @@ mod selection;
 mod session;
 mod squad;
 mod squad_report;
+mod stadium_name;
 mod staff;
 mod staff_move;
 mod text;
@@ -84,6 +85,7 @@ pub use scouting::{
 pub use session::{ArraySource, IGNORE_PROFILES, Session, SessionError, find_game, profiles_ignored};
 pub use squad::{CaptainPlan, CaptainRole, CaptainSet, ClubTeam, Loan, SquadMember};
 pub use squad_report::{Departure, DepartureAction, DepartureReason, DepthLine, DepthPlayer, DepthStatus, SquadReport};
+pub use stadium_name::{StadiumName, StadiumRename};
 pub use staff::{
     STAFF_ATTRIBUTE_GROUPS, StaffContract, StaffDetails, StaffIndex, StaffSummary, job_name, read_staff,
     read_staff_details,

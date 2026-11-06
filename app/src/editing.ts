@@ -25,6 +25,7 @@ import type {
   MoveTerms,
   Nation,
   RoomMaker,
+  StadiumName,
   TeamAction,
   TeamFreeze,
   TieKind,
@@ -360,3 +361,15 @@ export const scoutingOverview = () => call<ScoutingOverview>("scouting_overview"
 
 /** Players a scout would recommend for the position `request` describes, for the human manager's club. */
 export const scoutingSuggest = (request: ScoutRequest) => call<Scouted>("scouting_suggest", { request });
+
+/**
+ * The name of the stadium the club plays at, with the names it can take in place (see `StadiumName`). Only reads the
+ * game.
+ */
+export const stadiumName = (club: number) => call<StadiumName>("stadium_name", { club });
+
+/**
+ * Renames the stadium the club plays at, in the block the game gave its name: `name` must take as many bytes as
+ * `stadiumName` allows. Logged and undone like any change.
+ */
+export const renameStadium = (club: number, name: string) => call<LoggedChange>("rename_stadium", { club, name });

@@ -122,14 +122,16 @@ export interface ExportReport {
 
 /**
  * What connecting froze again of what the app remembers as frozen in this save: the players' attributes, their energy
- * and match sharpness (`fitness`), the attributes of staff, and the clubs' money, by name, and how many it left for
- * later, still remembered (FMLibreEditor cannot write to this version of the game yet, or a check did not pass).
+ * and match sharpness (`fitness`), the attributes of staff, and the clubs' money, by name, the stadiums given the names
+ * the editor gave them again, by those names, and how many it left for later, still remembered (FMLibreEditor cannot
+ * write to this version of the game yet, or a check did not pass).
  */
 export interface Refrozen {
   players: string[];
   staff: string[];
   clubs: string[];
   fitness: string[];
+  stadiums: string[];
   waiting: number;
 }
 
@@ -227,6 +229,20 @@ export interface Stadium {
   used: number;
   /** The most it can be expanded to. */
   expansion: number;
+}
+
+/**
+ * A stadium's name as `stadium_name` reads it, with the names it can take: `minBytes` to `maxBytes` bytes of UTF-8.
+ * On Windows any name up to 80 bytes, written over the old one when it fits its block or given a string of its own;
+ * where the editor cannot take memory in the game (macOS), only one that keeps the size of the old one's block, and
+ * only for a name the stadium alone holds (`holders` 1).
+ */
+export interface StadiumName {
+  name: string;
+  holders: number;
+  renamable: boolean;
+  minBytes: number;
+  maxBytes: number;
 }
 
 /** A manager, coach, scout, director or other non-playing person. */
@@ -720,6 +736,14 @@ export interface LoggedChange {
   clause?: {
     from: Clause | null;
     to: Clause | null;
+  };
+  /**
+   * Set for a stadium renamed (`rename_stadium`), logged as a change of the club's field `stadium.name` from one length
+   * in bytes to the other: the names.
+   */
+  stadium?: {
+    from: string;
+    to: string;
   };
   /**
    * Set for a recall from loan (`recall_loan`, logged as a change of `loan.expires`) that took the loan's option to buy

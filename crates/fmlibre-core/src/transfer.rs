@@ -260,6 +260,20 @@ pub enum MoveError {
     UnusualJob {
         job: u8,
     },
+    /// The club's senior team plays at no stadium the editor can read.
+    NoStadium,
+    /// Other objects of the game hold the stadium's name too: changed in place, it would change for them as well.
+    SharedName {
+        holders: u32,
+    },
+    /// The new name does not fit the block the game gave the old one: it must take `min` to `max` bytes of UTF-8.
+    NameLength {
+        min: usize,
+        max: usize,
+        bytes: usize,
+    },
+    /// The new name is empty, has spaces at its ends, or holds a control character.
+    BadName,
     /// The editor cannot find the retirements the game has planned in this build, or they do not check out.
     NoRetirements,
     /// Keeping a player from retiring asked for one the game has not planned to retire who already has the traits.
@@ -351,6 +365,19 @@ impl fmt::Display for MoveError {
                 Some(name) => write!(f, "the editor does not yet move staff whose job is {name}, or give that job"),
                 None => write!(f, "the editor does not yet move staff whose job is {job}, or give that job"),
             },
+            MoveError::NoStadium => f.write_str("the club's first team plays at no stadium the editor can read"),
+            MoveError::SharedName { holders } => write!(
+                f,
+                "{holders} things in the game share this stadium's name, so it cannot be changed for the stadium alone"
+            ),
+            MoveError::NameLength { min, max, bytes } => write!(
+                f,
+                "a new name for this stadium must take {min} to {max} bytes, to fit where the game keeps its name; \
+                 this one takes {bytes}"
+            ),
+            MoveError::BadName => {
+                f.write_str("a stadium's name cannot be empty, start or end with a space, or hold control characters")
+            }
             MoveError::NoRetirements => {
                 f.write_str("the editor cannot find the retirements the game has planned in this version of the game")
             }
@@ -410,6 +437,10 @@ impl Coded for MoveError {
             MoveError::NotInDepartment => "staff.notListed",
             MoveError::DepartmentFull { .. } => "staff.noRoom",
             MoveError::UnusualJob { .. } => "staff.job",
+            MoveError::NoStadium => "stadium.none",
+            MoveError::SharedName { .. } => "stadium.shared",
+            MoveError::NameLength { .. } => "stadium.nameLength",
+            MoveError::BadName => "stadium.badName",
             MoveError::NoRetirements => "retirement.unknown",
             MoveError::NotRetiring => "retirement.none",
             MoveError::NoContract => "clause.noContract",
@@ -440,6 +471,10 @@ impl Coded for MoveError {
                 vec![("department", (*department).to_owned()), ("staff", staff.to_string())]
             }
             MoveError::UnusualJob { job } => vec![("job", job.to_string())],
+            MoveError::SharedName { holders } => vec![("holders", holders.to_string())],
+            MoveError::NameLength { min, max, bytes } => {
+                vec![("min", min.to_string()), ("max", max.to_string()), ("bytes", bytes.to_string())]
+            }
             MoveError::NoRelation { index } | MoveError::NoClause { index } | MoveError::NoOpinion { index } => {
                 vec![("index", index.to_string())]
             }

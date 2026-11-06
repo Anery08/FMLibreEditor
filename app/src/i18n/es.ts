@@ -283,6 +283,11 @@ const errors: ErrorTexts = {
   "staff.noRoom": (p) =>
     `La lista ${STAFF_DEPARTMENTS[p.department] ?? `de ${p.department}`} del club no tiene sitio para nadie más ` +
     `(ahora ${p.staff}) y el editor no puede ampliarla.`,
+  "stadium.none": () => "No se puede leer el estadio en el que juega el primer equipo del club.",
+  "stadium.shared": (p) => `${p.holders} cosas del juego comparten este nombre; no se puede cambiar solo para el estadio.`,
+  "stadium.nameLength": (p) =>
+    `El nuevo nombre de este estadio debe ocupar de ${p.min} a ${p.max} bytes para caber donde el juego lo guarda; este ocupa ${p.bytes}.`,
+  "stadium.badName": () => "El nombre de un estadio no puede estar vacío, empezar o acabar con un espacio ni tener caracteres de control.",
   "staff.job": (p) => `El editor todavía no mueve al personal con el puesto de ${jobName(p.job)} ni da ese puesto.`,
   "squad.noTeam": () => `El club no tiene ese equipo o no supera la comprobación; ${reload}.`,
   "captain.notInTeam": () =>
@@ -569,6 +574,7 @@ export const es: Strings = {
     "finance.wage_budget": "Presupuesto salarial",
     "finance.total_wage_budget": "Presupuesto salarial total",
     "stadium.capacity": "Aforo del estadio",
+    "stadium.name": "Nombre del estadio",
     "stadium.seating": "Aforo con asientos",
     "stadium.used": "Aforo en uso",
     "stadium.expansion": "Aforo ampliable",
@@ -963,7 +969,7 @@ export const es: Strings = {
     reputationTitle: "Reputación",
 
     tabsLabel: "Secciones del club",
-    tabs: { overview: "Resumen", squad: "Plantilla" },
+    tabs: { overview: "Resumen", squad: "Plantilla", stadium: "Estadio" },
     squadLocked: "Termina de editar para abrir la plantilla",
 
     facilities: "Instalaciones",
@@ -999,6 +1005,25 @@ export const es: Strings = {
       "todo",
     expansion: "Ampliable hasta",
     noStadium: "No se ha podido leer el estadio de este club.",
+    stadiumName: "Nombre",
+    rename: "Cambiar nombre",
+    renameTitle: "Da al estadio otro nombre; se escribe en el acto y Cambios puede deshacerlo",
+    renameInfoLabel: "¿Cómo funciona el cambio de nombre?",
+    renameInfo:
+      "El juego no guarda los nombres de los estadios en las partidas: los toma de su base de datos cada vez que carga " +
+      "una. Por eso FMLibreEditor recuerda el nuevo nombre para esta partida y lo vuelve a poner en pocos segundos " +
+      "cada vez que el juego la carga, mientras la aplicación esté abierta y conectada. Si el juego carga la partida " +
+      "con la aplicación cerrada, muestra su propio nombre hasta que la aplicación vuelva a conectarse. Para volver al " +
+      "nombre anterior, deshaz el cambio en Cambios o vuelve a ponérselo al estadio.",
+    saveName: "Guardar",
+    renaming: "Guardando…",
+    cancelRename: "Cancelar",
+    nameLength: (bytes, min, max) =>
+      min <= 1
+        ? `${bytes} de ${max} caracteres como mucho (una letra con tilde cuenta como dos)`
+        : `${bytes} caracteres: de ${min} a ${max}, para que quepa donde el juego guarda el nombre (una letra con tilde cuenta como dos)`,
+    nameShared: (holders) =>
+      `${holders} cosas del juego comparten este nombre, así que no se puede cambiar solo para el estadio`,
 
     // Datos del club
     info: "Datos del club",
@@ -1068,11 +1093,20 @@ export const es: Strings = {
       staff: (names) => `Atributos del personal: ${names}`,
       clubs: (names) => `Dinero: ${names}`,
       fitness: (names) => `Energía y ritmo: ${names}`,
+      stadiums: (names) => `Nombres de estadio: ${names}`,
       more: (count) => `y ${format(count)} más`,
       waiting: (count) =>
         `${count === 1 ? "1 sigue recordado" : `${format(count)} siguen recordados`}, pero no se congelan ahora: ` +
         "FMLibreEditor aún no puede escribir en esta versión del juego.",
       dismiss: "Cerrar",
+    },
+
+    freezeInfo: {
+      label: "¿Cómo funciona congelar?",
+      note:
+        "Congelar no cambia el juego para siempre: cada 2 segundos, FMLibreEditor devuelve lo que el juego quitó. Por " +
+        "eso solo funciona mientras la aplicación está abierta y conectada; si la cierras, el juego vuelve a cambiarlos. " +
+        "La aplicación recuerda lo congelado en esta partida y lo vuelve a congelar la próxima vez que se conecte a ella.",
     },
 
     connect: {
