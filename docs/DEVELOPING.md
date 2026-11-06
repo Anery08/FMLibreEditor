@@ -191,6 +191,12 @@ The app remembers what was frozen in each save in `frozen.json` in its data fold
 apart by the storefront and the UIDs of its human managers. To test without touching that
 file, set `FMLIBRE_DATA` to another folder before starting the app.
 
+The same file keeps the names the editor gave stadiums. The game keeps no stadium names in
+its saves and gives each stadium the name in its database whenever it loads one, so the app
+gives the new names again: on connecting, on a reload, and from its hold, which every 2 s
+notices when the game has loaded a save (the clubs' array has moved), checks it is the same
+save before writing, and reads the clubs again (see `Connection::hold_stadiums`).
+
 Exports go to `Documents\FMLibreEditor\Exports` (`~/Documents/FMLibreEditor/Exports` on
 macOS); `FMLIBRE_EXPORTS` names another folder. The columns and the JSON keys are in
 `crates/fmlibre-core/src/export.rs`.

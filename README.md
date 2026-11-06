@@ -31,6 +31,8 @@ How to install and use it: [docs/INSTALL.md](docs/INSTALL.md).
 - Freeze a player's attributes, energy and match sharpness, a whole team's from its squad
   tab, or a club's money: while the app runs, they do not go down, and the app freezes them
   again when you connect to that save another time.
+- Rename a stadium. The game takes stadium names from its database each time it loads a save,
+  so the app gives the new name back whenever it does, while the app is open.
 - Transfer, swap or release players, and move staff between clubs.
 - Mass edit many at once, with a preview; undo any change.
 - Export the player list, with its search and filters, to CSV or JSON for a spreadsheet or

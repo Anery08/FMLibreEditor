@@ -1003,6 +1003,14 @@ export const en = {
     stadiumName: "Name",
     rename: "Rename",
     renameTitle: "Give the stadium another name; it is written at once, and Changes can undo it",
+    /** The (i) beside the name: how a new name lasts, and that the app has to stay open for it. */
+    renameInfoLabel: "How does renaming work?",
+    renameInfo:
+      "The game keeps no stadium names in its saves: it takes them from its database each time it loads a save. So " +
+      "FMLibreEditor remembers the new name for this save, and gives it back within seconds each time the game loads " +
+      "it, as long as the app is open and connected. If the game loads the save while the app is closed, it shows its " +
+      "own name until the app connects again. To go back to the old name, undo the rename in Changes, or rename the " +
+      "stadium back.",
     saveName: "Save",
     renaming: "Saving…",
     cancelRename: "Cancel",
@@ -1101,6 +1109,8 @@ export const en = {
       staff: (names: string) => `Staff attributes: ${names}`,
       clubs: (names: string) => `Money: ${names}`,
       fitness: (names: string) => `Energy and sharpness: ${names}`,
+      /** `names` are the stadiums' new names, given again. */
+      stadiums: (names: string) => `Stadium names: ${names}`,
       /** After the first few names. */
       more: (count: number) => `and ${format(count)} more`,
       /** What was left for later: an update of the game, say. */
@@ -1108,6 +1118,15 @@ export const en = {
         `${count === 1 ? "1 is" : `${format(count)} are`} remembered but not frozen now: FMLibreEditor cannot write ` +
         "to this version of the game yet.",
       dismiss: "Dismiss",
+    },
+
+    /** The (i) beside every box that freezes something: how freezing works, and that the app has to stay open. */
+    freezeInfo: {
+      label: "How does freezing work?",
+      note:
+        "Freezing does not change the game for good: every 2 seconds, FMLibreEditor puts back what the game took. So it " +
+        "works only while the app is open and connected; close it, and the game changes them again. The app remembers " +
+        "what is frozen in this save, and freezes it again the next time it connects to it.",
     },
 
     /** The panel shown while not connected. */

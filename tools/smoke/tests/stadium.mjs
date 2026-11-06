@@ -1,7 +1,11 @@
 // Renaming a stadium: a name that keeps the size of the old one's block is written over it, any other goes into a
 // string of the editor's own that the stadium is pointed at; each read back by the probe and undone. Then the same
 // through the club's Stadium tab, and a stadium whose name other things share, where there is one among the best known
-// clubs.
+// clubs. The game keeps no stadium names in its saves and gives each its own back when it loads one: the probe does
+// that in its place, and the app, which remembers the new name for the save, gives it again within its 2 s hold, until
+// the rename is undone.
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { SHOWN, VIS, sleep } from "../lib/app.mjs";
 import { topClubs } from "../lib/witness.mjs";
 
@@ -27,6 +31,16 @@ const CANDIDATES = [
 /** The stadium's name as the probe reads it in its `club` report. */
 function probedName(probe, uid) {
   return probe.run(["club", uid]).match(/^\s+stadium\s+(.+?): capacity/m)?.[1] ?? null;
+}
+
+/** Whether `test` comes true within `ms` milliseconds, asked every half second. */
+async function eventually(test, ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (test()) return true;
+    await sleep(500);
+  }
+  return test();
 }
 
 /** Renames the stadium of `club` to `to` through the command, checks it with the probe and the profile, and undoes it. */
@@ -82,7 +96,7 @@ export async function run({ app, report, probe }) {
   }
 
   // The same through the Stadium tab: Rename, the length as it is typed, Save, the new name in place.
-  await app.openClub(club.name);
+  await app.openClub(club.name, club.uid);
   const profile = `${VIS}(".profile:not(.popup)")`;
   const tab = `[...document.querySelectorAll(".profile-tabs [role=tab]")].filter(${SHOWN}).find((t) => t.textContent.trim() === "Stadium")`;
   await app.click(tab, "the Stadium tab");
@@ -100,8 +114,22 @@ export async function run({ app, report, probe }) {
   await app.waitFor(`!${input} && ${profile}.querySelector(".stadium-name")?.textContent.includes(${JSON.stringify(other)})`, "the new name", 20000);
   report.check("Save in the tab renames it", probedName(probe, club.uid) === other, probedName(probe, club.uid));
   await app.shot("stadium-renamed");
+
+  // The game gives the stadium its own name back, as it does when it loads the save; the app gives the new one again.
+  const file = join(app.folder, "data", "frozen.json");
+  const remembered = () => (existsSync(file) ? readFileSync(file, "utf8") : "");
+  report.check("remembers the new name for this save", remembered().includes(JSON.stringify(other)), "not in frozen.json");
+  probe.run(["stadium-name", club.uid, room.name]);
+  report.check("the probe gives the stadium its old name, as the game does", probedName(probe, club.uid) === room.name, probedName(probe, club.uid));
+  const back = await eventually(() => probedName(probe, club.uid) === other, 8000);
+  report.check("the app gives the new name back within seconds", back, probedName(probe, club.uid));
+
+  // Undone, the old name stays, and the save no longer remembers the new one.
   const logged = (await app.must("change_log")).find((c) => c.uid === club.uid && c.field === "stadium.name" && c.undoneAt == null);
   if (logged) await app.must("undo_change", { id: logged.id });
   report.check("undone again", probedName(probe, club.uid) === room.name, probedName(probe, club.uid));
+  report.check("and forgotten", !remembered().includes(JSON.stringify(other)), "still in frozen.json");
+  await sleep(4500);
+  report.check("the app leaves the old name alone after the undo", probedName(probe, club.uid) === room.name, probedName(probe, club.uid));
   await app.press("Escape");
 }

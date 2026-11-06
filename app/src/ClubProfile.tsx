@@ -3,7 +3,9 @@ import { EditableValue } from "./EditControls";
 import { freezeMoney, frozenClubs, renameStadium, stadiumName } from "./editing";
 import { converts, inCurrency } from "./currency";
 import { describeError, formatMoney, formatNumber } from "./format";
+import { InfoTip } from "./InfoTip";
 import {
+  appText,
   CLUB_FACILITY_LABELS,
   clubProfileText,
   profileText,
@@ -364,7 +366,8 @@ const utf8Length = (value: string) => new TextEncoder().encode(value).length;
  * A stadium's name, with Rename while the game can be written to: under it, an input, Save and Cancel, and a note of
  * its length. Any name of 1 to 80 bytes on Windows (see `stadium_name`): written over the old one where it fits, given a
  * string of its own otherwise. Where the editor cannot rename it (macOS, a shared name), a note says so. Written at
- * once, and logged.
+ * once, and logged. An (i) after it says how a new name lasts: the app gives it again each time the game loads the
+ * save, while it is open.
  */
 function StadiumNameRow({ club, name }: { club: number; name: string | null }) {
   const { editable, onEdited } = useContext(EditorContext);
@@ -399,7 +402,7 @@ function StadiumNameRow({ club, name }: { club: number; name: string | null }) {
   // Where the editor cannot rename it (on macOS, a name other things share), the note says why instead.
   const shared = room !== null && !room.renamable;
   const row = (
-    <dl className="stats">
+    <dl className="stats stadium-name-row">
       <Fact label={text.stadiumName}>
         <span className="stadium-name">
           <span>{name ?? profileText.none}</span>
@@ -417,6 +420,7 @@ function StadiumNameRow({ club, name }: { club: number; name: string | null }) {
               {text.rename}
             </button>
           )}
+          {room !== null && !shared && <InfoTip label={text.renameInfoLabel} note={text.renameInfo} />}
         </span>
       </Fact>
     </dl>
@@ -531,10 +535,13 @@ function FreezeMoney({ club }: { club: number }) {
   };
   return (
     <>
-      <label className="freeze-toggle" title={text.freezeNote}>
-        <input type="checkbox" checked={frozen} onChange={(e) => void toggle(e.currentTarget.checked)} />
-        <span>{text.freeze}</span>
-      </label>
+      <div className="freeze-line">
+        <label className="freeze-toggle" title={text.freezeNote}>
+          <input type="checkbox" checked={frozen} onChange={(e) => void toggle(e.currentTarget.checked)} />
+          <span>{text.freeze}</span>
+        </label>
+        <InfoTip label={appText.freezeInfo.label} note={appText.freezeInfo.note} />
+      </div>
       {frozen && <p className="note">{text.freezeNote}</p>}
       {error && (
         <p className="note error" role="alert">

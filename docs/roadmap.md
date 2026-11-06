@@ -293,7 +293,12 @@ changes many at once, and undo.
     block is written over it, for a name the stadium alone holds; any other goes into memory the editor takes in the
     game (Windows), as a string the game never lets go, and the stadium is pointed at it (also for the 2,293 shared
     names of the Game Pass save, such as the Maracanã's). On macOS only the first kind. See `stadium_name.rs`; the
-    probe's `stadium-name`.
+    probe's `stadium-name`. The game keeps no stadium names in its saves: it gives every stadium the name in its
+    database (`lang_db.dat`) whenever it loads one, and an `.lnc` in the editor data folder does not reach a save
+    already started. So the app remembers each new name for the save, in `frozen.json` beside what is frozen, and
+    gives it again on connecting, on a reload and within seconds of the game loading the save, while it is open;
+    undone, or renamed back, it is forgotten. An (i) beside the name, and beside every freeze, says the app has to stay
+    open for it.
   - [ ] Sponsors, ticket prices and league prize money (`sicomps::PRIZE_MONEY_PROVIDER`).
   - [x] Jadedness: how worn out a player is by playing, which rest takes away (an `i16` at player `+0x25A`,
     -500 when rested). Found from the numbers FMRTE shows for three players, read without editing in FMRTE;

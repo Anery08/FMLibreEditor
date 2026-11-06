@@ -2588,7 +2588,7 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         return info as T;
       }
       // What a restart of the app finds frozen in this save: the attributes of the first two players, the energy and
-      // sharpness of the first seven, and the first club, with one more that waits.
+      // sharpness of the first seven, and the first club, whose stadium was renamed too, with one more that waits.
       for (const player of players.slice(0, 2)) {
         frozenAttributes.add(player.uid);
       }
@@ -2599,11 +2599,13 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       for (const member of staff.slice(0, 2)) {
         frozenStaff.add(member.uid);
       }
+      stadiumNames.set(clubs[0].uid, `${clubs[0].shortName} Arena`);
       const again: Refrozen = {
         players: players.slice(0, 2).map((p) => p.name),
         staff: staff.slice(0, 2).map((s) => s.name),
         clubs: [clubs[0].name],
         fitness: players.slice(0, 7).map((p) => p.name),
+        stadiums: [stadiumNameOf(clubs[0])],
         waiting: 1,
       };
       return { ...info, refrozen: again } as T;

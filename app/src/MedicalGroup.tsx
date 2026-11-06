@@ -5,7 +5,8 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { EditableValue } from "./EditControls";
 import { freezeFitness, frozenFitness, healPlayer, liftBans, wholePercent } from "./editing";
 import { describeError, formatDate, formatDateRange, formatNumber, formatPercent } from "./format";
-import { fieldLabel, profileText } from "./labels";
+import { InfoTip } from "./InfoTip";
+import { appText, fieldLabel, profileText } from "./labels";
 import { Fact } from "./ProfileParts";
 import type { Ban, Injury, PlayerDetails } from "./types";
 import { EditorContext, useEditSession } from "./useProfileEditing";
@@ -117,15 +118,18 @@ function FitnessFreeze({ details }: { details: PlayerDetails }) {
 
   return (
     <div className="fitness-freeze">
-      <label className="freeze-toggle" title={editable ? profileText.freezeFitnessNote : readOnlyNote}>
-        <input
-          type="checkbox"
-          checked={frozen}
-          disabled={!editable}
-          onChange={(e) => void freeze(e.currentTarget.checked)}
-        />
-        <span>{profileText.freezeFitness}</span>
-      </label>
+      <div className="freeze-line">
+        <label className="freeze-toggle" title={editable ? profileText.freezeFitnessNote : readOnlyNote}>
+          <input
+            type="checkbox"
+            checked={frozen}
+            disabled={!editable}
+            onChange={(e) => void freeze(e.currentTarget.checked)}
+          />
+          <span>{profileText.freezeFitness}</span>
+        </label>
+        <InfoTip label={appText.freezeInfo.label} note={appText.freezeInfo.note} />
+      </div>
       {frozen && <p className="note">{profileText.freezeFitnessNote}</p>}
       {error && (
         <p className="note error" role="alert">

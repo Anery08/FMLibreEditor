@@ -976,6 +976,13 @@ export const tr: Strings = {
     stadiumName: "Adı",
     rename: "Adını değiştir",
     renameTitle: "Stadyuma başka bir ad verin; hemen yazılır, Değişiklikler bölümünden geri alınabilir",
+    renameInfoLabel: "Yeniden adlandırma nasıl çalışır?",
+    renameInfo:
+      "Oyun stadyum adlarını kayıt dosyasında tutmaz; her kayıt yüklenişinde adları kendi veritabanından alır. Bu " +
+      "yüzden FMLibreEditor yeni adı bu kayıt için hatırlar ve oyun kaydı her yüklediğinde birkaç saniye içinde yeniden " +
+      "yazar; bunun için uygulamanın açık ve oyuna bağlı kalması gerekir. Kayıt uygulama kapalıyken yüklenirse oyun " +
+      "kendi adını gösterir; uygulama yeniden bağlanınca yeni ad geri gelir. Eski ada dönmek için değişikliği " +
+      "Değişiklikler bölümünden geri alın ya da stadyuma eski adını yeniden verin.",
     saveName: "Kaydet",
     renaming: "Kaydediliyor…",
     cancelRename: "Vazgeç",
@@ -1051,10 +1058,19 @@ export const tr: Strings = {
       staff: (names) => `Personel özellikleri: ${names}`,
       clubs: (names) => `Para: ${names}`,
       fitness: (names) => `Enerji ve maç kondisyonu: ${names}`,
+      stadiums: (names) => `Stadyum adları: ${names}`,
       more: (count) => `ve ${format(count)} tane daha`,
       waiting: (count) =>
         `${format(count)} tanesi hatırlanıyor ama şu an dondurulmadı: FMLibreEditor oyunun bu sürümüne henüz yazamıyor.`,
       dismiss: "Kapat",
+    },
+
+    freezeInfo: {
+      label: "Dondurma nasıl çalışır?",
+      note:
+        "Dondurma oyunu kalıcı olarak değiştirmez: FMLibreEditor her 2 saniyede bir oyunun düşürdüğünü geri koyar. Bu " +
+        "yüzden yalnızca uygulama açık ve oyuna bağlıyken çalışır; uygulamayı kapatırsanız oyun değerleri yine " +
+        "düşürür. Uygulama bu kayıtta neyin dondurulduğunu hatırlar ve kayda bir sonraki bağlanışında yine dondurur.",
     },
 
     connect: {

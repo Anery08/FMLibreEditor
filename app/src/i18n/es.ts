@@ -1007,6 +1007,13 @@ export const es: Strings = {
     stadiumName: "Nombre",
     rename: "Cambiar nombre",
     renameTitle: "Da al estadio otro nombre; se escribe en el acto y Cambios puede deshacerlo",
+    renameInfoLabel: "¿Cómo funciona el cambio de nombre?",
+    renameInfo:
+      "El juego no guarda los nombres de los estadios en las partidas: los toma de su base de datos cada vez que carga " +
+      "una. Por eso FMLibreEditor recuerda el nuevo nombre para esta partida y lo vuelve a poner en pocos segundos " +
+      "cada vez que el juego la carga, mientras la aplicación esté abierta y conectada. Si el juego carga la partida " +
+      "con la aplicación cerrada, muestra su propio nombre hasta que la aplicación vuelva a conectarse. Para volver al " +
+      "nombre anterior, deshaz el cambio en Cambios o vuelve a ponérselo al estadio.",
     saveName: "Guardar",
     renaming: "Guardando…",
     cancelRename: "Cancelar",
@@ -1085,11 +1092,20 @@ export const es: Strings = {
       staff: (names) => `Atributos del personal: ${names}`,
       clubs: (names) => `Dinero: ${names}`,
       fitness: (names) => `Energía y ritmo: ${names}`,
+      stadiums: (names) => `Nombres de estadio: ${names}`,
       more: (count) => `y ${format(count)} más`,
       waiting: (count) =>
         `${count === 1 ? "1 sigue recordado" : `${format(count)} siguen recordados`}, pero no se congelan ahora: ` +
         "FMLibreEditor aún no puede escribir en esta versión del juego.",
       dismiss: "Cerrar",
+    },
+
+    freezeInfo: {
+      label: "¿Cómo funciona congelar?",
+      note:
+        "Congelar no cambia el juego para siempre: cada 2 segundos, FMLibreEditor devuelve lo que el juego quitó. Por " +
+        "eso solo funciona mientras la aplicación está abierta y conectada; si la cierras, el juego vuelve a cambiarlos. " +
+        "La aplicación recuerda lo congelado en esta partida y lo vuelve a congelar la próxima vez que se conecte a ella.",
     },
 
     connect: {
