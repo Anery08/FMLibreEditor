@@ -39,6 +39,29 @@ const SQUAD_STATUSES: Partial<Record<number, string>> = {
   3: "Düzenli ilk 11 oyuncusu",
   4: "Rotasyon oyuncusu",
   5: "Etkili yedek",
+  7: "Kenarda kalan oyuncu",
+  9: "Acil durum yedeği",
+  10: "A takıma yükselmeye yakın genç",
+  11: "Geleceğin yeteneği",
+  13: "Genç oyuncu",
+  14: "B takımının düzenli oyuncusu",
+  15: "Birinci kaleci",
+  16: "Kupa kalecisi",
+  17: "Yerel kupa kalecisi",
+  20: "Yedek kaleci",
+  21: "Acil durum yedek kalecisi",
+  22: "İhtiyaç fazlası",
+};
+
+/** The kinds of contract (see `en.ts`). */
+const CONTRACT_TYPES: Partial<Record<number, string>> = {
+  0: "Yarı zamanlı sözleşme",
+  1: "Tam zamanlı sözleşme",
+  2: "Amatör sözleşme",
+  3: "Genç oyuncu sözleşmesi",
+  4: "Sözleşmesiz",
+  10: "Asgari ücretli A takım sözleşmesi",
+  11: "A takım sözleşmesi",
 };
 
 /** The name of the field a failure names. The sentences put no ending on it: "için" and a colon need none. */
@@ -54,6 +77,7 @@ const UNSUPPORTED: Partial<Record<string, string>> = {
   "it is changed one person at a time": "bu alan kişi kişi değiştirilir",
   "the new value is not one of the game's own records of that kind":
     "yeni değer, oyunun bu türdeki kendi kayıtlarından biri değil",
+  "the in-game date is not known": "oyun içi tarih bilinmiyor",
 };
 
 const reload = "verileri yeniden okuyup tekrar deneyin";
@@ -92,7 +116,9 @@ const errors: ErrorTexts = {
   "move.notAClub": () => "Bu kulübün oyuncunun katılabileceği bir A takımı yok.",
   "move.freeAgent": () => "Oyuncunun kulübü yok; serbest oyuncular henüz taşınamıyor.",
   "move.sameClub": () => "Oyuncu zaten bu kulüpte.",
-  "move.onLoan": () => "Oyuncu kiralık; kiralık oyuncular henüz taşınamıyor.",
+  "move.onLoan": () =>
+    "Oyuncu kiralık: önce profilindeki Kiralık bölümünden geri çağırın ya da kiralığı kalıcı yapın.",
+  "move.notOnLoan": () => "Oyuncu kiralık değil.",
   "move.playerCoach": () => "Oyuncu-antrenörler taşınamıyor: aynı zamanda personel olarak da çalışıyorlar.",
   "move.unusualContract": () => "Oyuncunun sözleşmesi olağan bir oyuncu sözleşmesi değil.",
   "move.humanClub": () =>
@@ -261,18 +287,46 @@ const CONCERN_MOTIVES_TR: Partial<Record<number, string>> = {
 const CLAUSE_NAMES_TR: Partial<Record<number, string>> = {
   0: "Serbest kalma maddesi",
   1: "Küme düşmede serbest kalma maddesi",
+  2: "Üst lige çıkamazsa serbest kalma maddesi",
   3: "Yıllık maaş artışı",
+  4: "Üst lige çıkışta maaş artışı",
+  5: "Küme düşmede maaş indirimi",
+  6: "Teknik ekip görevi için serbest kalma maddesi",
+  8: "Sonraki satıştan pay yüzdesi",
+  9: "Sonraki satış kârından pay yüzdesi",
   10: "Sezonluk gol hedefi primi",
+  11: "Lig maçı sayısına ulaşınca bir yıl uzatma (son sezon)",
+  12: "En yüksek maaşa eşitleme maddesi",
+  13: "Lig maçı sayısına ulaşınca maaş",
+  14: "En üst lige çıkışta maaş artışı",
   15: "Üst ligden düşmede maaş indirimi",
+  16: "Serbest kalma maddesi (yabancı kulüpler)",
+  17: "Serbest kalma maddesi (üst ligdeki yerli kulüpler)",
+  18: "Serbest kalma maddesi (yerli kulüpler)",
   19: "Milli maç sayısına ulaşınca maaş",
+  20: "Maaşın sponsorca ödenen yüzdesi",
+  21: "Bilet gelirinden oyuncuya ödenen yüzde",
   22: "Kulübün tek taraflı uzatma opsiyonu",
-  27: "Serbest kalma maddesi (Şampiyonlar Kupası'ndaki kulüpler)",
+  23: "Teknik direktörlük için kulüp tazminatından feragat",
+  25: "Lig maçı sayısına ulaşınca bir yıl uzatma (üst lige çıkılan son sezon)",
+  26: "Lig maçı sayısına ulaşınca bir yıl uzatma (küme düşülmeyen son sezon)",
+  27: "Serbest kalma maddesi (UEFA Şampiyonlar Ligi'ndeki kulüpler)",
+  28: "MLS garantili sözleşme maddesi",
+  29: "Üst lige çıkışta sözleşme uzatma",
+  30: "Sakatlıkta serbest kalma maddesi",
+  31: "Serbest kalma maddesi (kıtasal kupadaki kulüpler)",
   32: "Maç başına ücret",
   33: "Gol primi",
   34: "Gol yememe primi",
+  37: "Milli maç primi",
   38: "Oynamayan yedek ücreti",
   39: "Asist primi",
   40: "Sezonluk asist hedefi primi",
+  41: "Sezonluk gol ve asist hedefi primi",
+  54: "Oyunda gösterilmiyor (54)",
+  55: "Etkin küme düşme serbest kalma maddesi",
+  58: "Oyunda gösterilmiyor (58)",
+  63: "Oyunda gösterilmiyor (63)",
 };
 
 export const tr: Strings = {
@@ -475,6 +529,8 @@ export const tr: Strings = {
     "contract.squad_status": "Forma süresi",
     "contract.transfer_listed": "Transfer listesinde",
     "contract.loan_listed": "Kiralık listesinde",
+    "loan.expires": "Kiralık bitişi",
+    "loan.option_fee": "Satın alma opsiyonu",
     "contract.job": "Görev",
     "tie.nationality": "İkinci uyruk",
     "tie.trainedInNation": "Yetiştiği ülke",
@@ -560,6 +616,8 @@ export const tr: Strings = {
     joined: "Katılım tarihi",
     squadStatus: "Forma süresi",
     squadStatusName: (status) => SQUAD_STATUSES[status] ?? `Durum ${status}`,
+    contractType: "Sözleşme türü",
+    contractTypeName: (code) => CONTRACT_TYPES[code] ?? `Tür ${code}`,
     squadNumber: "Forma numarası",
     transferListed: "Transfer listesinde",
     loanListed: "Kiralık listesinde",
@@ -604,23 +662,69 @@ export const tr: Strings = {
     playingTimeHappiness: "Forma süresi mutluluğu",
     moodTitle: "FMRTE'nin gösterdiği gibi, -100 ile 100 arasında; oyun bunu kelimelerle gösterir",
     clauseName: (kind) => CLAUSE_NAMES_TR[kind] ?? `Madde ${kind}`,
+    loan: "Kiralık",
+    loanAt: "Kiralık olduğu kulüp",
+    loanParent: "Bağlı olduğu kulüp",
+    loanFrom: "Başlangıç",
+    loanUntil: "Bitiş",
+    loanNumber: "Oradaki forma numarası",
+    recall: "Kiralıktan geri çağır",
+    recallTitle: "Oyuncuyu kulübüne geri getir: kiralık bugün biter. Bir şey değişmeden önce sorulur",
+    recallAgain: "Tekrar geri çağır",
+    makePermanent: "Kalıcı yap",
+    makePermanentTitle: "Oyuncuyu kiralık olduğu kulüpte, o kulüple sözleşmeli olarak tut. Bir şey değişmeden önce sorulur",
+    recalledWaiting: "Geri çağrıldı · dönüşü bekleniyor",
+    endsTodayWaiting: "Bugün bitiyor · dönüşü bekleniyor",
+    pendingTitle: (parent) => `Kiralığın son günü bugün: oyunda bir gün devam edin, oyuncu ${parent} kulübüne dönmüş olacak.`,
+    endPassed: (date) =>
+      `Kiralığın ${date} tarihinde bitmesi gerekiyordu ama oyun oyuncuyu geri getirmedi. Tekrar geri çağırıp bir gün devam edin.`,
+    loanCanRecall: "Geri çağrılabilir",
+    loanCanRecallTitle: "Kulübünün onu oyunda geri çağırıp çağıramayacağı. Buradaki Kiralıktan geri çağır her iki durumda da çalışır",
+    loanCanTerminate: "Erken bitirilebilir",
+    loanCupMatches: "Kupa maçlarında oynar",
+    loanAgainstClub: "Kendi kulübüne karşı oynar",
+    loanOptionFee: "Satın alma opsiyonu",
+    loanOptionFeeTitle: "Kiralık olduğu kulübün onu kalıcı olarak alabileceği bonservis",
+    loanMonthlyFee: "Aylık ücret",
+    loanMonthlyFeeTitle: "Kiralık olduğu kulübün, oynadığı her ay için kulübüne ödediği tutar",
+    loanUnusedFee: "Oynamazsa aylık ücret",
+    loanUnusedFeeTitle: "Kiralık olduğu kulübün, kullanılmadığı her ay için kulübüne ödediği tutar",
     clauseCondition: (kind, value) => {
       switch (kind) {
         case 10:
           return `${value} gol`;
         case 40:
           return `${value} asist`;
+        case 41:
+          return `${value} gol ve asist`;
         case 19:
           return `${value} milli maç`;
+        case 11:
+        case 13:
+        case 25:
+        case 26:
+          return `${value} lig maçı`;
         case 22:
+        case 29:
           return `${value} yıl`;
         case 3:
+        case 4:
+        case 5:
+        case 8:
+        case 9:
+        case 14:
         case 15:
+        case 20:
+        case 21:
           return `%${value}`;
         default:
           return String(value);
       }
     },
+    clauseExpires: (date) => `${date} tarihinde sona erer`,
+    clauseExpiresAfter: (days) => `imzadan ${format(days)} gün sonra sona erer`,
+    clauseProfitShare: (percent, amount) => `${amount} üzeri kârdan ${percent}`,
+    clauseWage: (amount) => `haftalık ${amount}`,
     moraleTitle: "Oyun morali Genel Mutluluk olarak gösterir: 10'da Memnun, 11'de Biraz Mutlu, 15 ve 20'de Aşırı Mutlu",
     jadednessTitle: "Oyuncunun maç oynamaktan ne kadar yıprandığı, dinlenince azalır: -500 tamamen dinlenmiş demektir, değer yükseldikçe dinlenmeye daha çok ihtiyaç duyar",
     noInjuries: "Sakatlığı yok",
@@ -644,6 +748,11 @@ export const tr: Strings = {
     undoMaxTitle: "Eski özelliklerini oyuna geri yaz",
     freezeAttributes: "Özellikleri dondur",
     freezeAttributesNote:
+      "Uygulama açık ve oyuna bağlıyken özellikleri düşmez: oyunun düşürdüğü geri konur, gelişmeler yine sayılır. " +
+      "Uygulama bunu bu kayıt için hatırlar ve kayda yeniden bağlandığında onları yine dondurur.",
+    maxStaffAttributesTitle: "Bu personelin bütün özelliklerini en iyiye çıkar: 20",
+    undoMaxStaffTitle: "Eski özellikleri oyuna geri yaz",
+    freezeStaffAttributesNote:
       "Uygulama açık ve oyuna bağlıyken özellikleri düşmez: oyunun düşürdüğü geri konur, gelişmeler yine sayılır. " +
       "Uygulama bunu bu kayıt için hatırlar ve kayda yeniden bağlandığında onları yine dondurur.",
     freezeFitness: "Enerji ve maç kondisyonunu dondur",
@@ -921,6 +1030,7 @@ export const tr: Strings = {
       title: "Geçen seferden yeniden donduruldu",
       waitingTitle: "Dondurulanlar şimdilik bekliyor",
       players: (names) => `Özellikler: ${names}`,
+      staff: (names) => `Personel özellikleri: ${names}`,
       clubs: (names) => `Para: ${names}`,
       fitness: (names) => `Enerji ve maç kondisyonu: ${names}`,
       more: (count) => `ve ${format(count)} tane daha`,
@@ -1074,6 +1184,7 @@ export const tr: Strings = {
     swappedWith: (name) => `Takas: ${name}`,
     released: (name) => `${name} serbest bırakıldı`,
     fee: (amount) => `Bedel ${amount}`,
+    optionRemoved: (amount) => `Satın alma opsiyonu (${amount}) kaldırıldı`,
     healed: (count) => `${format(count)} sakatlık iyileştirildi`,
     lifted: (count) => `${format(count)} ceza kaldırıldı`,
     keptPlaying: (date) => (date === null ? "Oynamaya devam edecek" : `${date} tarihli emeklilik engellendi`),
@@ -1495,6 +1606,48 @@ export const tr: Strings = {
     hint: "Siz serbest bırakmadan oyunda hiçbir şey değişmez.",
     release: "Serbest bırak",
     releasing: "Serbest bırakılıyor…",
+    cancel: "İptal",
+  },
+
+  permanent: {
+    title: "Kiralığı kalıcı yap",
+    stays: "Kalacağı kulüp",
+    leaves: "Ayrılacağı kulüp",
+    checking: "Kontrol ediliyor…",
+    doesHeading: "Ne yapar",
+    does: [
+      "Oyuncu oynadığı kulüpte kalır; sözleşmesi bugünden başlayarak bu kulüple ve yukarıdaki şartlarla olur",
+      "Oradaki forma numarası ve forma süresi korunur",
+      "Kendi kulübünün bütün takımlarından çıkar ve kiralık sona erer",
+      "Oyunun transfer geçmişinde görünmez",
+      "Değişiklikler bölümünde transfer olarak listelenir; tek geri alma kiralığı geri getirir",
+    ],
+    optionFee: (money) => `Kiralığın satın alma opsiyonundan dolduruldu: ${money}`,
+    hint: "Siz kalıcı yapmadan oyunda hiçbir şey değişmez.",
+    confirm: "Kalıcı yap",
+    confirming: "Kalıcı yapılıyor…",
+    cancel: "İptal",
+  },
+
+  recall: {
+    title: "Kiralıktan geri çağır",
+    from: "Kiralık olduğu kulüp",
+    to: "Döneceği kulüp",
+    doesHeading: "Geri çağırma ne yapar",
+    does: (parent) => [
+      "Kiralığın son günü bugün olur: gün bitince oyun kiralığı kendisi sona erdirir",
+      `Oyunda bir gün devam ettiğinizde oyuncu ${parent} kulübüne dönmüş olur`,
+      "O zamana kadar Değişiklikler bölümünde listelenir; geri alma kiralığın eski bitiş tarihini geri getirir",
+    ],
+    termsHeading: "Oyunda",
+    notRecallable: (parent) => `Kiralık sözleşmesi ${parent} kulübünün onu geri çağırmasına izin vermiyor`,
+    notTerminable: "Kiralık erken bitirilemiyor",
+    worksAnyway: "Buradaki geri çağırma yine de çalışır: oyunun geri çağırmasını kullanmaz, kiralığın son gününü değiştirir",
+    dropsOption: (club, amount) =>
+      `${club} kulübünün onu ${amount} karşılığında alma opsiyonu kaldırılır; yoksa kiralık bitince oyun onu ${club} kulübüne satabilir`,
+    hint: "Siz geri çağırmadan oyunda hiçbir şey değişmez.",
+    confirm: "Geri çağır",
+    confirming: "Geri çağrılıyor…",
     cancel: "İptal",
   },
 

@@ -37,6 +37,9 @@ pub struct Layout {
     /// The tactic a selection plays; only in the layouts it has been checked in.
     #[serde(default)]
     pub tactic: Option<TacticLayout>,
+    /// Where a player on loan keeps his loan contract; only in the layouts it has been checked in.
+    #[serde(default)]
+    pub loan: Option<LoanLayout>,
 }
 
 /// The tactic block a selection's list ([`SelectionLayout::list`]) points at: the eleven slots of the formation, once
@@ -54,6 +57,50 @@ pub struct TacticLayout {
     pub role: u64,
     /// `u32` code of the style the tactic was made from, as text backwards (`CONT`, `TIKI`, `DIRE`).
     pub style: u64,
+}
+
+/// Where a player on loan keeps his loan contract: his `record` pointer (shifted like the person block) leads to a
+/// record of his other contracts, whose field at `contract` points at the loan contract while he is on loan. The loan
+/// contract is an object of `class` (found by its name: see [`crate::rtti`]), laid out as a contract
+/// ([`ContractLayout`]) for its owner, its teams, its dates and the squad number: its team is the one he is on loan
+/// to, and its end date is the day the loan ends.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LoanLayout {
+    /// In a player: pointer to the record of his other contracts.
+    pub record: u64,
+    /// In that record: pointer to the loan contract, null when he is not on loan.
+    pub contract: u64,
+    /// In that record: the pointers to his other contracts (with a B team, and others), null for none. When a loan
+    /// ends and these are all null, the game leaves the player without a record.
+    pub others: Vec<u64>,
+    /// The class of loan contracts, as written in C++.
+    pub class: String,
+    /// In the loan contract: its terms, past the fields it shares with a contract; none where they have not been read.
+    #[serde(default)]
+    pub terms: Option<LoanTermsLayout>,
+}
+
+/// Where a loan contract keeps the terms the game's Loan Club tab shows.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LoanTermsLayout {
+    /// `u16` flags: bit 0, he may play against his own club; bit 1, in cup matches; bit 2, his club may recall him;
+    /// bit 12, the loan cannot be terminated.
+    pub flags: u64,
+    /// `i32`, pounds, -1 for none: the fee for which the club he is on loan to may sign him for good.
+    pub option_fee: u64,
+    /// `i32`, pounds a month, -1 for none: what that club pays his own each month he plays for it.
+    pub monthly_fee: u64,
+    /// `i32`, pounds a month, -1 for none: what it pays each month he is not used.
+    pub unused_fee: u64,
+}
+
+impl LoanTermsLayout {
+    /// One past the last byte of the terms.
+    pub fn end(&self) -> u64 {
+        [self.flags + 2, self.option_fee + 4, self.monthly_fee + 4, self.unused_fee + 4].into_iter().max().unwrap_or(0)
+    }
 }
 
 /// What a human manager has picked for his club, as the match engine keeps it: for each of his tactics, objects of one
@@ -327,11 +374,16 @@ pub struct ContractLayout {
     pub playing_time_happiness: u64,
     /// Pointer to the record of his reasons to be unhappy: a `u64` count, then that many pointers to 28-byte entries.
     pub unhappiness: u64,
+    /// `u8`, the kind of contract (0 part-time, 1 full-time, 2 amateur, 3 youth, 4 non-contract, 10 and 11 the MLS's
+    /// senior contracts); none in a layout where it has not been checked.
+    #[serde(default)]
+    pub contract_type: Option<u64>,
 }
 
 impl ContractLayout {
     /// One past the last byte of every contract field.
     pub fn end(&self) -> u64 {
+        let contract_type = self.contract_type.map(|offset| offset + 1);
         [
             self.owner + 8,
             self.wage + 4,
@@ -350,6 +402,7 @@ impl ContractLayout {
             self.unhappiness + 8,
         ]
         .into_iter()
+        .chain(contract_type)
         .max()
         .unwrap_or(0)
     }
@@ -818,8 +871,13 @@ mod tests {
         assert_eq!(mac.staff.uid - mac.staff.identity(), windows.staff.uid - windows.staff.identity());
         assert_eq!(mac.player.identity() - mac.player.person_block, mac.staff.identity() - mac.staff.person_block);
 
-        // The records the people point at are laid out alike.
-        assert_eq!(mac.contract.end(), windows.contract.end());
+        // The records the people point at are laid out alike. The kind of contract is left out of a layout until it
+        // has been read on that system; where both have it, it sits at the same place.
+        let without_kind = |c: &ContractLayout| ContractLayout { contract_type: None, ..c.clone() }.end();
+        assert_eq!(without_kind(&mac.contract), without_kind(&windows.contract));
+        if mac.contract.contract_type.is_some() {
+            assert_eq!(mac.contract.contract_type, windows.contract.contract_type);
+        }
         assert_eq!(mac.team.end(), windows.team.end());
         assert_eq!(mac.club_finance.end(), windows.club_finance.end());
         assert_eq!(

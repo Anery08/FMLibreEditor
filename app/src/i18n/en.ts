@@ -53,12 +53,39 @@ const entityCount: Record<Entity, (count: number) => string> = {
 /** What each list holds, in the plural. */
 const entityNouns: Record<Entity, string> = { player: "players", staff: "staff", club: "clubs" };
 
+/**
+ * Squad statuses, by the codes contracts hold them as; named as the game's English contract screen names them. 15, 16,
+ * 17, 20 and 21 are goalkeepers' (21 is the game's "Emergency Backup" too).
+ */
 const SQUAD_STATUSES: Partial<Record<number, string>> = {
   1: "Star player",
   2: "Important player",
   3: "Regular starter",
-  4: "Rotation player",
+  4: "Squad player",
   5: "Impact sub",
+  7: "Fringe player",
+  9: "Emergency backup",
+  10: "Breakthrough prospect",
+  11: "Future prospect",
+  13: "Youngster",
+  14: "B team regular",
+  15: "First-choice goalkeeper",
+  16: "Cup goalkeeper",
+  17: "Domestic cup goalkeeper",
+  20: "Backup",
+  21: "Emergency backup (goalkeeper)",
+  22: "Surplus to requirements",
+};
+
+/** The kinds of contract, by the codes contracts hold them as; 10 and 11 are the MLS's. */
+const CONTRACT_TYPES: Partial<Record<number, string>> = {
+  0: "Part-time contract",
+  1: "Full-time contract",
+  2: "Amateur contract",
+  3: "Youth contract",
+  4: "Non-contract",
+  10: "Senior minimum salary contract",
+  11: "Senior contract",
 };
 
 /**
@@ -113,22 +140,53 @@ const errors: ErrorTexts = {
     "try again, or enter the launch option in Steam yourself.",
 };
 
-/** The kinds of contract clauses and bonuses, by the codes contracts hold them as; named as FMRTE names them. */
+/**
+ * The kinds of contract clauses and bonuses, by the codes contracts hold them as; named as the game's English contract
+ * screen names them (6, which only the German one was seen in, after what it does). The game shows no 54, 58 or 63.
+ */
 const CLAUSE_NAMES_EN: Partial<Record<number, string>> = {
   0: "Minimum fee release clause",
   1: "Relegation release clause",
+  2: "Non promotion release clause",
   3: "Yearly wage rise",
+  4: "Promotion wage rise",
+  5: "Relegation wage drop",
+  6: "Release clause for a staff role",
+  8: "Sell on fee percentage",
+  9: "Sell on fee profit percentage",
   10: "Seasonal landmark goal bonus",
+  11: "One-year extension after league games (final season)",
+  12: "Match highest earner clause",
+  13: "Wage after reaching club league games",
+  14: "Top division promotion wage rise",
   15: "Top division relegation wage drop",
+  16: "Minimum fee release clause (foreign clubs)",
+  17: "Minimum fee release clause (domestic clubs in higher division)",
+  18: "Minimum fee release clause (domestic clubs)",
   19: "Wage after reaching international matches",
+  20: "Percentage of wages paid by sponsor",
+  21: "Percentage of gate receipts paid to player",
   22: "Optional contract extension by club",
-  27: "Minimum fee release clause (clubs in the Champions Cup)",
+  23: "Waive club compensation for managerial role",
+  25: "One-year extension after league games (promoted final season)",
+  26: "One-year extension after league games (avoid relegation final season)",
+  27: "Minimum fee release clause (clubs in UEFA Champions League)",
+  28: "MLS guaranteed contract clause",
+  29: "Contract extension after promotion",
+  30: "Injury release clause",
+  31: "Minimum fee release clause (clubs in a continental competition)",
   32: "Appearance fee",
   33: "Goal bonus",
   34: "Clean sheet bonus",
+  37: "International cap bonus",
   38: "Unused substitute fee",
   39: "Assist bonus",
   40: "Seasonal landmark assist bonus",
+  41: "Seasonal landmark combined goal and assist bonus",
+  54: "Not shown in the game (54)",
+  55: "Active relegation release clause",
+  58: "Not shown in the game (58)",
+  63: "Not shown in the game (63)",
 };
 
 /** Reasons to be unhappy, by the codes the game keeps them as; named as FMRTE names them. */
@@ -409,6 +467,8 @@ export const en = {
     "contract.squad_status": "Squad status",
     "contract.transfer_listed": "Transfer listed",
     "contract.loan_listed": "Loan listed",
+    "loan.expires": "Loan end",
+    "loan.option_fee": "Option to buy",
     // A member of staff's job, which the change log keeps as a change of its code.
     "contract.job": "Job",
     // A player's ties, which the change log keeps as changes of the nation or club (see `ties`).
@@ -511,6 +571,8 @@ export const en = {
     joined: "Joined",
     squadStatus: "Squad status",
     squadStatusName: (status: number) => SQUAD_STATUSES[status] ?? `Status ${status}`,
+    contractType: "Contract type",
+    contractTypeName: (code: number) => CONTRACT_TYPES[code] ?? `Type ${code}`,
     squadNumber: "Squad number",
     transferListed: "Transfer listed",
     loanListed: "Loan listed",
@@ -562,24 +624,78 @@ export const en = {
     moodTitle: "As FMRTE shows it, from -100 to 100; the game shows it in words",
     /** The name of a clause or bonus by its kind; a kind the app does not know yet by its number. */
     clauseName: (kind: number) => CLAUSE_NAMES_EN[kind] ?? `Clause ${kind}`,
-    /** What a clause depends on, by kind: goals, assists, matches, years or a percentage. */
+    /** A player's loan: where he is on loan, and the button that brings him back. */
+    loan: "Loan",
+    loanAt: "On loan at",
+    loanParent: "Belongs to",
+    loanFrom: "From",
+    loanUntil: "Until",
+    loanNumber: "Number there",
+    recall: "Recall from loan",
+    recallTitle: "Bring him back to his club: the loan ends today. Asks before anything changes",
+    recallAgain: "Recall again",
+    makePermanent: "Make permanent",
+    makePermanentTitle: "Keep him at the club he is on loan to, under contract with it. Asks before anything changes",
+    /** Where the Recall button was, once the loan ends today: recalled by the editor, or ending today anyway. */
+    recalledWaiting: "Recalled · return pending",
+    endsTodayWaiting: "Ends today · return pending",
+    pendingTitle: (parent: string) =>
+      `Today is the last day of the loan: continue one day in the game and he is back at ${parent}.`,
+    endPassed: (date: string) =>
+      `The loan was to end on ${date}, but the game has not brought him back. Recall him again, then continue one day.`,
+    /** The loan's terms, as the game's Loan Club tab shows them. */
+    loanCanRecall: "Can be recalled",
+    loanCanRecallTitle: "Whether his club may recall him in the game. Recall from loan here works either way",
+    loanCanTerminate: "Can be ended early",
+    loanCupMatches: "Plays in cup matches",
+    loanAgainstClub: "Plays against his club",
+    loanOptionFee: "Option to buy",
+    loanOptionFeeTitle: "The fee for which the club he is on loan at may sign him for good",
+    loanMonthlyFee: "Monthly fee",
+    loanMonthlyFeeTitle: "What the club he is on loan at pays his club for each month he plays",
+    loanUnusedFee: "Monthly fee if unused",
+    loanUnusedFeeTitle: "What the club he is on loan at pays his club for each month he is not used",
+    /** What a clause depends on, by kind: goals, assists, league games, matches, years or a percentage. */
     clauseCondition: (kind: number, value: number) => {
       switch (kind) {
         case 10:
-          return `${value} goals`;
+          return value === 1 ? "1 goal" : `${value} goals`;
         case 40:
-          return `${value} assists`;
+          return value === 1 ? "1 assist" : `${value} assists`;
+        case 41:
+          return `${value} goals and assists`;
         case 19:
-          return `${value} international matches`;
+          return value === 1 ? "1 international match" : `${value} international matches`;
+        case 11:
+        case 13:
+        case 25:
+        case 26:
+          return value === 1 ? "1 league game" : `${value} league games`;
         case 22:
+        case 29:
           return value === 1 ? "1 year" : `${value} years`;
         case 3:
+        case 4:
+        case 5:
+        case 8:
+        case 9:
+        case 14:
         case 15:
+        case 20:
+        case 21:
           return `${value}%`;
         default:
           return String(value);
       }
     },
+    /** When a release clause expires: on `date`, or, with the contract's start not known, `days` after it. */
+    clauseExpires: (date: string) => `expires ${date}`,
+    clauseExpiresAfter: (days: number) =>
+      days === 1 ? "expires 1 day after signing" : `expires ${format(days)} days after signing`,
+    /** A sell-on clause on the profit: its percentage of what the selling club makes over the amount. */
+    clauseProfitShare: (percent: string, amount: string) => `${percent} of the profit over ${amount}`,
+    /** The wage a clause gives from then on. */
+    clauseWage: (amount: string) => `${amount} a week`,
     moraleTitle: "The game shows morale as the player's overall happiness: content at 10, slightly happy at 11, extremely happy at 15 and 20",
     /** Hover text of jadedness, which the profile shows as stored. */
     jadednessTitle: "How worn out the player is by playing, which rest takes away: -500 is fully rested, and the higher it is, the more he needs a rest",
@@ -614,6 +730,12 @@ export const en = {
     freezeAttributes: "Freeze attributes",
     freezeAttributesNote:
       "While the app is open and connected, his attributes do not get worse: what the game takes is put back, and " +
+      "improvements still count. The app remembers this for this save, and freezes them again when it connects to it.",
+    /** The same for a member of staff, who has no injury proneness or dirtiness. */
+    maxStaffAttributesTitle: "Set every attribute of this member of staff to its best: 20",
+    undoMaxStaffTitle: "Write the old attributes back to the game",
+    freezeStaffAttributesNote:
+      "While the app is open and connected, their attributes do not get worse: what the game takes is put back, and " +
       "improvements still count. The app remembers this for this save, and freezes them again when it connects to it.",
     /** Freezing his energy and match sharpness, under them in the Medical group, and what that does. */
     freezeFitness: "Freeze energy and sharpness",
@@ -960,6 +1082,7 @@ export const en = {
       waitingTitle: "What was frozen waits for now",
       /** `names` are the players' names, set apart by commas. */
       players: (names: string) => `Attributes: ${names}`,
+      staff: (names: string) => `Staff attributes: ${names}`,
       clubs: (names: string) => `Money: ${names}`,
       fitness: (names: string) => `Energy and sharpness: ${names}`,
       /** After the first few names. */
@@ -1169,6 +1292,8 @@ export const en = {
     released: (name: string) => `${name} released`,
     /** Under a transfer that had a fee: the amount, written out. */
     fee: (amount: string) => `Fee ${amount}`,
+    /** Under a recall from loan that took the loan's option to buy away, which its undo writes back. */
+    optionRemoved: (amount: string) => `Option to buy (${amount}) taken away`,
     /** What a heal changed, in the place of its values: `count` is how many injuries the player had. */
     healed: (count: number) => (count === 1 ? "Healed 1 injury" : `Healed ${format(count)} injuries`),
     /** The same for lifting bans: `count` is how many bans the player had. */
@@ -1697,6 +1822,65 @@ export const en = {
     hint: "Nothing changes in the game until you press Release.",
     release: "Release",
     releasing: "Releasing…",
+    cancel: "Cancel",
+  },
+
+  /** Making a player's loan permanent: the dialog the Make permanent button of the Loan part of his profile opens. */
+  permanent: {
+    title: "Make the loan permanent",
+    /** The club he stays at, and his own club, which he leaves. */
+    stays: "Stays at",
+    leaves: "Leaves",
+    checking: "Checking…",
+    doesHeading: "What it does",
+    /** One line each. */
+    does: [
+      "He stays where he plays, now under contract with that club from today, on the terms above",
+      "He keeps the squad number and squad status he has there",
+      "He leaves every team of his own club, and the loan ends",
+      "The game's transfer history does not list it",
+      "Listed under Changes as a transfer, where one undo puts the loan back",
+    ],
+    /** The fee, filled in from the loan's option to buy. */
+    optionFee: (money: string) => `Filled in from the loan's option to buy: ${money}`,
+    /** Nothing changes in the game until Make permanent. */
+    hint: "Nothing changes in the game until you press Make permanent.",
+    confirm: "Make permanent",
+    confirming: "Making it permanent…",
+    cancel: "Cancel",
+  },
+
+  /** Recalling a player from his loan: the dialog the Recall button of the Loan part of his profile opens. */
+  recall: {
+    title: "Recall from loan",
+    /** The club he is on loan at, and the one he goes back to. */
+    from: "On loan at",
+    to: "Goes back to",
+    doesHeading: "What the recall does",
+    /** One line each; `parent` is the club he goes back to. */
+    does: (parent: string) => [
+      "Today becomes the last day of the loan: when the day is over, the game ends the loan itself",
+      `Continue one day in the game and he is back at ${parent}`,
+      "Until then it is listed under Changes, where an undo puts the loan's old end back",
+    ],
+    /**
+     * What the loan's terms would not allow in the game, when it would not let his club recall him or end the loan
+     * early; `parent` is his club. The recall here moves the loan's last day all the same.
+     */
+    termsHeading: "In the game",
+    notRecallable: (parent: string) => `The loan does not let ${parent} recall him`,
+    notTerminable: "The loan cannot be ended early",
+    worksAnyway: "The recall here works all the same: it does not go through the game's recall, it moves the loan's last day",
+    /**
+     * A line of what the recall does, for a loan with an option to buy: `club` is the club he is on loan at. When a loan
+     * with one ends, the game may let that club sign him for it.
+     */
+    dropsOption: (club: string, amount: string) =>
+      `${club}'s option to buy him for ${amount} is taken away: else, when the loan ends, the game may sell him to ${club}`,
+    /** Nothing changes in the game until Recall. */
+    hint: "Nothing changes in the game until you press Recall.",
+    confirm: "Recall",
+    confirming: "Recalling…",
     cancel: "Cancel",
   },
 

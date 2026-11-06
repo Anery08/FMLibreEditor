@@ -144,6 +144,12 @@ impl Session {
         Ok(list.entries.iter().enumerate().filter_map(|(index, entry)| self.tie_at(index, entry)).collect())
     }
 
+    /// Every entry of the list of relations of `player`, as stored, ties of the kinds the editor leaves alone
+    /// included: their place in the list and their bytes.
+    pub fn relation_entries(&self, player: &PlayerSummary) -> Result<Vec<(usize, Vec<u8>)>, MoveError> {
+        Ok(self.relation_list(player)?.map(|list| list.entries.into_iter().enumerate().collect()).unwrap_or_default())
+    }
+
     /// How many more ties the list of `player` has room for.
     pub fn relation_room(&self, player: &PlayerSummary) -> Result<usize, MoveError> {
         match self.relation_list(player)? {

@@ -38,7 +38,7 @@ export async function run({ app, report, probe }) {
   report.check("the probe reads the old values again", FIELDS.every((field) => restored[field] === seen[field]), JSON.stringify(restored));
 
   // The same through his profile.
-  await app.openTab(0);
+  await app.openTab("Players");
   await app.setInput(`${VIS}(".search input")`, String(uid));
   const rows = `[...document.querySelectorAll("table.grid tbody tr")].filter(${SHOWN})`;
   await app.waitFor(`${rows}.length === 1 && ${rows}[0].textContent.includes(${JSON.stringify(player.name)})`, "his row");
@@ -57,13 +57,13 @@ export async function run({ app, report, probe }) {
   report.check("Edit mode writes the attribute", viaProfile !== seen["attribute.finishing"], `${seen["attribute.finishing"]} → ${viaProfile}`);
   await app.shot("edit-applied");
 
-  await app.openTab(3);
+  await app.openTab("Changes");
   const undo = `document.querySelector("table.changes-grid tbody tr td.col-status button")`;
   await app.waitFor(undo, "the change in the Changes tab");
   await app.click(undo, "Undo");
   await app.waitFor(`/Undone/.test(document.querySelector("table.changes-grid tbody tr td.col-status")?.textContent ?? "")`, "Undone");
   const back = probe.get("player", uid, ["attribute.finishing"])["attribute.finishing"];
   report.check("the Changes tab undoes it", back === seen["attribute.finishing"], `back to ${back}`);
-  await app.openTab(0);
+  await app.openTab("Players");
   await app.press("Escape");
 }

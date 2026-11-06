@@ -31,6 +31,7 @@ import type {
   Health,
   Ban,
   Injury,
+  LoanDetails,
   Tie,
   Clause,
   TieKind,
@@ -125,6 +126,13 @@ const PLAYABLE_RATING = 15;
 
 /** Every eleventh fixture player is a goalkeeper. */
 const isKeeper = (uid: number) => uid % 11 === 0;
+
+/**
+ * The squad status of a fixture contract: `drawn` (1 to 5), but the first-choice goalkeeper (15) for a few keepers,
+ * surplus to requirements (22) or a fringe player (7) for a few others.
+ */
+const squadStatusOf = (uid: number, drawn: number) =>
+  isKeeper(uid) && uid % 2 === 0 ? 15 : uid % 19 === 0 ? 22 : uid % 23 === 0 ? 7 : drawn;
 
 /** How well a fixture player plays each position (1–20): one natural position, a few that come close, the rest low. */
 function positionRatings(next: () => number, keeper: boolean): Record<string, number> {
@@ -259,7 +267,8 @@ function details(player: PlayerSummary): PlayerDetails {
           signed: { year: 2024, month: 7, day: 1 },
           expires: player.contractExpires,
           joined: { year: 2022, month: 8, day: 15 },
-          squadStatus: 1 + Math.floor(next() * 5),
+          squadStatus: squadStatusOf(player.uid, 1 + Math.floor(next() * 5)),
+          contractType: player.uid % 13 === 0 ? 3 : player.uid % 17 === 0 ? 0 : 1,
           squadNumber: 1 + Math.floor(next() * 40),
           transferListed: next() < 0.1,
           loanListed: false,
@@ -272,6 +281,11 @@ function details(player: PlayerSummary): PlayerDetails {
             { index: 2, kind: 38, amount: Math.round(2000 + next() * 15000), condition: null },
             ...(next() < 0.5 ? [{ index: 3, kind: 0, amount: Math.round(50 + next() * 500) * 1_000_000, condition: null }] : []),
             ...(next() < 0.5 ? [{ index: 4, kind: 22, amount: null, condition: 1 }] : []),
+            // A few kinds more, as the game holds them: a release clause that expires 791 days after the contract's
+            // start, a sell-on clause on the profit over an amount, a new wage after a number of league games.
+            ...(player.uid % 4 === 0 ? [{ index: 5, kind: 17, amount: 30_000_000, condition: 791 }] : []),
+            ...(player.uid % 6 === 0 ? [{ index: 6, kind: 9, amount: 2_147_579, condition: 7 }] : []),
+            ...(player.uid % 10 === 0 ? [{ index: 7, kind: 13, amount: 118_462, condition: 30 }] : []),
           ]),
           // A few players have reasons to be unhappy: one over, and one or two that last.
           concerns:
@@ -304,9 +318,63 @@ function details(player: PlayerSummary): PlayerDetails {
     clauseRoom: player.club ? clauseRoomOf(player.uid) : 0,
     retirementKnown: true,
     retires: retiresOf(player.uid),
+    loan: loanOf(player),
     // Drawn last, so that the values above come out as before.
     morale: Math.round(7 + next() * 10),
   });
+}
+
+/**
+ * Where a fixture player is on loan: every thirteenth player with a club plays there on loan from the next fixture
+ * club, from the end of June to the end of the season, number 1 + his UID modulo 40 there.
+ */
+function loanOf(player: PlayerSummary): LoanDetails | null {
+  if (player.club === null || player.clubUid === null || player.uid % 13 !== 6 || movedPlayers.has(player.uid)) {
+    return null;
+  }
+  const at = (CLUBS.indexOf(player.club) + 1) % CLUBS.length;
+  const parentUid = player.clubUid >= 2_000_100_000 ? 2_000_100_000 + at : 500 + at * 7;
+  return {
+    clubUid: player.clubUid,
+    club: player.club,
+    parentUid,
+    parent: CLUBS[at],
+    from: { year: 2026, month: 6, day: 29 },
+    until: { year: 2027, month: 6, day: 30 },
+    squadNumber: 1 + (player.uid % 40),
+    wage: 2_000 + (player.uid % 50) * 900,
+    ends: "later",
+    recalled: false,
+    terms: loanTermsOf(player.uid),
+  };
+}
+
+/**
+ * Terms for a fixture loan, as the Steam save shows them: about one loan in three cannot be recalled in the game, and
+ * those mostly cannot be terminated either and carry an option to buy and monthly fees (Anton Kade's: flags 0x1002).
+ */
+function loanTermsOf(uid: number): LoanDetails["terms"] {
+  const strict = uid % 3 === 0;
+  const flags = strict ? 0x1002 : 0x106;
+  return {
+    canBeRecalled: (flags & 0x4) !== 0,
+    canBeTerminated: (flags & 0x1000) === 0,
+    cupMatches: (flags & 0x2) !== 0,
+    againstOwnClub: (flags & 0x1) !== 0,
+    optionFee: strict ? 5_000_000 + (uid % 20) * 1_000_000 : null,
+    monthlyFee: strict ? 150_000 : null,
+    unusedFee: strict ? 200_000 : null,
+    flags,
+  };
+}
+
+/** Where the end `until` of a fixture loan stands against the game's date, as the real details say. */
+function loanEnd(until: FmDate | null): LoanDetails["ends"] {
+  if (until === null) {
+    return "unknown";
+  }
+  const [end, today] = [numberFromDate(until), numberFromDate(GAME_DATE)];
+  return end > today ? "later" : end === today ? "today" : "passed";
 }
 
 /** The fixture players healed through the editor, by UID, while the healing is not undone. */
@@ -759,6 +827,10 @@ function fieldTable(entity: Entity): EditField[] {
       ...personality,
       ...contract,
       ...playerContract,
+      // One player at a time, and only to a day after the game's date.
+      { ...field("loan.expires", "date", 20000101, 21001231), mass: false },
+      // Pounds; -1 is none, which a recall writes.
+      { ...field("loan.option_fee", "i32", 0, 2_000_000_000), mass: false, blank: -1 },
     ];
   }
   return [
@@ -839,6 +911,21 @@ function withWritten<D extends PlayerDetails | StaffDetails>(entity: Entity, d: 
       case "international":
         (d as PlayerDetails).international[INTERNATIONAL[name as keyof typeof INTERNATIONAL]] = value;
         break;
+      case "loan": {
+        const loan = (d as PlayerDetails).loan;
+        if (name === "option_fee" && loan?.terms) {
+          loan.terms.optionFee = value < 0 ? null : value;
+        }
+        if (name === "expires" && loan) {
+          loan.until = dateFromNumber(value);
+          loan.ends = loanEnd(loan.until);
+          // As the real app tells: the end this session's recall wrote, not undone.
+          loan.recalled = changes.some(
+            (c) => c.uid === d.uid && c.field === "loan.expires" && c.undoneAt === null && c.new === value,
+          );
+        }
+        break;
+      }
       case "contract":
         if (d.contract && name === "wage") {
           d.contract.wage = value;
@@ -983,6 +1070,13 @@ function currentValues(entity: Entity, uid: number): FieldValues {
         }
         return undefined;
       }
+      case "loan": {
+        const loan = (person as PlayerDetails).loan;
+        if (name === "option_fee") {
+          return loan?.terms ? (loan.terms.optionFee ?? -1) : undefined;
+        }
+        return name === "expires" ? loan?.until && numberFromDate(loan.until!) : undefined;
+      }
       case "facilities":
         return club.facilities[name];
       case "finance":
@@ -1071,6 +1165,14 @@ function applyEdits(entity: Entity, uid: number, edits: FieldEdit[]): ApplyRepor
       report.failed.push({ ...edit, error: failure("edit.notADate", message, { field: field.key, value: edit.value }) });
       continue;
     }
+    // Like the real command, a loan ends on a day the game is yet to finish: today or later.
+    const today = numberFromDate(GAME_DATE);
+    if (field.key === "loan.expires" && edit.value < today) {
+      const message = `${edit.value} is not a valid ${field.key}; it takes ${today} to ${field.max}`;
+      const params = { field: field.key, value: edit.value, min: today, max: field.max };
+      report.failed.push({ ...edit, error: failure("edit.outOfRange", message, params) });
+      continue;
+    }
     const old: number | undefined = currentValues(entity, uid)[field.key];
     if (old === undefined) {
       // No contract, no contract end, or a club without full finances.
@@ -1098,6 +1200,27 @@ function applyEdits(entity: Entity, uid: number, edits: FieldEdit[]): ApplyRepor
     report.applied.push({ ...logged });
   }
   return report;
+}
+
+/**
+ * `recall_loan`: the loan now ends on the game's date, its last day, written and logged like an edit of
+ * `loan.expires`; null when it ends then already.
+ */
+function recallLoan(uid: number): LoggedChange | null {
+  const option = currentValues("player", uid)["loan.option_fee"];
+  const report = applyEdits("player", uid, [{ field: "loan.expires", value: numberFromDate(GAME_DATE) }]);
+  if (report.failed.length > 0) {
+    throw report.failed[0].error;
+  }
+  const logged = report.applied[0] ?? null;
+  // As the real command: the loan's option to buy goes too, noted on the recall, whose undo writes it back.
+  if (logged && option !== undefined && option >= 0) {
+    writeValue("player", uid, "loan.option_fee", -1);
+    const entry = changes.find((c) => c.id === logged.id)!;
+    entry.recall = { optionFee: option };
+    return { ...entry };
+  }
+  return logged;
 }
 
 /** `undo_change`: writes the old value back unless the value has changed since. */
@@ -1243,6 +1366,10 @@ function undoChange(id: number): LoggedChange {
     throw failure("edit.conflict", message, { field: entry.field, expected: entry.new, found: found ?? 0 });
   }
   writeValue(entry.entity, entry.uid, entry.field, entry.old);
+  // A recall that took the loan's option to buy away writes it back too, as the real undo does.
+  if (entry.recall) {
+    writeValue(entry.entity, entry.uid, "loan.option_fee", entry.recall.optionFee);
+  }
   entry.undoneAt = Date.now();
   return { ...entry };
 }
@@ -1378,12 +1505,11 @@ function planMove(uid: number, clubUid: number, terms: MoveTerms, fee?: number, 
  * `move_player`: moves the fixture player and logs it as a change of his `club`; with `release`, that player of the
  * club becomes a free agent in the same change.
  */
-function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number, release?: number): LoggedChange {
-  const preview = planMove(uid, clubUid, terms, fee, release);
-  const player = players.find((p) => p.uid === uid)!;
-  const leaver = players.find((p) => p.uid === release);
-  const id = changes.length + 1;
-  // The fee, as the real command pays it: each amount by what it changes, so that undoing takes back just that.
+/**
+ * Pays the fee of `preview`, as the real commands pay one: each amount by what it changes, so that undoing takes back
+ * just that. What was paid, for the undo.
+ */
+function payFee(preview: MovePreview): [number, string, number][] {
   const paid: [number, string, number][] = [];
   for (const money of [preview.fee?.buyer, preview.fee?.seller]) {
     if (money) {
@@ -1395,6 +1521,84 @@ function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number
       }
     }
   }
+  return paid;
+}
+
+/**
+ * `plan_loan_permanent`: a fixture player on loan can stay at the club he is on loan to, on the terms, that club paying
+ * his own one the fee; the same checks of the terms as a move.
+ */
+function planLoanPermanent(uid: number, terms: MoveTerms, fee?: number): MovePreview {
+  const player = players.find((p) => p.uid === uid);
+  if (!player) {
+    throw notFound("player", uid);
+  }
+  const loan = loanOf(player);
+  const from = loan && clubs.find((c) => c.uid === loan.parentUid);
+  const to = loan && clubs.find((c) => c.uid === loan.clubUid);
+  if (!from || !to) {
+    throw failure("move.notOnLoan", "the player is not on loan");
+  }
+  const outOfRange = (field: string, value: number, min: number, max: number) =>
+    failure("move.outOfRange", `${value} is not a valid ${field}; it takes ${min} to ${max}`, { field, value, min, max });
+  if (terms.wage !== undefined && (!Number.isInteger(terms.wage) || terms.wage < 0 || terms.wage > 10_000_000)) {
+    throw outOfRange("contract.wage", terms.wage, 0, 10_000_000);
+  }
+  const tomorrow = numberFromDate(addDays(GAME_DATE, 1));
+  if (terms.expires !== undefined && (dateFromNumber(terms.expires) === null || terms.expires < tomorrow || terms.expires > 21001231)) {
+    throw outOfRange("contract.expires", terms.expires, tomorrow, 21001231);
+  }
+  return {
+    from: { uid: from.uid, name: from.name },
+    to: { uid: to.uid, name: to.name },
+    ...(fee !== undefined && fee > 0 && { fee: feePlan(from.uid, to.uid, fee) }),
+  };
+}
+
+/**
+ * `make_loan_permanent`: the fixture player stays where he plays, his loan gone (as for a moved player, `loanOf` has
+ * none for him), logged as a move between the two clubs that `undoMove` takes back.
+ */
+function makeLoanPermanent(uid: number, terms: MoveTerms, fee?: number): LoggedChange {
+  const preview = planLoanPermanent(uid, terms, fee);
+  const player = players.find((p) => p.uid === uid)!;
+  const id = changes.length + 1;
+  const paid = payFee(preview);
+  moveUndo.set(id, {
+    row: { club: player.club, clubUid: player.clubUid, contractExpires: player.contractExpires },
+    written: written.get(`player:${uid}`),
+    paid,
+  });
+  if (terms.expires !== undefined) {
+    player.contractExpires = dateFromNumber(terms.expires);
+  }
+  if (terms.wage !== undefined) {
+    writeValue("player", uid, "contract.wage", terms.wage);
+  }
+  movedPlayers.set(uid, (movedPlayers.get(uid) ?? 0) + 1);
+  const logged: LoggedChange = {
+    id,
+    at: Date.now(),
+    name: player.name,
+    entity: "player",
+    uid,
+    field: "club",
+    old: preview.from.uid,
+    new: preview.to.uid,
+    undoneAt: null,
+    batch: null,
+    moved: { from: preview.from.name, to: preview.to.name, ...(preview.fee && { fee: preview.fee.fee }) },
+  };
+  changes.push(logged);
+  return { ...logged };
+}
+
+function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number, release?: number): LoggedChange {
+  const preview = planMove(uid, clubUid, terms, fee, release);
+  const player = players.find((p) => p.uid === uid)!;
+  const leaver = players.find((p) => p.uid === release);
+  const id = changes.length + 1;
+  const paid = payFee(preview);
   const rowOf = (p: PlayerSummary) => ({ club: p.club, clubUid: p.clubUid, contractExpires: p.contractExpires });
   moveUndo.set(id, {
     row: rowOf(player),
@@ -1834,19 +2038,30 @@ const bestAttribute = (key: string): [string, number] => [
   key === "injury_proneness" || key === "dirtiness" ? 5 : 100,
 ];
 
-/** Writes `values` (field, value as stored) to the player, each logged in the batch of `report`, which counts them. */
-function setValues(player: { uid: number; name: string }, values: [string, number][], report: MassReport): void {
-  const now = currentValues("player", player.uid);
+/** A staff attribute at its best as Max attributes writes it: 20 for the two stored as shown, else 20 stored as 100. */
+const bestStaffAttribute = (key: string): [string, number] => [
+  `attribute.${key}`,
+  STAFF_RATINGS.includes(key) ? 20 : 100,
+];
+
+/** Writes `values` (field, value as stored) to the person, each logged in the batch of `report`, which counts them. */
+function setValues(
+  player: { uid: number; name: string },
+  values: [string, number][],
+  report: MassReport,
+  entity: Entity = "player",
+): void {
+  const now = currentValues(entity, player.uid);
   for (const [field, value] of values) {
     if (now[field] === value) {
       continue;
     }
-    writeValue("player", player.uid, field, value);
+    writeValue(entity, player.uid, field, value);
     const logged: LoggedChange = {
       id: changes.length + 1,
       at: Date.now(),
       name: player.name,
-      entity: "player",
+      entity,
       uid: player.uid,
       field,
       old: now[field],
@@ -2183,6 +2398,9 @@ const frozenMoney = new Set<number>();
 /** The players whose attributes are frozen in this page, likewise. */
 const frozenAttributes = new Set<number>();
 
+/** The members of staff whose attributes are frozen in this page, likewise. */
+const frozenStaff = new Set<number>();
+
 /** The players whose energy and match sharpness are frozen in this page, likewise. */
 const frozenFitness = new Set<number>();
 
@@ -2313,8 +2531,12 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         frozenFitness.add(player.uid);
       }
       frozenMoney.add(clubs[0].uid);
+      for (const member of staff.slice(0, 2)) {
+        frozenStaff.add(member.uid);
+      }
       const again: Refrozen = {
         players: players.slice(0, 2).map((p) => p.name),
+        staff: staff.slice(0, 2).map((s) => s.name),
         clubs: [clubs[0].name],
         fitness: players.slice(0, 7).map((p) => p.name),
         waiting: 1,
@@ -2438,6 +2660,17 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
     }
     case "frozen_players":
       return [...frozenAttributes] as T;
+    case "freeze_staff_attributes": {
+      const id = Number(args?.id);
+      if (args?.frozen) {
+        frozenStaff.add(id);
+      } else {
+        frozenStaff.delete(id);
+      }
+      return [...frozenStaff] as T;
+    }
+    case "frozen_staff":
+      return [...frozenStaff] as T;
     case "freeze_fitness": {
       const uid = Number(args?.uid);
       if (args?.frozen) {
@@ -2476,6 +2709,16 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       setValues(player, ATTRIBUTES.map(bestAttribute), report);
       return report as T;
     }
+    case "max_staff_attributes": {
+      const id = Number(args?.id);
+      const member = staff.find((s) => s.uid === id);
+      if (!member) {
+        throw notFound("staff", id);
+      }
+      const report: MassReport = { batch: nextMassId++, applied: 0, failed: [] };
+      setValues(member, STAFF_ATTRIBUTE_ORDER.map(bestStaffAttribute), report, "staff");
+      return report as T;
+    }
     case "list_nations": {
       const nations: Nation[] = NATIONS.map((name) => ({ address: nationAddress(name), uid: 1000 + NATIONS.indexOf(name), name }));
       return nations.sort((a, b) => a.name.localeCompare(b.name)) as T;
@@ -2484,6 +2727,8 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       return currentValues(args?.entity as Entity, Number(args?.uid)) as T;
     case "apply_edits":
       return applyEdits(args?.entity as Entity, Number(args?.uid), (args?.edits ?? []) as FieldEdit[]) as T;
+    case "recall_loan":
+      return recallLoan(Number(args?.uid)) as T;
     case "change_log":
       return changes.map((c) => ({ ...c })).reverse() as T;
     case "undo_change":
@@ -2507,6 +2752,10 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       const terms = (args?.terms ?? {}) as MoveTerms;
       return movePlayer(Number(args?.uid), Number(args?.club), terms, args?.fee as number, args?.release as number) as T;
     }
+    case "plan_loan_permanent":
+      return planLoanPermanent(Number(args?.uid), (args?.terms ?? {}) as MoveTerms, args?.fee as number) as T;
+    case "make_loan_permanent":
+      return makeLoanPermanent(Number(args?.uid), (args?.terms ?? {}) as MoveTerms, args?.fee as number) as T;
     case "room_makers":
       return roomMakers(Number(args?.club)) as T;
     case "staff_jobs":

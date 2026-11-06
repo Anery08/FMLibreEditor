@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize, Serializer};
 
 use crate::{
     ATTRIBUTE_GROUPS, Contract, FmDate, International, PERSONALITY, PlayerDetails, PlayerSummary, RELEASE_CLAUSE,
-    Reputation, Session, read_player_details,
+    RELEASE_CLAUSES, Reputation, Session, read_player_details, release_clause_expiry,
 };
 
 /// How an export writes the players.
@@ -141,6 +141,11 @@ fn csv_columns(game_date: Option<FmDate>) -> Columns {
     columns.contract("contract_signed", |c| c.signed.map(iso).unwrap_or_default());
     columns.contract("contract_expires", |c| c.expires.map(iso).unwrap_or_default());
     columns.contract("contract_joined", |c| c.joined.map(iso).unwrap_or_default());
+    columns.contract("contract_type", |c| {
+        c.contract_type
+            .map(|code| contract_type_name(code).map_or_else(|| code.to_string(), str::to_owned))
+            .unwrap_or_default()
+    });
     columns.contract("squad_status", |c| {
         squad_status_name(c.squad_status).map_or_else(|| c.squad_status.to_string(), str::to_owned)
     });
@@ -241,6 +246,9 @@ struct JsonContract {
     joined: Option<String>,
     squad_status: u8,
     squad_status_name: Option<&'static str>,
+    /// The game's code for the kind of contract; none where the build's layout does not know where it is.
+    contract_type: Option<u8>,
+    contract_type_name: Option<&'static str>,
     squad_number: Option<u8>,
     transfer_listed: bool,
     loan_listed: bool,
@@ -255,8 +263,11 @@ struct JsonClause {
     name: Option<&'static str>,
     /// Pounds.
     amount: Option<u32>,
-    /// Goals, assists, matches, years or a percentage, by kind.
+    /// Goals, assists, league games, years or a percentage, by kind; for a release clause, the days from the
+    /// contract's start until it expires.
     condition: Option<u16>,
+    /// The day a release clause expires.
+    expires: Option<String>,
 }
 
 impl<'a> From<&'a PlayerDetails> for JsonPlayer<'a> {
@@ -290,6 +301,8 @@ impl<'a> From<&'a PlayerDetails> for JsonPlayer<'a> {
                 joined: c.joined.map(iso),
                 squad_status: c.squad_status,
                 squad_status_name: squad_status_name(c.squad_status),
+                contract_type: c.contract_type,
+                contract_type_name: c.contract_type.and_then(contract_type_name),
                 squad_number: c.squad_number,
                 transfer_listed: c.transfer_listed,
                 loan_listed: c.loan_listed,
@@ -301,6 +314,7 @@ impl<'a> From<&'a PlayerDetails> for JsonPlayer<'a> {
                         name: clause_name(clause.kind),
                         amount: clause.amount,
                         condition: clause.condition,
+                        expires: release_clause_expiry(clause, c.signed).map(iso),
                     })
                     .collect(),
             }),
@@ -340,61 +354,143 @@ fn release_clause(contract: &Contract) -> Option<u32> {
 /// The clauses and bonuses of a contract in words, apart by semicolons: "Minimum fee release clause: 100000000 GBP;
 /// Yearly wage rise: 10%".
 fn clauses_text(contract: &Contract) -> String {
-    let clause = |clause: &crate::Clause| {
-        let name = clause_name(clause.kind).map_or_else(|| format!("Clause {}", clause.kind), str::to_owned);
-        let condition = clause.condition.map(|value| condition_text(clause.kind, value));
-        match (clause.amount, condition) {
-            (Some(amount), Some(condition)) => format!("{name}: {amount} GBP, {condition}"),
-            (Some(amount), None) => format!("{name}: {amount} GBP"),
-            (None, Some(condition)) => format!("{name}: {condition}"),
-            (None, None) => name,
-        }
-    };
-    contract.clauses.iter().map(clause).collect::<Vec<_>>().join("; ")
+    contract.clauses.iter().map(|clause| clause_text(clause, contract.signed)).collect::<Vec<_>>().join("; ")
 }
 
-/// The English name of a squad status, by the code a contract holds it as; as the app's English dictionary names it.
+/// A clause or bonus in words, with what it pays and depends on: "Seasonal landmark goal bonus: 250000 GBP, 25 goals",
+/// "Minimum fee release clause: 50000000 GBP, expires 2029-09-01"; `signed`, the contract's start, dates a release
+/// clause's expiry.
+fn clause_text(clause: &crate::Clause, signed: Option<FmDate>) -> String {
+    let name = clause_name(clause.kind).map_or_else(|| format!("Clause {}", clause.kind), str::to_owned);
+    let condition = match (release_clause_expiry(clause, signed), clause.condition) {
+        (Some(expires), _) => Some(format!("expires {}", iso(expires))),
+        (None, Some(value)) => Some(condition_text(clause.kind, value)),
+        (None, None) => None,
+    };
+    let amount = clause.amount.map(|amount| match clause.kind {
+        // The wage he gets from then on.
+        13 | 19 => format!("{amount} GBP a week"),
+        _ => format!("{amount} GBP"),
+    });
+    match (amount, condition) {
+        // The percentage of the profit over the amount.
+        (Some(amount), Some(condition)) if clause.kind == SELL_ON_PROFIT => {
+            format!("{name}: {condition} of the profit over {amount}")
+        }
+        (Some(amount), Some(condition)) => format!("{name}: {amount}, {condition}"),
+        (Some(amount), None) => format!("{name}: {amount}"),
+        (None, Some(condition)) => format!("{name}: {condition}"),
+        (None, None) => name,
+    }
+}
+
+/// The kind of the sell-on clause whose amount is a threshold: the club that sold the player gets the percentage of
+/// the profit over it.
+const SELL_ON_PROFIT: u16 = 9;
+
+/// The English name of a squad status, by the code a contract holds it as; as the app's English dictionary names it
+/// (see docs/recon/fm27-contracts.md).
 fn squad_status_name(code: u8) -> Option<&'static str> {
     Some(match code {
         1 => "Star player",
         2 => "Important player",
         3 => "Regular starter",
-        4 => "Rotation player",
+        4 => "Squad player",
         5 => "Impact sub",
+        7 => "Fringe player",
+        9 => "Emergency backup",
+        10 => "Breakthrough prospect",
+        11 => "Future prospect",
+        13 => "Youngster",
+        14 => "B team regular",
+        15 => "First-choice goalkeeper",
+        16 => "Cup goalkeeper",
+        17 => "Domestic cup goalkeeper",
+        20 => "Backup",
+        21 => "Emergency backup (goalkeeper)",
+        22 => "Surplus to requirements",
         _ => return None,
     })
 }
 
-/// The English name of a clause or bonus, by its kind; as the app's English dictionary names it.
+/// The English name of a kind of contract, by the code a contract holds it as; as the app's English dictionary names
+/// it.
+fn contract_type_name(code: u8) -> Option<&'static str> {
+    Some(match code {
+        0 => "Part-time contract",
+        1 => "Full-time contract",
+        2 => "Amateur contract",
+        3 => "Youth contract",
+        4 => "Non-contract",
+        10 => "Senior minimum salary contract",
+        11 => "Senior contract",
+        _ => return None,
+    })
+}
+
+/// The English name of a clause or bonus, by its kind; as the app's English dictionary names it (see
+/// docs/recon/fm27-contracts.md).
 fn clause_name(kind: u16) -> Option<&'static str> {
     Some(match kind {
         0 => "Minimum fee release clause",
         1 => "Relegation release clause",
+        2 => "Non promotion release clause",
         3 => "Yearly wage rise",
+        4 => "Promotion wage rise",
+        5 => "Relegation wage drop",
+        6 => "Release clause for a staff role",
+        8 => "Sell on fee percentage",
+        9 => "Sell on fee profit percentage",
         10 => "Seasonal landmark goal bonus",
+        11 => "One-year extension after league games (final season)",
+        12 => "Match highest earner clause",
+        13 => "Wage after reaching club league games",
+        14 => "Top division promotion wage rise",
         15 => "Top division relegation wage drop",
+        16 => "Minimum fee release clause (foreign clubs)",
+        17 => "Minimum fee release clause (domestic clubs in higher division)",
+        18 => "Minimum fee release clause (domestic clubs)",
         19 => "Wage after reaching international matches",
+        20 => "Percentage of wages paid by sponsor",
+        21 => "Percentage of gate receipts paid to player",
         22 => "Optional contract extension by club",
-        27 => "Minimum fee release clause (clubs in the Champions Cup)",
+        23 => "Waive club compensation for managerial role",
+        25 => "One-year extension after league games (promoted final season)",
+        26 => "One-year extension after league games (avoid relegation final season)",
+        27 => "Minimum fee release clause (clubs in UEFA Champions League)",
+        28 => "MLS guaranteed contract clause",
+        29 => "Contract extension after promotion",
+        30 => "Injury release clause",
+        31 => "Minimum fee release clause (clubs in a continental competition)",
         32 => "Appearance fee",
         33 => "Goal bonus",
         34 => "Clean sheet bonus",
+        37 => "International cap bonus",
         38 => "Unused substitute fee",
         39 => "Assist bonus",
         40 => "Seasonal landmark assist bonus",
+        41 => "Seasonal landmark combined goal and assist bonus",
+        54 => "Not shown in the game (54)",
+        55 => "Active relegation release clause",
+        58 => "Not shown in the game (58)",
+        63 => "Not shown in the game (63)",
         _ => return None,
     })
 }
 
-/// What a clause depends on, in words, by its kind: goals, assists, international matches, years or a percentage.
+/// What a clause depends on, in words, by its kind: goals, assists, league games, international matches, years or a
+/// percentage; for a release clause whose contract's start is not known, the days after it.
 fn condition_text(kind: u16, value: u16) -> String {
+    let plural = |one: &str, many: &str| if value == 1 { format!("1 {one}") } else { format!("{value} {many}") };
     match kind {
-        10 => format!("{value} goals"),
-        40 => format!("{value} assists"),
-        19 => format!("{value} international matches"),
-        22 if value == 1 => "1 year".to_owned(),
-        22 => format!("{value} years"),
-        3 | 15 => format!("{value}%"),
+        10 => plural("goal", "goals"),
+        40 => plural("assist", "assists"),
+        41 => format!("{value} goals and assists"),
+        19 => plural("international match", "international matches"),
+        11 | 13 | 25 | 26 => plural("league game", "league games"),
+        22 | 29 => plural("year", "years"),
+        3 | 4 | 5 | 8 | 9 | 14 | 15 | 20 | 21 => format!("{value}%"),
+        _ if RELEASE_CLAUSES.contains(&kind) => format!("expires {} after signing", plural("day", "days")),
         _ => value.to_string(),
     }
 }
@@ -451,6 +547,7 @@ mod tests {
                 expires: Some(FmDate { year: 2031, month: 6, day: 30 }),
                 joined: Some(FmDate { year: 2018, month: 7, day: 1 }),
                 squad_status: 1,
+                contract_type: Some(1),
                 squad_number: Some(7),
                 transfer_listed: false,
                 loan_listed: false,
@@ -475,6 +572,7 @@ mod tests {
             retirement_known: false,
             retires: None,
             clause_room: 0,
+            loan: None,
         }
     }
 
@@ -507,9 +605,51 @@ mod tests {
         assert_eq!(cell("rating_amr"), "20");
         assert_eq!(cell("finishing"), "14");
         assert_eq!(cell("squad_status"), "Star player");
+        assert_eq!(cell("contract_type"), "Full-time contract");
         assert_eq!(cell("release_clause_gbp"), "150000000");
         assert_eq!(cell("asking_price_gbp"), "");
         assert_eq!(cell("clauses"), "Minimum fee release clause: 150000000 GBP; Yearly wage rise: 10%");
+    }
+
+    #[test]
+    fn clauses_in_words() {
+        let clause = |kind, amount, condition| Clause { index: 0, kind, amount, condition };
+        let signed = Some(FmDate { year: 2027, month: 7, day: 3 });
+        let said = |kind, amount, condition| clause_text(&clause(kind, amount, condition), signed);
+        // Ben Schlicke's release clause for domestic clubs in a higher division: 791 days after 3 July 2027.
+        assert_eq!(
+            said(17, Some(20_000_000), Some(791)),
+            "Minimum fee release clause (domestic clubs in higher division): 20000000 GBP, expires 2029-09-01"
+        );
+        assert_eq!(
+            clause_text(&clause(17, Some(20_000_000), Some(791)), None),
+            "Minimum fee release clause (domestic clubs in higher division): 20000000 GBP, expires 791 days after signing"
+        );
+        assert_eq!(said(27, Some(5), None), "Minimum fee release clause (clubs in UEFA Champions League): 5 GBP");
+        // Sylla's sell-on clause: 7% of the profit over £2.1M.
+        assert_eq!(
+            said(9, Some(2_147_579), Some(7)),
+            "Sell on fee profit percentage: 7% of the profit over 2147579 GBP"
+        );
+        assert_eq!(
+            said(13, Some(118_462), Some(30)),
+            "Wage after reaching club league games: 118462 GBP a week, 30 league games"
+        );
+        assert_eq!(said(10, Some(250_000), Some(1)), "Seasonal landmark goal bonus: 250000 GBP, 1 goal");
+        assert_eq!(said(14, None, Some(20)), "Top division promotion wage rise: 20%");
+        assert_eq!(said(63, None, None), "Not shown in the game (63)");
+        assert_eq!(said(99, None, Some(3)), "Clause 99: 3");
+    }
+
+    #[test]
+    fn every_squad_status_and_contract_type_seen_is_named() {
+        for code in [1, 2, 3, 4, 5, 7, 9, 10, 11, 13, 14, 15, 16, 17, 20, 21, 22] {
+            assert!(squad_status_name(code).is_some(), "{code}");
+        }
+        assert_eq!(squad_status_name(4), Some("Squad player"));
+        for code in [0, 1, 2, 3, 4, 10, 11] {
+            assert!(contract_type_name(code).is_some(), "{code}");
+        }
     }
 
     #[test]
@@ -532,7 +672,10 @@ mod tests {
         assert_eq!(player["attributes"]["finishing"], 14);
         assert_eq!(player["positionRatings"]["AMR"], 20);
         assert_eq!(player["contract"]["squadStatusName"], "Star player");
+        assert_eq!(player["contract"]["contractType"], 1);
+        assert_eq!(player["contract"]["contractTypeName"], "Full-time contract");
         assert_eq!(player["contract"]["clauses"][0]["amount"], 150_000_000);
+        assert_eq!(player["contract"]["clauses"][0]["expires"], serde_json::Value::Null);
         // The object keeps the order it was written in: the UID first, the attributes in the game's groups.
         let line = text.lines().find(|line| line.contains("28122642")).unwrap();
         assert!(line.trim_start().starts_with("{\"uid\":28122642,\"name\":\"Bukayo Saka\""));

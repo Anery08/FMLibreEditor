@@ -46,6 +46,29 @@ const SQUAD_STATUSES: Partial<Record<number, string>> = {
   3: "Titular habitual",
   4: "Jugador de rotación",
   5: "Revulsivo",
+  7: "Jugador secundario",
+  9: "Suplente de emergencia",
+  10: "Promesa a punto de despuntar",
+  11: "Promesa de futuro",
+  13: "Joven",
+  14: "Habitual del filial",
+  15: "Portero titular",
+  16: "Portero de copa",
+  17: "Portero de copa nacional",
+  20: "Portero suplente",
+  21: "Portero suplente de emergencia",
+  22: "Prescindible",
+};
+
+/** The kinds of contract (see `en.ts`). */
+const CONTRACT_TYPES: Partial<Record<number, string>> = {
+  0: "Contrato a tiempo parcial",
+  1: "Contrato a tiempo completo",
+  2: "Contrato amateur",
+  3: "Contrato juvenil",
+  4: "Sin contrato",
+  10: "Contrato sénior de salario mínimo",
+  11: "Contrato sénior",
 };
 
 /** The name of the field a failure names. */
@@ -61,6 +84,7 @@ const UNSUPPORTED: Partial<Record<string, string>> = {
   "it is changed one person at a time": "se cambia persona a persona",
   "the new value is not one of the game's own records of that kind":
     "el nuevo valor no es uno de los registros del propio juego de ese tipo",
+  "the in-game date is not known": "no se conoce la fecha del juego",
 };
 
 const reload = "vuelve a leer los datos e inténtalo de nuevo";
@@ -76,18 +100,46 @@ const STAFF_DEPARTMENTS: Partial<Record<string, string>> = {
 const CLAUSE_NAMES_ES: Partial<Record<number, string>> = {
   0: "Cláusula de rescisión por traspaso mínimo",
   1: "Cláusula de rescisión por descenso",
+  2: "Cláusula de rescisión por no ascender",
   3: "Aumento salarial anual",
+  4: "Aumento salarial por ascenso",
+  5: "Rebaja salarial por descenso",
+  6: "Cláusula de salida para un puesto técnico",
+  8: "Porcentaje de un futuro traspaso",
+  9: "Porcentaje del beneficio de un futuro traspaso",
   10: "Prima por objetivo de goles en la temporada",
+  11: "Ampliación de un año tras partidos de liga (última temporada)",
+  12: "Cláusula de igualar al mejor pagado",
+  13: "Salario tras alcanzar partidos de liga con el club",
+  14: "Aumento salarial por ascenso a primera división",
   15: "Rebaja salarial por descenso de primera división",
+  16: "Cláusula de rescisión por traspaso mínimo (clubes extranjeros)",
+  17: "Cláusula de rescisión por traspaso mínimo (clubes nacionales de categoría superior)",
+  18: "Cláusula de rescisión por traspaso mínimo (clubes nacionales)",
   19: "Salario tras alcanzar partidos internacionales",
+  20: "Porcentaje del salario pagado por un patrocinador",
+  21: "Porcentaje de la taquilla para el jugador",
   22: "Ampliación opcional del contrato por parte del club",
-  27: "Cláusula de rescisión por traspaso mínimo (clubes en la Copa de Campeones)",
+  23: "Renuncia a la compensación del club por un puesto de entrenador",
+  25: "Ampliación de un año tras partidos de liga (última temporada con ascenso)",
+  26: "Ampliación de un año tras partidos de liga (última temporada sin descenso)",
+  27: "Cláusula de rescisión por traspaso mínimo (clubes en la Liga de Campeones de la UEFA)",
+  28: "Cláusula de contrato garantizado de la MLS",
+  29: "Ampliación del contrato tras ascender",
+  30: "Cláusula de rescisión por lesión",
+  31: "Cláusula de rescisión por traspaso mínimo (clubes en una competición continental)",
   32: "Prima por partido jugado",
   33: "Prima por gol",
   34: "Prima por portería a cero",
+  37: "Prima por internacionalidad",
   38: "Prima por suplente no utilizado",
   39: "Prima por asistencia",
   40: "Prima por objetivo de asistencias en la temporada",
+  41: "Prima por objetivo de goles y asistencias en la temporada",
+  54: "No se muestra en el juego (54)",
+  55: "Cláusula de rescisión por descenso activa",
+  58: "No se muestra en el juego (58)",
+  63: "No se muestra en el juego (63)",
 };
 
 /** Reasons to be unhappy, by the codes the game keeps them as (see `en.ts`). */
@@ -197,7 +249,9 @@ const errors: ErrorTexts = {
   "move.notAClub": () => "Este club no tiene un primer equipo al que pueda unirse el jugador.",
   "move.freeAgent": () => "El jugador no tiene club; los agentes libres aún no se pueden traspasar.",
   "move.sameClub": () => "El jugador ya está en este club.",
-  "move.onLoan": () => "El jugador está cedido; los jugadores cedidos aún no se pueden traspasar.",
+  "move.onLoan": () =>
+    "El jugador está cedido: repéscalo primero o haz la cesión definitiva, en la parte Cesión de su perfil.",
+  "move.notOnLoan": () => "El jugador no está cedido.",
   "move.playerCoach": () => "Los jugadores-entrenadores no se pueden traspasar: también trabajan como personal.",
   "move.unusualContract": () => "El contrato del jugador no es un contrato de jugador corriente.",
   "move.humanClub": () =>
@@ -488,6 +542,8 @@ export const es: Strings = {
     "contract.squad_status": "Estatus en la plantilla",
     "contract.transfer_listed": "Transferible",
     "contract.loan_listed": "Cedible",
+    "loan.expires": "Fin de la cesión",
+    "loan.option_fee": "Opción de compra",
     "contract.job": "Puesto",
     "tie.nationality": "Nacionalidad secundaria",
     "tie.trainedInNation": "Formado en el país",
@@ -573,6 +629,8 @@ export const es: Strings = {
     joined: "Incorporación",
     squadStatus: "Estatus en la plantilla",
     squadStatusName: (status) => SQUAD_STATUSES[status] ?? `Estatus ${status}`,
+    contractType: "Tipo de contrato",
+    contractTypeName: (code) => CONTRACT_TYPES[code] ?? `Tipo ${code}`,
     squadNumber: "Dorsal",
     transferListed: "Transferible",
     loanListed: "Cedible",
@@ -619,23 +677,70 @@ export const es: Strings = {
     playingTimeHappiness: "Felicidad con los minutos",
     moodTitle: "Como lo muestra FMRTE, de -100 a 100; el juego lo muestra con palabras",
     clauseName: (kind) => CLAUSE_NAMES_ES[kind] ?? `Cláusula ${kind}`,
+    loan: "Cesión",
+    loanAt: "Cedido a",
+    loanParent: "Pertenece a",
+    loanFrom: "Desde",
+    loanUntil: "Hasta",
+    loanNumber: "Dorsal allí",
+    recall: "Repescar de la cesión",
+    recallTitle: "Devolverlo a su club: la cesión termina hoy. Pregunta antes de cambiar nada",
+    recallAgain: "Repescar de nuevo",
+    makePermanent: "Hacer definitiva",
+    makePermanentTitle: "Que se quede en el club donde está cedido, con contrato con él. Pregunta antes de cambiar nada",
+    recalledWaiting: "Repescado · vuelta pendiente",
+    endsTodayWaiting: "Termina hoy · vuelta pendiente",
+    pendingTitle: (parent) => `Hoy es el último día de la cesión: avanza un día en el juego y estará de vuelta en ${parent}.`,
+    endPassed: (date) =>
+      `La cesión debía terminar el ${date}, pero el juego no lo ha devuelto. Repéscalo de nuevo y avanza un día.`,
+    loanCanRecall: "Se puede repescar",
+    loanCanRecallTitle: "Si su club puede repescarlo en el juego. Repescar de la cesión aquí funciona en ambos casos",
+    loanCanTerminate: "Se puede rescindir",
+    loanCupMatches: "Juega en copa",
+    loanAgainstClub: "Juega contra su club",
+    loanOptionFee: "Opción de compra",
+    loanOptionFeeTitle: "El traspaso por el que el club donde está cedido puede ficharlo en propiedad",
+    loanMonthlyFee: "Cuota mensual",
+    loanMonthlyFeeTitle: "Lo que el club donde está cedido paga a su club por cada mes que juega",
+    loanUnusedFee: "Cuota mensual sin jugar",
+    loanUnusedFeeTitle: "Lo que el club donde está cedido paga a su club por cada mes que no juega",
     clauseCondition: (kind, value) => {
       switch (kind) {
         case 10:
           return value === 1 ? "1 gol" : `${format(value)} goles`;
         case 40:
           return value === 1 ? "1 asistencia" : `${format(value)} asistencias`;
+        case 41:
+          return `${format(value)} goles y asistencias`;
         case 19:
           return value === 1 ? "1 partido internacional" : `${format(value)} partidos internacionales`;
+        case 11:
+        case 13:
+        case 25:
+        case 26:
+          return value === 1 ? "1 partido de liga" : `${format(value)} partidos de liga`;
         case 22:
+        case 29:
           return value === 1 ? "1 año" : `${format(value)} años`;
         case 3:
+        case 4:
+        case 5:
+        case 8:
+        case 9:
+        case 14:
         case 15:
+        case 20:
+        case 21:
           return `${value} %`;
         default:
           return String(value);
       }
     },
+    clauseExpires: (date) => `vence el ${date}`,
+    clauseExpiresAfter: (days) =>
+      days === 1 ? "vence 1 día después de la firma" : `vence ${format(days)} días después de la firma`,
+    clauseProfitShare: (percent, amount) => `${percent} del beneficio por encima de ${amount}`,
+    clauseWage: (amount) => `${amount} a la semana`,
     moraleTitle:
       "El juego muestra la moral como la felicidad general del jugador: satisfecho con 10, algo feliz con 11, " +
       "extremadamente feliz con 15 y 20",
@@ -670,6 +775,12 @@ export const es: Strings = {
     undoMaxTitle: "Volver a escribir en el juego sus atributos anteriores",
     freezeAttributes: "Congelar los atributos",
     freezeAttributesNote:
+      "Mientras la aplicación esté abierta y conectada, sus atributos no empeoran: lo que el juego quita se devuelve, " +
+      "y las mejoras siguen contando. La aplicación lo recuerda para esta partida y vuelve a congelarlos al " +
+      "conectarse a ella.",
+    maxStaffAttributesTitle: "Poner cada atributo de este miembro del personal en su mejor valor: 20",
+    undoMaxStaffTitle: "Volver a escribir en el juego los atributos anteriores",
+    freezeStaffAttributesNote:
       "Mientras la aplicación esté abierta y conectada, sus atributos no empeoran: lo que el juego quita se devuelve, " +
       "y las mejoras siguen contando. La aplicación lo recuerda para esta partida y vuelve a congelarlos al " +
       "conectarse a ella.",
@@ -953,6 +1064,7 @@ export const es: Strings = {
       title: "Congelado de nuevo desde la última vez",
       waitingTitle: "Lo congelado espera por ahora",
       players: (names) => `Atributos: ${names}`,
+      staff: (names) => `Atributos del personal: ${names}`,
       clubs: (names) => `Dinero: ${names}`,
       fitness: (names) => `Energía y ritmo: ${names}`,
       more: (count) => `y ${format(count)} más`,
@@ -1120,6 +1232,7 @@ export const es: Strings = {
     swappedWith: (name) => `Intercambiado por ${name}`,
     released: (name) => `Contrato rescindido: ${name}`,
     fee: (amount) => `Traspaso: ${amount}`,
+    optionRemoved: (amount) => `Opción de compra (${amount}) eliminada`,
     healed: (count) => (count === 1 ? "1 lesión curada" : `${format(count)} lesiones curadas`),
     lifted: (count) => (count === 1 ? "1 sanción levantada" : `${format(count)} sanciones levantadas`),
     keptPlaying: (date) => (date === null ? "Seguirá jugando" : `Retirada del ${date} evitada`),
@@ -1551,6 +1664,49 @@ export const es: Strings = {
     hint: "Nada cambia en el juego hasta que pulsas Rescindir.",
     release: "Rescindir",
     releasing: "Rescindiendo…",
+    cancel: "Cancelar",
+  },
+
+  permanent: {
+    title: "Hacer la cesión definitiva",
+    stays: "Se queda en",
+    leaves: "Deja",
+    checking: "Comprobando…",
+    doesHeading: "Qué hace",
+    does: [
+      "Se queda donde juega, ahora con contrato con ese club desde hoy y con las condiciones de arriba",
+      "Conserva allí su dorsal y su estatus en la plantilla",
+      "Deja todos los equipos de su club, y la cesión termina",
+      "El historial de traspasos del juego no lo muestra",
+      "Figura en Cambios como un traspaso; deshacerlo una vez devuelve la cesión",
+    ],
+    /** The fee, filled in from the loan's option to buy. */
+    optionFee: (money) => `Rellenado con la opción de compra de la cesión: ${money}`,
+    hint: "Nada cambia en el juego hasta que pulsas Hacer definitiva.",
+    confirm: "Hacer definitiva",
+    confirming: "Haciéndola definitiva…",
+    cancel: "Cancelar",
+  },
+
+  recall: {
+    title: "Repescar de la cesión",
+    from: "Cedido a",
+    to: "Vuelve a",
+    doesHeading: "Qué hace la repesca",
+    does: (parent) => [
+      "Hoy pasa a ser el último día de la cesión: al acabar el día, el juego la termina por sí mismo",
+      `Avanza un día en el juego y estará de vuelta en ${parent}`,
+      "Hasta entonces figura en Cambios, donde deshacerlo devuelve el fin anterior de la cesión",
+    ],
+    termsHeading: "En el juego",
+    notRecallable: (parent) => `La cesión no permite que ${parent} lo repesque`,
+    notTerminable: "La cesión no se puede rescindir",
+    worksAnyway: "Aquí la repesca funciona igual: no usa la del juego, cambia el último día de la cesión",
+    dropsOption: (club, amount) =>
+      `Se elimina la opción de compra de ${club} por ${amount}: si no, al acabar la cesión el juego podría vendérselo a ${club}`,
+    hint: "Nada cambia en el juego hasta que pulsas Repescar.",
+    confirm: "Repescar",
+    confirming: "Repescando…",
     cancel: "Cancelar",
   },
 

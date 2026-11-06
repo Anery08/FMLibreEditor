@@ -4029,6 +4029,11 @@ button.danger:hover:not(:disabled) {
   margin-top: 2px;
 }
 
+/* What the loan's terms would not allow in the game, above the line that says the recall works all the same. */
+.recall-terms .refused {
+  color: var(--danger);
+}
+
 .move-foot-note {
   flex: 1;
   min-width: 8rem;
@@ -4074,6 +4079,15 @@ button.danger:hover:not(:disabled) {
 
 .injuries-head h4 {
   margin: 0;
+}
+
+/* The buttons of a loan: Recall (or the status that takes its place) and Make permanent, side by side. */
+.loan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .injury-list {

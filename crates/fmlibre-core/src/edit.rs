@@ -162,6 +162,9 @@ enum Place {
     Stadium,
     /// The record of a player's reasons to be unhappy, which his contract points at.
     Concerns,
+    /// The loan contract of a player on loan (see [`crate::Session::loan`]), written only when it is of the loan
+    /// contract class and points back at him.
+    Loan,
 }
 
 /// A value of a player, member of staff or club that the editor can change.
@@ -373,6 +376,13 @@ fn player_mood_fields(layout: &Layout) -> [Field; 4] {
 /// The squad number of a player without one.
 pub(crate) const NO_SQUAD_NUMBER: i64 = 255;
 
+/// The field of the day a player's loan ends.
+pub const LOAN_EXPIRES: &str = "loan.expires";
+
+/// The field of the fee for which the club a player is on loan at may sign him for good: the loan's option to buy,
+/// pounds, -1 for none.
+pub const LOAN_OPTION_FEE: &str = "loan.option_fee";
+
 fn player_fields(layout: &Layout) -> Vec<Field> {
     let p = &layout.player;
     let field = |key: &str, offset: u64, kind: Kind, range: RangeInclusive<i64>| {
@@ -424,6 +434,28 @@ fn player_fields(layout: &Layout) -> Vec<Field> {
     out.extend(contract_fields(layout, Entity::Player));
     out.extend(player_contract_fields(layout));
     out.extend(player_mood_fields(layout));
+    // The day his loan ends, in his loan contract: one player at a time, and only to the game's date or a later one (see
+    // `Session::write`). The game takes it as the loan's last day: when that day is over it ends the loan itself.
+    if let Some(loan) = &layout.loan {
+        out.push(
+            Field::new(Entity::Player, LOAN_EXPIRES, layout.contract.expires, Kind::Date, 20000101..=21001231)
+                .plausible(0..=22001231)
+                .single()
+                .in_record(Place::Loan),
+        );
+        // The loan's option to buy, pounds; -1 is none. When a loan with one ends, the game may let the club he is on
+        // loan at sign him for it: Anton Kade, recalled by the editor, went to Liverpool for his £23,245,368 option the
+        // day his loan ended. So a recall takes it away (see the app's `recall_loan`).
+        if let Some(terms) = &loan.terms {
+            out.push(
+                Field::new(Entity::Player, LOAN_OPTION_FEE, terms.option_fee, Kind::I32, 0..=2_000_000_000)
+                    .plausible(-1..=i64::from(i32::MAX))
+                    .blank(-1)
+                    .single()
+                    .in_record(Place::Loan),
+            );
+        }
+    }
     // His traits: one flag each, `trait.0` to `trait.63`, bit n of the mask.
     out.extend((0..64u64).map(|n| Field::flag(Entity::Player, format!("trait.{n}"), p.traits + n / 8, (n % 8) as u8)));
     out.into_iter().map(|f| f.in_person_block(p.person_block)).collect()
@@ -866,6 +898,14 @@ impl Session {
         if field.kind == Kind::Date && FmDate::from_number(value).is_none() {
             return Err(EditError::NotADate { field: field.key.clone(), value });
         }
+        // A loan ends on a day the game is yet to finish: the end of a day it has finished would never come, and with it
+        // neither would the end of the loan.
+        if field.key == LOAN_EXPIRES && !restoring {
+            let today = self.loan_recall_day()?.to_number();
+            if value < today {
+                return Err(EditError::OutOfRange { field: field.key.clone(), value, min: today, max: field.max });
+            }
+        }
         self.check_target(target, field)?;
         let address = self.locate(target, field)?.ok_or_else(|| EditError::NoRecord { field: field.key.clone() })?;
         let old_bytes = self.process.read_bytes(address, field.kind.size())?;
@@ -943,6 +983,14 @@ impl Session {
             }
         }
         Ok(None)
+    }
+
+    /// The first day a loan may be made to end on, the game's date: a loan recalled now ends today. The game takes a
+    /// loan's end as its last day, so it ends the loan when today is over, and the player is back at his club the next
+    /// day: one day on. (A loan made to end tomorrow brought the players back two days on.)
+    pub fn loan_recall_day(&self) -> Result<FmDate, EditError> {
+        self.game_date()
+            .ok_or(EditError::Unsupported { field: LOAN_EXPIRES.to_owned(), reason: "the in-game date is not known" })
     }
 
     /// Undoes `change`, provided the game still holds the value it wrote.
@@ -1032,6 +1080,7 @@ impl Session {
                 let class = u64::from_le_bytes(bytes[..8].try_into().expect("8 bytes"));
                 (self.stadium_class() == Some(class)).then_some(stadium)
             }
+            (Place::Loan, Entity::Player) => self.loan_contract(target.address, target.shift)?,
             _ => None,
         })
     }
@@ -1134,11 +1183,24 @@ mod tests {
         let players = fields(&layout, Entity::Player);
         // Every position but the sweeper; the contract's wage and end; and the squad number, squad status and the
         // transfer and loan listing, which only players have.
-        // The 13 basic fields and the 4 live ones (condition, match sharpness, jadedness, morale).
+        // The 13 basic fields and the 4 live ones (condition, match sharpness, jadedness, morale); and the day a loan
+        // ends where the layout places loans, with its option to buy where it places their terms (Windows so far).
+        let loan = usize::from(layout.loan.is_some())
+            + usize::from(layout.loan.as_ref().is_some_and(|loan| loan.terms.is_some()));
         assert_eq!(
             players.len(),
-            13 + 4 + layout.player.attributes.len() + POSITIONS.len() - 1 + PERSONALITY.len() + 2 + 4 + 4 + 64
+            13 + 4 + layout.player.attributes.len() + POSITIONS.len() - 1 + PERSONALITY.len() + 2 + 4 + 4 + 64 + loan
         );
+        if layout.loan.is_some() {
+            let loan = key(&players, LOAN_EXPIRES);
+            assert!(loan.place == Place::Loan && loan.kind == Kind::Date && !loan.mass && !loan.shifted);
+        }
+        if layout.loan.as_ref().is_some_and(|loan| loan.terms.is_some()) {
+            let option = key(&players, LOAN_OPTION_FEE);
+            assert!(option.place == Place::Loan && option.kind == Kind::I32 && !option.mass);
+            // None is -1, which the editor writes to take an option away.
+            assert!(option.takes(-1) && option.takes(10_000_000) && !option.takes(-2));
+        }
         assert_eq!(key(&players, "nation").kind, Kind::Pointer);
         assert!(!key(&players, "nation").mass);
         assert!(!key(&players, "contract.squad_number").mass);
