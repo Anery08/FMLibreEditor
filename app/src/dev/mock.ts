@@ -59,6 +59,7 @@ import type {
   MassOperationKind,
   MassPreview,
   MassReport,
+  ClubName,
   MovePreview,
   MoveTerms,
   PlannedChange,
@@ -1345,8 +1346,11 @@ function movableStaff(uid: number): StaffSummary {
   return member;
 }
 
+/** A plan from one club to another: every one but a free agent's signing. */
+type ClubToClub = MovePreview & { from: ClubName };
+
 /** `plan_staff_move`: the checks of the real command that the fixtures can have, with its messages. */
-function planStaffMove(uid: number, clubUid: number): MovePreview {
+function planStaffMove(uid: number, clubUid: number): ClubToClub {
   const member = movableStaff(uid);
   const to = clubs.find((c) => c.uid === clubUid);
   if (!to) {
@@ -1572,7 +1576,20 @@ function planMove(uid: number, clubUid: number, terms: MoveTerms, fee?: number, 
     throw outOfRange("contract.expires", terms.expires, tomorrow, 21001231);
   }
   if (player.clubUid === null) {
-    throw failure("move.freeAgent", "the player has no club; free agents cannot be moved yet");
+    // A free agent is signed under a contract made for him, as the real command does: the wage given or one like the
+    // club's, and the end date given or 30 June at the end of next season.
+    if (to.women !== isWoman(uid)) {
+      throw failure("move.menAndWomen", "one club is a men's club and the other a women's club");
+    }
+    const seasonEnds = GAME_DATE.month <= 6 ? GAME_DATE.year : GAME_DATE.year + 1;
+    return {
+      to: { uid: to.uid, name: to.name },
+      contract: {
+        wage: terms.wage ?? 25_000,
+        expires: terms.expires ?? (seasonEnds + 1) * 10_000 + 630,
+        squadStatus: player.positions.includes("gk") ? 20 : 4,
+      },
+    };
   }
   if (player.clubUid === clubUid) {
     throw failure("move.sameClub", "the player is at this club already");
@@ -1626,7 +1643,7 @@ function payFee(preview: MovePreview): [number, string, number][] {
  * `plan_loan_permanent`: a fixture player on loan can stay at the club he is on loan to, on the terms, that club paying
  * his own one the fee; the same checks of the terms as a move.
  */
-function planLoanPermanent(uid: number, terms: MoveTerms, fee?: number): MovePreview {
+function planLoanPermanent(uid: number, terms: MoveTerms, fee?: number): ClubToClub {
   const player = players.find((p) => p.uid === uid);
   if (!player) {
     throw notFound("player", uid);
@@ -1706,8 +1723,10 @@ function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number
   });
   player.club = preview.to.name;
   player.clubUid = preview.to.uid;
-  if (terms.expires !== undefined) {
-    player.contractExpires = dateFromNumber(terms.expires);
+  // A free agent's new contract ends on the day it says, given or not.
+  const expires = terms.expires ?? preview.contract?.expires;
+  if (expires !== undefined) {
+    player.contractExpires = dateFromNumber(expires);
   }
   if (terms.wage !== undefined) {
     writeValue("player", uid, "contract.wage", terms.wage);
@@ -1723,12 +1742,12 @@ function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number
     entity: "player",
     uid,
     field: "club",
-    old: preview.from.uid,
+    old: preview.from?.uid ?? 0,
     new: preview.to.uid,
     undoneAt: null,
     batch: null,
     moved: {
-      from: preview.from.name,
+      ...(preview.from && { from: preview.from.name }),
       to: preview.to.name,
       ...(leaver && { released: leaver.name }),
       ...(preview.fee && { fee: preview.fee.fee }),
@@ -1739,13 +1758,13 @@ function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number
 }
 
 /** `plan_release`: the checks of the real command that the fixtures can have, with its messages; names his club. */
-function planRelease(uid: number): MovePreview["from"] {
+function planRelease(uid: number): ClubName {
   const player = players.find((p) => p.uid === uid);
   if (!player) {
     throw notFound("player", uid);
   }
   if (player.clubUid === null) {
-    throw failure("move.freeAgent", "the player has no club; free agents cannot be moved yet");
+    throw failure("move.freeAgent", "the player is a free agent, with no club to leave or swap");
   }
   const from = clubs.find((c) => c.uid === player.clubUid)!;
   return { uid: from.uid, name: from.name };
@@ -1779,7 +1798,7 @@ function releasePlayer(uid: number): LoggedChange {
 }
 
 /** `plan_club_swap`: the checks of the real command that the fixtures can have, with its messages. */
-function planSwap(uid: number, otherUid: number): MovePreview {
+function planSwap(uid: number, otherUid: number): ClubToClub {
   const player = players.find((p) => p.uid === uid);
   const other = players.find((p) => p.uid === otherUid);
   if (!player) {
@@ -1790,7 +1809,7 @@ function planSwap(uid: number, otherUid: number): MovePreview {
   }
   for (const p of [player, other]) {
     if (p.clubUid === null) {
-      throw failure("move.freeAgent", "the player has no club; free agents cannot be moved yet");
+      throw failure("move.freeAgent", "the player is a free agent, with no club to leave or swap");
     }
   }
   if (player.clubUid === other.clubUid) {
@@ -2686,7 +2705,9 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       const limit = Number(args?.limit ?? 200);
       const filter = (args?.filter ?? {}) as ClubFilter;
       const kindOf = clubs.find((c) => c.uid === args?.kindOf);
-      const women = kindOf ? kindOf.women : filter.women;
+      // A free agent's kind is his own.
+      const kindOfPlayer = typeof args?.kindOfPlayer === "number" ? isWoman(args.kindOfPlayer) : undefined;
+      const women = kindOf ? kindOf.women : (kindOfPlayer ?? filter.women);
       const words = fold(query).split(/\s+/).filter(Boolean);
       const hits = clubs
         .filter((c) => String(c.uid) === query.trim() || words.every((w) => fold(`${c.name} ${c.shortName ?? ""}`).includes(w)))

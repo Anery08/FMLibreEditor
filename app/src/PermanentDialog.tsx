@@ -137,11 +137,13 @@ export function PermanentDialog({ uid, name, loan, contract, onDone, onClose }: 
 
   // Where he goes, and what the fee does to the clubs' money; or why it cannot be done. A live region always there.
   const route = (made: MovePreview) => {
-    const lines = [moveText.route(made.from.name, made.to.name)];
+    // A loan always has the club he belongs to.
+    const from = made.from?.name ?? "";
+    const lines = [moveText.route(from, made.to.name)];
     if (made.fee) {
       const amount = formatMoney(made.fee.fee);
       lines.push(moneyLine(made.fee.buyer, made.to.name, amount, true));
-      lines.push(moneyLine(made.fee.seller, made.from.name, amount, false));
+      lines.push(moneyLine(made.fee.seller, from, amount, false));
     }
     return lines.join("\n");
   };

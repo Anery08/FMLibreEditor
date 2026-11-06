@@ -22,6 +22,7 @@ mod loans;
 mod locate;
 mod mass;
 mod medical;
+mod object_pool;
 mod own_memory;
 mod players;
 mod profile;
@@ -32,6 +33,7 @@ mod scan;
 mod scouting;
 mod selection;
 mod session;
+mod signing;
 mod squad;
 mod squad_report;
 mod stadium_name;
@@ -70,6 +72,7 @@ pub use locate::{
 };
 pub use mass::{Operation, Plan, Planned, Skipped};
 pub use medical::{Ban, HealPlan, Healed, Injury, LiftPlan, Lifted};
+pub use object_pool::ObjectPool;
 pub use players::{Nation, PLAYABLE_RATING, PlayerIndex, PlayerSummary, is_woman, nations, read_players};
 pub use profile::{
     ArrayRvas, BuildProfile, ContractLayout, Layout, PlayerLayout, PluginFingerprint, ProfileNotes, SelectionLayout,
@@ -84,6 +87,7 @@ pub use scouting::{
     scout_position,
 };
 pub use session::{ArraySource, IGNORE_PROFILES, Session, SessionError, find_game, profiles_ignored};
+pub use signing::NewContract;
 pub use squad::{CaptainPlan, CaptainRole, CaptainSet, ClubTeam, Loan, SquadMember};
 pub use squad_report::{Departure, DepartureAction, DepartureReason, DepthLine, DepthPlayer, DepthStatus, SquadReport};
 pub use stadium_name::{StadiumName, StadiumRename};

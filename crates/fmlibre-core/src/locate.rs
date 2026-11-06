@@ -79,7 +79,7 @@ pub(crate) fn game_date_from(raw: u32) -> Option<FmDate> {
 }
 
 /// Calls `visit` with each stretch of the plugin's writable data, not its code, and where the stretch starts.
-fn each_stretch(session: &Session, mut visit: impl FnMut(u64, &[u8])) {
+pub(crate) fn each_stretch(session: &Session, mut visit: impl FnMut(u64, &[u8])) {
     let plugin = &session.plugin;
     let data: Vec<Region> = regions(&session.process, plugin.base, plugin.end())
         .into_iter()

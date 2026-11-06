@@ -40,6 +40,47 @@ pub struct Layout {
     /// Where a player on loan keeps his loan contract; only in the layouts it has been checked in.
     #[serde(default)]
     pub loan: Option<LoanLayout>,
+    /// How one of the game's pools of objects keeps its slots (see `object_pool.rs`); only in the layouts it has been
+    /// checked in.
+    #[serde(default)]
+    pub pool: Option<PoolLayout>,
+}
+
+/// One of the game's pools of objects (see `object_pool.rs`), a static of the game plugin, from where it keeps the
+/// list `(begin, end, capacity)` of pointers to its chunks. The rest are `u32`s but for the first free slot.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PoolLayout {
+    /// The list of chunks.
+    pub chunks: u64,
+    /// Pointer to the first free slot, null when none is free. Each free slot's first 8 bytes point at the next.
+    pub first_free: u64,
+    /// How many slots are free, and how many hold an object.
+    pub free: u64,
+    pub used: u64,
+    /// Bytes per slot.
+    pub slot_size: u64,
+    /// How many slots the first chunk has, and each later one.
+    pub first_chunk: u64,
+    pub later_chunks: u64,
+}
+
+impl PoolLayout {
+    /// One past the last byte of every field, from where the pool keeps its list of chunks.
+    pub fn end(&self) -> u64 {
+        [
+            self.chunks + 24,
+            self.first_free + 8,
+            self.free + 4,
+            self.used + 4,
+            self.slot_size + 4,
+            self.first_chunk + 4,
+            self.later_chunks + 4,
+        ]
+        .into_iter()
+        .max()
+        .unwrap_or(0)
+    }
 }
 
 /// The tactic block a selection's list ([`SelectionLayout::list`]) points at: the eleven slots of the formation, once
@@ -381,6 +422,15 @@ pub struct ContractLayout {
     /// senior contracts); none in a layout where it has not been checked.
     #[serde(default)]
     pub contract_type: Option<u64>,
+    /// Bytes of a contract: the size of the slots of the game's pool of contracts, which the editor takes one of for a
+    /// contract of its making (see `signing.rs`). None in a layout where it does not make contracts.
+    #[serde(default)]
+    pub size: Option<u64>,
+    /// Where a contract the editor makes holds 8 zero bytes in place of what the contract it is modelled on has: places
+    /// that hold a pointer in some contracts and nothing in most, to records the editor does not know and must not
+    /// share. The unhappiness record and the two lists of extras start empty too.
+    #[serde(default)]
+    pub cleared: Vec<u64>,
 }
 
 impl ContractLayout {

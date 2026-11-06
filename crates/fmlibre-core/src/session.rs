@@ -150,6 +150,9 @@ pub struct Session {
     /// The memory the editor took in the game (see `own_memory.rs`): the region, its length and how much of it is
     /// handed out.
     pub(crate) own_memory: Mutex<Option<(u64, u64, u64)>>,
+    /// Where the game's pools of objects were found that the editor took a slot of, or looked for one in (see
+    /// `object_pool.rs`).
+    pub(crate) pools_found: Mutex<Vec<u64>>,
     /// What the checks found: worked out the first time it is needed, and again by [`Session::recheck`].
     health: Mutex<Option<Arc<Health>>>,
     /// Whether editing a build without a profile was allowed.
@@ -190,6 +193,7 @@ impl Session {
             selection_class: OnceLock::new(),
             loan_class: OnceLock::new(),
             own_memory: Mutex::new(None),
+            pools_found: Mutex::new(Vec::new()),
             health: Mutex::new(None),
             unknown_build_allowed: AtomicBool::new(false),
             search_all: source == ArraySource::ScanOnly,

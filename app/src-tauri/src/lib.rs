@@ -9,11 +9,12 @@ use fmlibre_core::{
     ArraySource, Buyer, CaptainRole, CaptainSet, Change, Clause, ClauseSet, ClubDetails, ClubFilter, ClubIndex,
     ClubMove, ClubSummary, Coded, EditError, Entity, EntityArrays, ExportFormat, ExportHeader, FeePlan, Field, FmDate,
     GAME_EXE, GAME_PLUGIN, GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind,
-    LOAN_EXPIRES, LOAN_OPTION_FEE, Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation, Operation, Paid,
-    Picture, Planned, PlayerDetails, PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary, ROLES, RelationSet,
-    RetirementSet, Role, SCOUT_POSITIONS, STAFF_JOBS, ScoutError, ScoutPosition, ScoutRequest, Scouted, SearchIndex,
-    Session, SessionError, Skipped, SquadReport, StadiumName, StadiumRename, StaffChange, StaffDetails, StaffFilter,
-    StaffIndex, StaffOrder, StaffPlan, Target, Tie, TieTarget, find_game, nations, sort_players, sort_staff,
+    LOAN_EXPIRES, LOAN_OPTION_FEE, Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation, NewContract,
+    Operation, Paid, Picture, Planned, PlayerDetails, PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary, ROLES,
+    RelationSet, RetirementSet, Role, SCOUT_POSITIONS, STAFF_JOBS, ScoutError, ScoutPosition, ScoutRequest, Scouted,
+    SearchIndex, Session, SessionError, Skipped, SquadReport, StadiumName, StadiumRename, StaffChange, StaffDetails,
+    StaffFilter, StaffIndex, StaffOrder, StaffPlan, Target, Tie, TieTarget, find_game, nations, sort_players,
+    sort_staff,
 };
 use fmlibre_mem::{Process, find_processes, is_current_process_elevated, list_modules};
 use serde::{Deserialize, Serialize};
@@ -1035,7 +1036,13 @@ impl Connection {
             change: Change { entity: Entity::Staff, uid: done.member, field: field.to_owned(), old, new },
             undone_at: None,
             batch: None,
-            moved: moved.then_some(MovedClubs { from, to: Some(to), with: None, released: None, fee: None }),
+            moved: moved.then_some(MovedClubs {
+                from: Some(from),
+                to: Some(to),
+                with: None,
+                released: None,
+                fee: None,
+            }),
             captaincy: None,
             tie: None,
             clause: None,
@@ -1050,7 +1057,8 @@ impl Connection {
     /// Works out what the fee `fee` of moving the player from the club `from` to the club `to` does to their money:
     /// none for no fee.
     fn plan_fee(&self, from: u32, to: u32, fee: Option<i64>) -> Result<Option<FeePlan>, Failure> {
-        let Some(fee) = fee.filter(|&fee| fee > 0) else {
+        // A free agent has no club to pay.
+        let Some(fee) = fee.filter(|&fee| fee > 0 && from != 0) else {
             return Ok(None);
         };
         let buyer = self.clubs.get(to).ok_or_else(|| not_found(Entity::Club, to))?;
@@ -1130,7 +1138,9 @@ impl Connection {
     /// other; a swap is one change too, which names the player who went the other way, and so
     /// is a move that released a player of the new club, which names him.
     fn log_move(&mut self, done: ClubMove, terms: MoveTerms, paid: Vec<Paid>, fee: Option<i64>) -> LoggedChange {
-        let (from, to) = (self.club_name(done.from_club), self.club_name(done.to_club));
+        // A free agent signed had no club.
+        let from = (done.from_club != 0).then(|| self.club_name(done.from_club));
+        let to = self.club_name(done.to_club);
         let name = self.player_name(done.player);
         let mut rows = vec![self.row_before(done.player)];
         self.players.update(done.player, |player| {
@@ -1143,7 +1153,7 @@ impl Connection {
         let with = done.other.map(|other| {
             rows.push(self.row_before(other));
             self.players.update(other, |player| {
-                player.club = Some(from.clone());
+                player.club = from.clone();
                 player.club_uid = Some(done.from_club);
             });
             self.player_name(other)
@@ -1209,7 +1219,7 @@ impl Connection {
             undone_at: None,
             batch: None,
             moved: Some(MovedClubs {
-                from: self.club_name(done.from_club),
+                from: Some(self.club_name(done.from_club)),
                 to: None,
                 with: None,
                 released: None,
@@ -1598,7 +1608,9 @@ enum TeamAction {
 
 #[derive(Clone, Serialize)]
 struct MovedClubs {
-    from: String,
+    /// None for a free agent signed, who had no club.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    from: Option<String>,
     /// None for a release, after which he has no club.
     #[serde(skip_serializing_if = "Option::is_none")]
     to: Option<String>,
@@ -1636,11 +1648,16 @@ struct RowBefore {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MovePreview {
-    from: ClubName,
+    /// None for a free agent, who has no club.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    from: Option<ClubName>,
     to: ClubName,
     /// What the fee does to the two clubs' money, when one is to be paid.
     #[serde(skip_serializing_if = "Option::is_none")]
     fee: Option<FeePlan>,
+    /// For a free agent, the contract the editor makes for him.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    contract: Option<NewContract>,
 }
 
 #[derive(Serialize)]
@@ -2148,7 +2165,8 @@ fn search_staff(
 }
 
 /// Clubs matching `query`, highest reputation first; at most `limit` rows. `kind_of` keeps to the clubs of the same kind
-/// as the club with that UID, men's or women's: those its players and staff can move to.
+/// as the club with that UID, men's or women's: those its players and staff can move to. `kind_of_player` does the same
+/// for the player with that UID, for one with no club: the clubs a free agent can sign for.
 #[tauri::command]
 fn search_clubs(
     state: State<'_, AppState>,
@@ -2156,12 +2174,16 @@ fn search_clubs(
     limit: usize,
     filter: Option<ClubFilter>,
     kind_of: Option<u32>,
+    kind_of_player: Option<u32>,
 ) -> Result<Page<fmlibre_core::ClubSummary>, Failure> {
     let guard = state.0.lock()?;
     let connection = guard.as_ref().ok_or_else(not_connected)?;
     let mut filter = filter.unwrap_or_default();
     if let Some(club) = kind_of.and_then(|uid| connection.clubs.get(uid)) {
         filter.women = Some(club.women);
+    }
+    if let Some(woman) = kind_of_player.and_then(|uid| connection.players.get(uid)).and_then(|player| player.woman) {
+        filter.women = Some(woman);
     }
     Ok(page(&connection.clubs, &query, limit, |c| filter.matches(c), |_| {}))
 }
@@ -2649,7 +2671,8 @@ fn plan_club_move(
     let plan = connection.plan_move(uid, club, terms, release)?;
     let fee = connection.plan_fee(plan.from_club, plan.to_club, fee)?;
     let name = |uid: u32| ClubName { uid, name: connection.club_name(uid) };
-    Ok(MovePreview { from: name(plan.from_club), to: name(plan.to_club), fee })
+    let from = (plan.from_club != 0).then(|| name(plan.from_club));
+    Ok(MovePreview { from, to: name(plan.to_club), fee, contract: plan.contract })
 }
 
 /// The players of the senior team of the club `club` that a move to it can release to make room in a full squad list,
@@ -2694,18 +2717,22 @@ async fn move_player(
         let plan = connection.plan_move(uid, club, terms, release)?;
         let fee_plan = connection.plan_fee(plan.from_club, plan.to_club, fee)?;
         let club = |uid: u32| connection.clubs.get(uid).cloned().ok_or_else(|| not_found(Entity::Club, uid));
-        let (buyer, seller) = (club(plan.to_club)?, club(plan.from_club)?);
+        let buyer = club(plan.to_club)?;
+        // A free agent signed has no club (and pays no fee: see `plan_fee`).
+        let seller = if plan.from_club == 0 { None } else { Some(club(plan.from_club)?) };
         let done = connection.session.apply_club_move(&plan)?;
-        let paid = match fee_plan {
-            Some(fee_plan) => match connection.session.pay_fee(&fee_plan, &buyer, &seller) {
+        let paid = match (fee_plan, &seller) {
+            (Some(fee_plan), Some(seller)) => match connection.session.pay_fee(&fee_plan, &buyer, seller) {
                 Ok(paid) => paid,
                 Err(err) => {
                     let _ = connection.session.undo_club_move(&done);
                     return Err(err.into());
                 }
             },
-            None => Vec::new(),
+            _ => Vec::new(),
         };
+        // The contract made for a free agent ends on the day it says, given or not.
+        let terms = MoveTerms { expires: terms.expires.or(plan.contract.map(|made| made.expires)), ..terms };
         Ok(connection.log_move(done, terms, paid, fee_plan.map(|plan| plan.fee)))
     })
     .await?
@@ -2725,7 +2752,7 @@ fn plan_loan_permanent(
     let plan = connection.plan_permanent(uid, terms)?;
     let fee = connection.plan_fee(plan.from_club, plan.to_club, fee)?;
     let name = |uid: u32| ClubName { uid, name: connection.club_name(uid) };
-    Ok(MovePreview { from: name(plan.from_club), to: name(plan.to_club), fee })
+    Ok(MovePreview { from: Some(name(plan.from_club)), to: name(plan.to_club), fee, contract: None })
 }
 
 /// Makes the loan of the player `uid` permanent on the contract `terms`, the club he is on loan to paying his own one
@@ -2797,7 +2824,7 @@ fn plan_staff_move(state: State<'_, AppState>, uid: u32, club: u32) -> Result<Mo
     let connection = guard.as_ref().ok_or_else(not_connected)?;
     let plan = connection.plan_staff_move(uid, club)?;
     let name = |uid: u32| ClubName { uid, name: connection.club_name(uid) };
-    Ok(MovePreview { from: name(plan.from_club), to: name(plan.to_club), fee: None })
+    Ok(MovePreview { from: Some(name(plan.from_club)), to: name(plan.to_club), fee: None, contract: None })
 }
 
 /// Moves the member of staff `uid` to the club `club`, in the departments he works in, worked out again from the game
@@ -2835,7 +2862,7 @@ fn plan_club_swap(state: State<'_, AppState>, uid: u32, other: u32) -> Result<Mo
     let connection = guard.as_ref().ok_or_else(not_connected)?;
     let plan = connection.plan_swap(uid, other)?;
     let name = |uid: u32| ClubName { uid, name: connection.club_name(uid) };
-    Ok(MovePreview { from: name(plan.from_club), to: name(plan.to_club), fee: None })
+    Ok(MovePreview { from: Some(name(plan.from_club)), to: name(plan.to_club), fee: None, contract: None })
 }
 
 /// Swaps the clubs of the players `uid` and `other`, worked out again from the game as it is

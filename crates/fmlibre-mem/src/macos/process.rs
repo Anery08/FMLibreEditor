@@ -189,6 +189,14 @@ impl Process {
         Err(Error::Mach { op: "allocate", code: 46 })
     }
 
+    /// The editor writes no module's statics on macOS (see the Windows `write_static`): refused.
+    pub fn write_static(&self, addr: u64, data: &[u8]) -> Result<()> {
+        if !self.writable {
+            return Err(Error::ReadOnly);
+        }
+        Err(Error::NotWritable { addr, len: data.len() })
+    }
+
     fn write_checked(&self, addr: u64, data: &[u8]) -> Result<()> {
         if data.is_empty() {
             return Ok(());
