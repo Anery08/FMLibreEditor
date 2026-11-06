@@ -182,6 +182,21 @@ impl Session {
         Ok(self.relation_list(player)?.map(|list| list.entries.into_iter().enumerate().collect()).unwrap_or_default())
     }
 
+    /// Where the buffer of the list of `player` begins, and its capacity in bytes; `None` for a player without a list
+    /// or with an empty one, or one that does not check out.
+    pub fn relation_buffer(&self, player: &PlayerSummary) -> Option<(u64, u64)> {
+        let list = self.relation_list(player).ok()??;
+        (list.begin != 0).then_some((list.begin, list.capacity - list.begin))
+    }
+
+    /// How many entries the list of `player` holds, and how many its capacity says it has room for; `None` for a
+    /// player without a list, or one that does not check out.
+    pub fn relation_capacity(&self, player: &PlayerSummary) -> Option<(u64, u64)> {
+        let size = self.layout.relation.size;
+        let list = self.relation_list(player).ok()??;
+        Some(((list.end - list.begin) / size, (list.capacity - list.begin) / size))
+    }
+
     /// How many more ties the list of `player` has room for.
     pub fn relation_room(&self, player: &PlayerSummary) -> Result<usize, MoveError> {
         match self.relation_list(player)? {

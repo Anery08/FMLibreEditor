@@ -597,6 +597,16 @@ enum Command {
     },
     /// Read every team's player list and show how the game's allocator spaces their buffers.
     Squads,
+    /// How the game's allocator places the buffers of the players' lists of relations: by capacity, how far apart
+    /// they are, what precedes and follows them, and which blocks between them hold no list.
+    RelationBlocks {
+        /// The capacity, in entries, to look into closely.
+        #[arg(long, default_value_t = 3)]
+        entries: u64,
+        /// How many blocks around the first buffers to print.
+        #[arg(long, default_value_t = 24)]
+        show: usize,
+    },
     /// Find where clubs or players keep a value seen in another tool: from each club and its senior
     /// team, or from each player, follow pointers up to --depth hops and print the places where every
     /// one given holds its own value, under several encodings.
@@ -1113,6 +1123,9 @@ fn run(cli: Cli) -> Result<()> {
             refs(&process, &modules, resolve(&addr, &modules)?, parse_hex(&span)?, max)
         }
         Command::Squads => squads(&connect(process, ArraySource::ProfileFirst)?),
+        Command::RelationBlocks { entries, show } => {
+            relation_blocks(&connect(process, ArraySource::ProfileFirst)?, entries, show)
+        }
         Command::Related { clubs, players, depth, span, tolerance, linear } => {
             let session = connect(process, ArraySource::ProfileFirst)?;
             let roots = related_roots(&session, &clubs, &players)?;
@@ -1360,6 +1373,103 @@ fn holders(process: &Process, modules: &[Module], addr: u64, max: usize) -> Resu
 /// per capacity, the spacing of list buffers that share a 64 KiB page (a slab allocator
 /// puts blocks of one size class at multiples of that size), and whether the rest of the
 /// block the layout's heap gives them is zero.
+fn relation_blocks(session: &Session, entries: u64, show: usize) -> Result<()> {
+    use std::collections::{BTreeMap, BTreeSet};
+    let process = &session.process;
+    let size = session.layout.relation.size;
+    let players = session.players()?;
+    // Every list's buffer, by capacity in bytes.
+    let mut by_capacity: BTreeMap<u64, Vec<u64>> = BTreeMap::new();
+    for player in &players {
+        let Some((begin, capacity)) = session.relation_buffer(player) else { continue };
+        by_capacity.entry(capacity).or_default().push(begin);
+    }
+    println!("buffers by capacity (bytes): count, and the commonest distance to the next buffer of that capacity");
+    for (capacity, begins) in &mut by_capacity {
+        begins.sort_unstable();
+        let mut gaps: BTreeMap<u64, usize> = BTreeMap::new();
+        for pair in begins.windows(2) {
+            let gap = pair[1] - pair[0];
+            if gap <= 4096 {
+                *gaps.entry(gap).or_default() += 1;
+            }
+        }
+        let mut top: Vec<_> = gaps.into_iter().collect();
+        top.sort_by(|a, b| b.1.cmp(&a.1));
+        let top: Vec<String> = top.iter().take(5).map(|(gap, n)| format!("{gap}x{n}")).collect();
+        println!("  {capacity:>4}: {:>5}  gaps {}", begins.len(), top.join(" "));
+    }
+    // A closer look at one capacity: the 8 bytes before each buffer, the bytes after it to the next buffer.
+    let capacity = entries * size;
+    let Some(begins) = by_capacity.get(&capacity) else {
+        println!("no list of {entries} entries");
+        return Ok(());
+    };
+    let known: BTreeSet<u64> = by_capacity.values().flatten().copied().collect();
+    let mut before: BTreeMap<String, usize> = BTreeMap::new();
+    for &begin in begins {
+        let word = process.read_bytes(begin - 8, 8).map(|b| hex(&b)).unwrap_or_else(|_| "unreadable".into());
+        *before.entry(word).or_default() += 1;
+    }
+    let mut top: Vec<_> = before.into_iter().collect();
+    top.sort_by(|a, b| b.1.cmp(&a.1));
+    println!("the 8 bytes before a buffer of {capacity} bytes, commonest first:");
+    for (word, n) in top.iter().take(6) {
+        println!("  {word}  x{n}");
+    }
+    // The neighbourhood of the first buffers: each block of `stride` bytes from the first, which list holds it (if
+    // any), and its first 16 bytes.
+    let stride = {
+        let mut gaps: BTreeMap<u64, usize> = BTreeMap::new();
+        for pair in begins.windows(2) {
+            let gap = pair[1] - pair[0];
+            if gap <= 1024 {
+                *gaps.entry(gap).or_default() += 1;
+            }
+        }
+        gaps.into_iter().max_by_key(|g| g.1).map_or(capacity, |g| g.0)
+    };
+    for chunk in [0x1000u64, 0x4000, 0x10000, 0x40000] {
+        let mut offsets: BTreeMap<u64, usize> = BTreeMap::new();
+        for &begin in begins {
+            *offsets.entry((begin & (chunk - 1)) % stride).or_default() += 1;
+        }
+        let mut top: Vec<_> = offsets.into_iter().collect();
+        top.sort_by(|a, b| b.1.cmp(&a.1));
+        let top: Vec<String> = top.iter().take(6).map(|(o, n)| format!("{o}x{n}")).collect();
+        println!("  in chunks of {chunk:#x}: offset mod {stride}: {}", top.join(" "));
+    }
+    let mut bases: BTreeMap<u64, (usize, u64, u64)> = BTreeMap::new();
+    for &begin in begins {
+        if let Some(region) = fmlibre_mem::regions(process, begin, begin + 1).into_iter().next() {
+            let slot = bases.entry(region.base).or_insert((0, region.size, region.allocation_base));
+            slot.0 += 1;
+        }
+    }
+    println!("regions holding them: {}", bases.len());
+    for (base, (n, size, allocation)) in bases.iter().take(12) {
+        println!("  {base:#x} size {size:#x} (allocation {allocation:#x}): {n}");
+    }
+    println!("blocks of {stride} bytes from the buffer at {:#x}:", begins[begins.len() / 2]);
+    let start = begins[begins.len() / 2];
+    for i in 0..show as u64 {
+        let at = start + i * stride;
+        let bytes = process.read_bytes(at, 16).map(|b| hex(&b)).unwrap_or_else(|_| "unreadable".into());
+        let first = process.read_u64(at).unwrap_or(0);
+        let tag = if known.contains(&at) { "list" } else if is_user_pointer(first) && first.abs_diff(at) < 0x100000 { "near ptr" } else { "" };
+        println!("  {at:#x}  {bytes}  {tag}");
+    }
+    if let Ok(region) = fmlibre_mem::regions(process, start, start + 1).into_iter().next().ok_or(()) {
+        println!("region: base {:#x} size {:#x} allocation base {:#x}", region.base, region.size, region.allocation_base);
+    }
+    Ok(())
+}
+
+/// Bytes as hex, with a space after each 8.
+fn hex(bytes: &[u8]) -> String {
+    bytes.chunks(8).map(|c| c.iter().map(|b| format!("{b:02x}")).collect::<String>()).collect::<Vec<_>>().join(" ")
+}
+
 fn squads(session: &Session) -> Result<()> {
     let process = &session.process;
     let mut lists: Vec<(u64, u64, u64)> = Vec::new(); // (begin, length, capacity)
@@ -3890,6 +4000,19 @@ fn relation_kinds(session: &Session, only: Option<u8>, examples: usize) -> Resul
             }
             let [with, room, without_room, clubs, people, none] = club_room;
             println!("Trained at a club (72): {with} players; room for another tie: {room}.");
+            // Lists by length and capacity (in entries): the full ones, and those with room past their length.
+            let mut full: BTreeMap<u64, usize> = BTreeMap::new();
+            let mut spare: BTreeMap<(u64, u64), usize> = BTreeMap::new();
+            for player in &players {
+                let Some((len, cap)) = session.relation_capacity(player) else { continue };
+                if len == cap {
+                    *full.entry(len).or_default() += 1;
+                } else {
+                    *spare.entry((len, cap)).or_default() += 1;
+                }
+            }
+            println!("Full lists by length: {full:?}");
+            println!("Lists with room, (length, capacity): {spare:?}");
             println!(
                 "Without a club: {} players; {without_room} with room, {clubs} with a favoured or disliked club (3, 4), \
                  {people} with only a favoured or disliked person (1, 2), {none} with none of those.",
