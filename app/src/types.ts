@@ -578,7 +578,8 @@ export interface LoanTerms {
 export type LoanEnd = "later" | "today" | "passed" | "unknown";
 
 /** What ties a player to a nation or club: a secondary nationality, or a nation or club he was trained in. */
-export type TieKind = "nationality" | "trainedInNation" | "trainedAtClub";
+/** "workPermit" is a nation he needs no work permit in (England, Scotland), for the days it has left. */
+export type TieKind = "nationality" | "trainedInNation" | "trainedAtClub" | "workPermit";
 
 /** One of a player's ties. */
 export interface Tie {
@@ -590,6 +591,8 @@ export interface Tie {
   name: string | null;
   /** For a training, the homegrown rule it meets, by the game's code (see `homegrownRules`). */
   rule: number | null;
+  /** For a nation he needs no work permit in, the days that has left. */
+  days: number | null;
 }
 
 /** One current injury of a player. */
@@ -707,7 +710,7 @@ export interface LoggedChange {
   };
   /**
    * Set for a change to a player's ties, which is logged as a change of his field `tie.nationality`,
-   * `tie.trainedInNation` or `tie.trainedAtClub` from one nation's or club's UID to the other's (0 for none): the
+   * `tie.trainedInNation`, `tie.trainedAtClub` or `tie.workPermit` from one nation's or club's UID to the other's (0 for none): the
    * names and homegrown rules on either side.
    */
   tie?: {

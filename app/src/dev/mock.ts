@@ -88,13 +88,15 @@ const FIRST = ["Arda", "Mateo", "Lukas", "Kerem", "Jonas", "Rafael", "Emre", "No
 const FIRST_WOMEN = ["Aitana", "Elif", "Lena", "Ebru", "Sofia", "Marta", "Ingrid", "Chloé", "Zehra", "Pernille"];
 const LAST = ["Yılmaz", "Fernández", "Hoffmann", "Aydın", "Lindqvist", "Moreau", "Çelik", "Kowalski", "Silva", "Novák"];
 const NATIONS = ["Türkiye", "Spain", "Germany", "Brazil", "Denmark", "France", "Poland", "Portugal", "Czechia"];
+/** Every fixture nation: those of the players, and two that work permits are about. */
+const ALL_NATIONS = [...NATIONS, "England", "Scotland"];
 const CLUBS = ["Northbridge FC", "Atlético Riverside", "Sporting Harbour", "FC Lindenau", "Kuzey Spor", "Old Mill United"];
 
 /** Where the game would keep each fixture nation: what a nation field holds. */
-const nationAddress = (nation: string) => 0x7f00_0000 + NATIONS.indexOf(nation) * 0x400;
+const nationAddress = (nation: string) => 0x7f00_0000 + ALL_NATIONS.indexOf(nation) * 0x400;
 
 /** The fixture nation a nation field's value stands for. */
-const nationAt = (address: number) => NATIONS.find((nation) => nationAddress(nation) === address);
+const nationAt = (address: number) => ALL_NATIONS.find((nation) => nationAddress(nation) === address);
 
 /**
  * A fixture person's nation and club with their UIDs, as the real rows have them: the men's club of that name (see
@@ -423,13 +425,18 @@ function fixtureTies(player: PlayerSummary): Tie[] {
   const ties: Tie[] = [];
   if (player.uid % 5 === 0) {
     const other = NATIONS[(NATIONS.indexOf(player.nation ?? NATIONS[0]) + 1) % NATIONS.length];
-    ties.push({ index: 0, tie: "nationality", targetUid: 1000 + NATIONS.indexOf(other), name: other, rule: null });
+    ties.push({ index: 0, tie: "nationality", targetUid: 1000 + NATIONS.indexOf(other), name: other, rule: null, days: null });
   }
   if (player.nation) {
-    ties.push({ index: 0, tie: "trainedInNation", targetUid: player.nationUid ?? 0, name: player.nation, rule: 1 });
+    ties.push({ index: 0, tie: "trainedInNation", targetUid: player.nationUid ?? 0, name: player.nation, rule: 1, days: null });
   }
   if (player.club && player.clubUid !== null) {
-    ties.push({ index: 0, tie: "trainedAtClub", targetUid: player.clubUid, name: player.club, rule: 1 });
+    ties.push({ index: 0, tie: "trainedAtClub", targetUid: player.clubUid, name: player.club, rule: 1, days: null });
+  }
+  // One in seven needs no work permit in England, as players of the EU who were there before Brexit.
+  if (player.uid % 7 === 1) {
+    const england = ALL_NATIONS.indexOf("England");
+    ties.push({ index: 0, tie: "workPermit", targetUid: 1000 + england, name: "England", rule: null, days: 515 });
   }
   // A list holds other relations too: the ties are spread through it.
   return ties.map((tie, i) => ({ ...tie, index: i * 2 + 1 }));
@@ -456,7 +463,7 @@ const targetName = (kind: TieKind, target: number) =>
 
 /** The fixture nation with the UID `uid`, or the real commands' failure. */
 function mockNation(uid: number): string {
-  const name = NATIONS[uid - 1000];
+  const name = ALL_NATIONS[uid - 1000];
   if (name === undefined) {
     throw failure("app.notFound", `No nation with UID ${uid}`, { uid });
   }
@@ -533,11 +540,12 @@ function removeTie(uid: number, index: number): LoggedChange {
  * takes a rule the editor writes, and he may not have it already.
  */
 function newTie(player: PlayerSummary, index: number, kind: TieKind, target: number, rule?: number): Tie {
-  const training = kind !== "nationality";
+  const training = kind === "trainedInNation" || kind === "trainedAtClub";
   if (training !== (rule !== undefined) || (rule !== undefined && !HOMEGROWN_RULES.includes(rule))) {
     throw failure("relation.rule", `homegrown rule ${rule ?? 0} is not one the editor writes`, { rule: rule ?? 0 });
   }
-  const tie: Tie = { index, tie: kind, targetUid: target, name: targetName(kind, target), rule: rule ?? null };
+  const days = kind === "workPermit" ? 515 : null;
+  const tie: Tie = { index, tie: kind, targetUid: target, name: targetName(kind, target), rule: rule ?? null, days };
   if (tiesOf(player).some((t) => t.tie === kind && t.targetUid === target && t.rule === tie.rule)) {
     throw failure("relation.same", "the player has that already");
   }
@@ -2812,7 +2820,7 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       return report as T;
     }
     case "list_nations": {
-      const nations: Nation[] = NATIONS.map((name) => ({ address: nationAddress(name), uid: 1000 + NATIONS.indexOf(name), name }));
+      const nations: Nation[] = ALL_NATIONS.map((name) => ({ address: nationAddress(name), uid: 1000 + ALL_NATIONS.indexOf(name), name }));
       return nations.sort((a, b) => a.name.localeCompare(b.name)) as T;
     }
     case "read_values":

@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { ClubSearch } from "./ClubSearch";
 import { addTie, changeTie, homegrownRules, listNations, removeTie } from "./editing";
 import { describeError } from "./format";
+import { InfoTip } from "./InfoTip";
 import { tieText as text } from "./labels";
 import { ClubLine } from "./MoveDialog";
 import { ClubLogo, NationFlag, PICTURE_SIZE, WithPicture } from "./Picture";
@@ -26,6 +27,16 @@ const SECTIONS: readonly { kind: TieKind; label: string }[] = [
   { kind: "nationality", label: text.nationalities },
   { kind: "trainedInNation", label: text.trainedInNation },
   { kind: "trainedAtClub", label: text.trainedAtClub },
+  { kind: "workPermit", label: text.workPermit },
+];
+
+/**
+ * The nations a player can be given a work permit exemption for: those the game gives one for, by UID (England,
+ * Scotland), or by name where the UIDs are not the game's (the browser preview).
+ */
+const PERMIT_NATIONS: readonly { uid: number; name: string }[] = [
+  { uid: 765, name: "England" },
+  { uid: 793, name: "Scotland" },
 ];
 
 const tieName = (tie: Tie) => tie.name ?? String(tie.targetUid);
@@ -42,6 +53,7 @@ function TieLine({ tie, rule = true }: { tie: Tie; rule?: boolean }) {
     <WithPicture inline picture={picture}>
       {tieName(tie)}
       {rule && tie.rule !== null && <span className="tie-rule">{` · ${ruleLabel(tie.rule)}`}</span>}
+      {tie.days !== null && <span className="tie-rule">{` · ${text.daysLeft(tie.days)}`}</span>}
     </WithPicture>
   );
 }
@@ -239,7 +251,7 @@ function TiesDialog({ details, onClose }: TiesDialogProps) {
     const name = tieName(tie);
     return (
       <li key={tie.index} className="tie-row">
-        {tie.tie === "trainedAtClub" ? (
+        {tie.tie === "trainedAtClub" || tie.tie === "workPermit" ? (
           <span className="tie-target">
             <TieLine tie={tie} rule={false} />
           </span>
@@ -298,6 +310,13 @@ function TiesDialog({ details, onClose }: TiesDialogProps) {
 
   // A tie can be added where his list has room, or where the app grows it.
   const room = details.tieRoom > 0 || details.tiesGrow;
+  // The nations he can be given a work permit exemption for: not his own, nor one he has it for already.
+  const permitNations = nations.filter(
+    (nation) =>
+      PERMIT_NATIONS.some((permit) => permit.uid === nation.uid || permit.name === nation.name) &&
+      nation.uid !== details.nationUid &&
+      !details.ties.some((tie) => tie.tie === "workPermit" && tie.targetUid === nation.uid),
+  );
   const addClub = () => {
     if (newClub !== null) {
       void write(() => addTie(uid, "trainedAtClub", newClub.uid, newClubRule));
@@ -423,7 +442,10 @@ function TiesDialog({ details, onClose }: TiesDialogProps) {
             const ties = details.ties.filter((tie) => tie.tie === kind);
             return (
               <section key={kind} className="move-section" aria-labelledby={id(kind)}>
-                <h3 id={id(kind)}>{label}</h3>
+                <h3 id={id(kind)} className={kind === "workPermit" ? "tie-head" : undefined}>
+                  {label}
+                  {kind === "workPermit" && <InfoTip label={text.permitInfoLabel} note={text.permitInfo} />}
+                </h3>
                 {ties.length === 0 && <p className="muted tie-none">{text.none}</p>}
                 <ul className="tie-rows">{ties.map(row)}</ul>
                 {kind === "nationality" && room && (
@@ -469,6 +491,24 @@ function TiesDialog({ details, onClose }: TiesDialogProps) {
                   </div>
                 )}
                 {kind === "trainedAtClub" && clubControls()}
+                {kind === "workPermit" && room && permitNations.length > 0 && (
+                  <select
+                    aria-label={text.addPermit}
+                    value=""
+                    disabled={busy}
+                    onChange={(e) => {
+                      const nation = Number(e.currentTarget.value);
+                      void write(() => addTie(uid, "workPermit", nation));
+                    }}
+                  >
+                    <option value="">{text.addPermit}</option>
+                    {permitNations.map((nation) => (
+                      <option key={nation.address} value={nation.uid ?? ""}>
+                        {nation.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </section>
             );
           })}

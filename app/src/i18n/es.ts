@@ -553,6 +553,7 @@ export const es: Strings = {
     "tie.nationality": "Nacionalidad secundaria",
     "tie.trainedInNation": "Formado en el país",
     "tie.trainedAtClub": "Formado en el club",
+    "tie.workPermit": "Sin permiso de trabajo en",
     club: "Club",
     injuries: "Lesiones",
     bans: "Sanciones",
@@ -1625,6 +1626,7 @@ export const es: Strings = {
     nationalities: "Nacionalidades secundarias",
     trainedInNation: "Formado en el país",
     trainedAtClub: "Formado en el club",
+    workPermit: "Sin permiso de trabajo en",
     none: "Ninguna",
     rules: {
       1: "Formado localmente 15-21",
@@ -1648,6 +1650,14 @@ export const es: Strings = {
     removeTitle: (name) => `Quitar ${name}`,
     addNationality: "Añadir una nacionalidad…",
     addNation: "Añadir un país…",
+    addPermit: "Añadir un país sin permiso…",
+    daysLeft: (days) => `quedan ${format(days)} días`,
+    permitInfoLabel: "¿Para qué sirve?",
+    permitInfo:
+      "El juego deja a los jugadores de la Unión Europea que estaban en Inglaterra o Escocia antes del Brexit jugar " +
+      "allí sin permiso de trabajo durante un número de días. Un jugador al que se lo des tampoco necesita permiso de " +
+      "trabajo para jugar en ese país, durante los mismos días que les quedan a ellos (diez años si nadie en la partida " +
+      "lo tiene).",
     newRule: "Regla de formación local del nuevo país",
     add: "Añadir",
     changeClub: "Cambiar club",

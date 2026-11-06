@@ -4186,6 +4186,23 @@ button.danger:hover:not(:disabled) {
   min-width: 0;
 }
 
+/* The heading of the nations he needs no work permit in, and the (i) after it: its note opens over the heading (under it,
+   the dialog's foot would cut it off), in the body's type, not the heading's. */
+.tie-head {
+  position: relative;
+}
+
+.tie-head .info-tip-note {
+  top: auto;
+  bottom: calc(100% + 6px);
+  font-family: inherit;
+  font-stretch: 100%;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+}
+
 /* A row's buttons, which wrap together. */
 .tie-actions {
   display: inline-flex;
