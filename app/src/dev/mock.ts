@@ -814,6 +814,8 @@ function fieldTable(entity: Entity): EditField[] {
       ...playerContract,
       // One player at a time, and only to a day after the game's date.
       { ...field("loan.expires", "date", 20000101, 21001231), mass: false },
+      // Pounds; -1 is none, which a recall writes.
+      { ...field("loan.option_fee", "i32", 0, 2_000_000_000), mass: false, blank: -1 },
     ];
   }
   return [
@@ -896,6 +898,9 @@ function withWritten<D extends PlayerDetails | StaffDetails>(entity: Entity, d: 
         break;
       case "loan": {
         const loan = (d as PlayerDetails).loan;
+        if (name === "option_fee" && loan?.terms) {
+          loan.terms.optionFee = value < 0 ? null : value;
+        }
         if (name === "expires" && loan) {
           loan.until = dateFromNumber(value);
           loan.ends = loanEnd(loan.until);
@@ -1050,8 +1055,13 @@ function currentValues(entity: Entity, uid: number): FieldValues {
         }
         return undefined;
       }
-      case "loan":
-        return name === "expires" ? (person as PlayerDetails).loan?.until && numberFromDate((person as PlayerDetails).loan!.until!) : undefined;
+      case "loan": {
+        const loan = (person as PlayerDetails).loan;
+        if (name === "option_fee") {
+          return loan?.terms ? (loan.terms.optionFee ?? -1) : undefined;
+        }
+        return name === "expires" ? loan?.until && numberFromDate(loan.until!) : undefined;
+      }
       case "facilities":
         return club.facilities[name];
       case "finance":
@@ -1182,11 +1192,20 @@ function applyEdits(entity: Entity, uid: number, edits: FieldEdit[]): ApplyRepor
  * `loan.expires`; null when it ends then already.
  */
 function recallLoan(uid: number): LoggedChange | null {
+  const option = currentValues("player", uid)["loan.option_fee"];
   const report = applyEdits("player", uid, [{ field: "loan.expires", value: numberFromDate(GAME_DATE) }]);
   if (report.failed.length > 0) {
     throw report.failed[0].error;
   }
-  return report.applied[0] ?? null;
+  const logged = report.applied[0] ?? null;
+  // As the real command: the loan's option to buy goes too, noted on the recall, whose undo writes it back.
+  if (logged && option !== undefined && option >= 0) {
+    writeValue("player", uid, "loan.option_fee", -1);
+    const entry = changes.find((c) => c.id === logged.id)!;
+    entry.recall = { optionFee: option };
+    return { ...entry };
+  }
+  return logged;
 }
 
 /** `undo_change`: writes the old value back unless the value has changed since. */
@@ -1332,6 +1351,10 @@ function undoChange(id: number): LoggedChange {
     throw failure("edit.conflict", message, { field: entry.field, expected: entry.new, found: found ?? 0 });
   }
   writeValue(entry.entity, entry.uid, entry.field, entry.old);
+  // A recall that took the loan's option to buy away writes it back too, as the real undo does.
+  if (entry.recall) {
+    writeValue(entry.entity, entry.uid, "loan.option_fee", entry.recall.optionFee);
+  }
   entry.undoneAt = Date.now();
   return { ...entry };
 }

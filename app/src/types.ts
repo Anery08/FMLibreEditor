@@ -701,6 +701,14 @@ export interface LoggedChange {
     to: Clause | null;
   };
   /**
+   * Set for a recall from loan (`recall_loan`, logged as a change of `loan.expires`) that took the loan's option to buy
+   * away too, so that the game would not sell him to the club he was on loan at: the option, in pounds. Undo writes it
+   * back with the loan's end.
+   */
+  recall?: {
+    optionFee: number;
+  };
+  /**
    * Set for a captaincy (`set_captain`), which is logged as a change of the club's field `captain` or
    * `vice_captain` whose old and new values are the players' UIDs (0 for nobody); `name` is the club's.
    */

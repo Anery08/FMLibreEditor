@@ -91,8 +91,13 @@ pending instead of offering the recall; a loan whose end has passed while he is 
 recall again.
 
 The game's own recall needs "Can be recalled" (see [The terms](#the-terms)). The editor's does not go through it: it
-moves the loan's last day, which the game holds every loan to. Onana's and Bayındır's terms were not read when they
-were recalled; that a loan without a recall ends the same way is to be checked in the game.
+moves the loan's last day, and the game ends the loan when that day is over.
+
+**A loan that ends may become a transfer.** Anton Kade, recalled by the editor on 15 August 2027 (no recall, not to be
+terminated, an option to buy of £23,245,368), was not back at FC Augsburg the next day: Liverpool had signed him for his
+option. Its balance and transfer budget were both £23,245,368 lower, and he was on a new contract of £105,519 a week
+until 30 June 2033, signed that day. So a recall takes the option to buy away too (`loan.option_fee`, written -1),
+which its undo writes back with the loan's end, and the recall dialog says so.
 
 ## Making a loan permanent
 

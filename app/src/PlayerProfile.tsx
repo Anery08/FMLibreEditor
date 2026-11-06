@@ -357,7 +357,7 @@ function LoanFacts({ uid, name, loan, contract }: { uid: number; name: string; l
             <Fact label={profileText.loanCupMatches}>{yesNo(terms.cupMatches)}</Fact>
             <Fact label={profileText.loanAgainstClub}>{yesNo(terms.againstOwnClub)}</Fact>
             <Fact label={profileText.loanOptionFee} title={profileText.loanOptionFeeTitle}>
-              {fee(terms.optionFee)}
+              <EditableValue field="loan.option_fee">{fee(terms.optionFee)}</EditableValue>
             </Fact>
             <Fact label={profileText.loanMonthlyFee} title={profileText.loanMonthlyFeeTitle}>
               {fee(terms.monthlyFee)}

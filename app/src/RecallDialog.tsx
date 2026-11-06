@@ -6,7 +6,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { recallLoan } from "./editing";
-import { describeError } from "./format";
+import { describeError, formatMoney } from "./format";
 import { recallText as text } from "./labels";
 import { ClubLine } from "./MoveDialog";
 import type { LoanDetails } from "./types";
@@ -75,6 +75,13 @@ export function RecallDialog({ uid, name, loan, onRecalled, onClose }: RecallDia
           ...(terms.canBeRecalled ? [] : [text.notRecallable(parent)]),
           ...(terms.canBeTerminated ? [] : [text.notTerminable]),
         ];
+  // A loan with an option to buy loses it, as the game might sell him to the club he is on loan at when it ends.
+  const optionFee = terms?.optionFee ?? null;
+  const [first, ...rest] = text.does(parent);
+  const does =
+    optionFee !== null && optionFee > 0
+      ? [first, text.dropsOption(loan.club ?? "", formatMoney(optionFee)), ...rest]
+      : [first, ...rest];
   return createPortal(
     // A click beside the dialog does nothing, and keeps focus where it is.
     <div
@@ -137,7 +144,7 @@ export function RecallDialog({ uid, name, loan, onRecalled, onClose }: RecallDia
           <section className="move-section" aria-labelledby={id("does")}>
             <h3 id={id("does")}>{text.doesHeading}</h3>
             <ul className="move-facts">
-              {text.does(parent).map((line) => (
+              {does.map((line) => (
                 <li key={line}>{line}</li>
               ))}
             </ul>

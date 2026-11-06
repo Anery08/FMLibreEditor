@@ -8,6 +8,7 @@ export const name = "loan";
 export const writes = true;
 
 const FIELD = "loan.expires";
+const OPTION = "loan.option_fee";
 
 /** A date as the editor writes it: 20270630. */
 const numberOf = (date) => date.year * 10000 + date.month * 100 + date.day;
@@ -49,9 +50,19 @@ export async function run({ app, report, probe, connection }) {
   const limited = terms != null && (!terms.canBeRecalled || !terms.canBeTerminated);
 
   const today = numberOf(connection.gameDate);
+  const optionBefore = terms ? probe.get("player", player.uid, [OPTION])[OPTION] : undefined;
   const recalled = await app.must("recall_loan", { uid: player.uid });
   const written = probe.get("player", player.uid, [FIELD])[FIELD];
   report.check("the loan's last day is now the game's date", recalled != null && written === today, `${written}, today ${today}`);
+  // A loan with an option to buy loses it, or the game might sell him to the club he is on loan at when it ends.
+  if (optionBefore !== undefined) {
+    const optionNow = probe.get("player", player.uid, [OPTION])[OPTION];
+    report.check(
+      "the recall takes the option to buy away, and notes it",
+      optionBefore >= 0 ? optionNow === -1 && recalled?.recall?.optionFee === optionBefore : optionNow === optionBefore && !recalled?.recall,
+      `${optionBefore} → ${optionNow}`,
+    );
+  }
   const after = await app.must("player_details", { uid: player.uid });
   report.check(
     "his profile says his return is pending",
@@ -67,6 +78,10 @@ export async function run({ app, report, probe, connection }) {
   const undone = await app.must("undo_change", { id: recalled.id });
   const restored = probe.get("player", player.uid, [FIELD])[FIELD];
   report.check("the undo puts the old end back", undone.undoneAt != null && restored === before, String(restored));
+  if (optionBefore !== undefined) {
+    const optionBack = probe.get("player", player.uid, [OPTION])[OPTION];
+    report.check("and the option to buy", optionBack === optionBefore, String(optionBack));
+  }
   const later = await app.must("player_details", { uid: player.uid });
   report.check("and his profile offers the recall again", later.loan?.ends === "later" && !later.loan.recalled);
 
@@ -86,6 +101,11 @@ export async function run({ app, report, probe, connection }) {
   const asked = await app.js(`${dialog}.contains(document.activeElement) && document.activeElement.textContent`);
   const says = await app.js(`${dialog}.querySelector(".recall-terms")?.textContent ?? ""`);
   report.check("the dialog says what the loan's terms would not allow in the game", !!says === limited, says || "nothing");
+  if (terms?.optionFee != null && terms.optionFee > 0) {
+    const does = await app.js(`${dialog}.querySelector(".move-facts:not(.recall-terms .move-facts)")?.textContent ?? ""`);
+    const lists = await app.js(`[...${dialog}.querySelectorAll(".move-section")].map((s) => s.textContent).join(" ")`);
+    report.check("and that the recall takes the option to buy away", /option to buy him/.test(lists), does.slice(0, 160));
+  }
   await app.shot("loan-recall-dialog");
   await app.press("Escape");
   await app.waitFor(`!${dialog}`, "the dialog to close");
@@ -106,6 +126,10 @@ export async function run({ app, report, probe, connection }) {
   if (logged) await app.must("undo_change", { id: logged.id });
   const back = probe.get("player", player.uid, [FIELD])[FIELD];
   report.check("undone again", back === before, String(back));
+  // That undo went behind the profile's back (the Changes tab's tells it): open it again, to read the loan anew.
+  await app.press("Escape");
+  await app.click(`${rows}[0]`, "his row");
+  await app.waitFor(`${profile} && ${profile}.getAttribute("aria-busy") === "false" && ${button}`, "his profile again", 30000);
 
   // Made permanent: the dialog plans it, then the command makes it, which the probe reads as no loan, and one undo puts
   // the loan back.

@@ -8,11 +8,11 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use fmlibre_core::{
     ArraySource, CaptainRole, CaptainSet, Change, Clause, ClauseSet, ClubDetails, ClubFilter, ClubIndex, ClubMove,
     Coded, EditError, Entity, EntityArrays, ExportFormat, ExportHeader, FeePlan, Field, FmDate, GAME_EXE, GAME_PLUGIN,
-    GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind, LOAN_EXPIRES, Lifted, Listed, Loan,
-    MoveError, MovePlan, MoveTerms, Nation, Operation, Paid, Picture, Planned, PlayerDetails, PlayerFilter,
-    PlayerIndex, PlayerOrder, PlayerSummary, RelationSet, RetirementSet, STAFF_JOBS, SearchIndex, Session,
-    SessionError, Skipped, StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffOrder, StaffPlan, Target, Tie,
-    TieTarget, find_game, nations, sort_players, sort_staff,
+    GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind, LOAN_EXPIRES, LOAN_OPTION_FEE,
+    Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation, Operation, Paid, Picture, Planned, PlayerDetails,
+    PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary, RelationSet, RetirementSet, STAFF_JOBS, SearchIndex,
+    Session, SessionError, Skipped, StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffOrder, StaffPlan, Target,
+    Tie, TieTarget, find_game, nations, sort_players, sort_staff,
 };
 use fmlibre_mem::{Process, find_processes, is_current_process_elevated, list_modules};
 use serde::{Deserialize, Serialize};
@@ -506,6 +506,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: None,
+            recall: None,
             undo: None,
         };
         self.log.push(logged.clone());
@@ -569,6 +570,7 @@ impl Connection {
             captaincy: Some(captaincy),
             tie: None,
             clause: None,
+            recall: None,
             undo: Some(Undo::Captain(done)),
         };
         self.log.push(logged.clone());
@@ -595,6 +597,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: None,
+            recall: None,
             undo: Some(Undo::Heal(done)),
         };
         self.log.push(logged.clone());
@@ -621,6 +624,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: None,
+            recall: None,
             undo: Some(Undo::Lift(done)),
         };
         self.log.push(logged.clone());
@@ -648,6 +652,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: None,
+            recall: None,
             undo: Some(Undo::Retirement(done)),
         };
         self.log.push(logged.clone());
@@ -688,6 +693,7 @@ impl Connection {
             captaincy: None,
             tie: Some(TieChange { from: end(&done.before), to: end(&done.after) }),
             clause: None,
+            recall: None,
             undo: Some(Undo::Tie(done)),
         };
         self.log.push(logged.clone());
@@ -716,6 +722,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: Some(ClauseChange { from: done.before.clone(), to: done.after.clone() }),
+            recall: None,
             undo: Some(Undo::Clause(done)),
         };
         self.log.push(logged.clone());
@@ -774,6 +781,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: None,
+            recall: None,
             undo: Some(Undo::Staff(LoggedStaff { done, club, club_uid, job })),
         };
         self.log.push(logged.clone());
@@ -909,6 +917,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: None,
+            recall: None,
             undo: Some(Undo::Move(before)),
         };
         self.log.push(logged.clone());
@@ -949,6 +958,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: None,
+            recall: None,
             undo: Some(Undo::Move(LoggedMove { done, rows, paid: Vec::new() })),
         };
         self.log.push(logged.clone());
@@ -968,6 +978,20 @@ impl Connection {
             return Err(Failure::new("app.alreadyUndone", "This change has already been undone."));
         }
         match entry.undo {
+            Some(Undo::Recall(option)) => {
+                // The loan's end first, which checks that the game still holds the recall's day; then its option.
+                let (target, _) = self.target(entry.change.entity, entry.change.uid)?;
+                self.session.revert(&target, &entry.change)?;
+                if let Err(err) = self.session.revert(&target, &option) {
+                    let _ = self.session.write_field(
+                        &target,
+                        &self.session.field(entry.change.entity, &entry.change.field)?,
+                        entry.change.new,
+                    );
+                    return Err(err.into());
+                }
+                self.note_change(&entry.change, entry.change.old);
+            }
             Some(Undo::Move(moved)) => {
                 // The fee goes back first, by what it changed; if the player cannot go back, it is paid again.
                 self.session.refund_fee(&moved.paid)?;
@@ -1155,15 +1179,30 @@ struct LoggedChange {
     /// For a change to a player's contract clauses: the clause before and after.
     #[serde(skip_serializing_if = "Option::is_none")]
     clause: Option<ClauseChange>,
+    /// For a recall from loan that took the loan's option to buy away too: what the option was.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recall: Option<RecallNote>,
     /// For a move, healing, lifting bans, a captaincy, a tie or a clause: what undoing it takes. Other changes write
     /// back `old`.
     #[serde(skip)]
     undo: Option<Undo>,
 }
 
+/// A recall from loan that took the loan's option to buy away, so that the game would not sell him to the club he is on
+/// loan at when the loan ends.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecallNote {
+    /// The option to buy it took away, pounds.
+    option_fee: i64,
+}
+
 /// What undoing a change takes when writing back its old value is not enough.
 #[derive(Clone)]
 enum Undo {
+    /// A recall from loan that took the loan's option to buy away too: the change of the option, written back with the
+    /// loan's end.
+    Recall(Change),
     Move(LoggedMove),
     Heal(Healed),
     Lift(Lifted),
@@ -2262,11 +2301,34 @@ fn recall_loan(state: State<'_, AppState>, uid: u32) -> Result<Option<LoggedChan
         let field = session.field(Entity::Player, LOAN_EXPIRES)?;
         session.write_field(&target, &field, day.to_number())
     });
-    match written {
-        Ok(change) if change.old == change.new => Ok(None),
-        Ok(change) => Ok(Some(connection.log_change(change, name, None))),
-        Err(err) => Err(connection.with_names(err.into())),
+    let change = match written {
+        Ok(change) if change.old == change.new => return Ok(None),
+        Ok(change) => change,
+        Err(err) => return Err(connection.with_names(err.into())),
+    };
+    // The loan's option to buy goes too: when a loan with one ends, the game may let the club he is on loan at sign him
+    // for it (Anton Kade, recalled, went to Liverpool for his option). The undo writes it back with the loan's end.
+    let option = session.field(Entity::Player, LOAN_OPTION_FEE).ok().and_then(|field| {
+        let held = session.read_field(&target, &field).ok()?;
+        (held >= 0).then(|| session.write_field_if(&target, &field, held, -1))
+    });
+    let option = match option {
+        None => None,
+        Some(Ok(option)) => Some(option),
+        Some(Err(err)) => {
+            // The end is written but not the option: put the end back, so that the recall is all or nothing.
+            let _ = session.revert(&target, &change);
+            return Err(connection.with_names(err.into()));
+        }
+    };
+    let mut logged = connection.log_change(change, name, None);
+    if let Some(option) = option {
+        let entry = connection.log.last_mut().expect("just logged");
+        entry.recall = Some(RecallNote { option_fee: option.old });
+        entry.undo = Some(Undo::Recall(option));
+        logged = entry.clone();
     }
+    Ok(Some(logged))
 }
 
 /// Every change written this session, newest first.

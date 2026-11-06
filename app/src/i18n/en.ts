@@ -406,6 +406,7 @@ export const en = {
     "contract.transfer_listed": "Transfer listed",
     "contract.loan_listed": "Loan listed",
     "loan.expires": "Loan end",
+    "loan.option_fee": "Option to buy",
     // A member of staff's job, which the change log keeps as a change of its code.
     "contract.job": "Job",
     // A player's ties, which the change log keeps as changes of the nation or club (see `ties`).
@@ -1204,6 +1205,8 @@ export const en = {
     released: (name: string) => `${name} released`,
     /** Under a transfer that had a fee: the amount, written out. */
     fee: (amount: string) => `Fee ${amount}`,
+    /** Under a recall from loan that took the loan's option to buy away, which its undo writes back. */
+    optionRemoved: (amount: string) => `Option to buy (${amount}) taken away`,
     /** What a heal changed, in the place of its values: `count` is how many injuries the player had. */
     healed: (count: number) => (count === 1 ? "Healed 1 injury" : `Healed ${format(count)} injuries`),
     /** The same for lifting bans: `count` is how many bans the player had. */
@@ -1781,6 +1784,12 @@ export const en = {
     notRecallable: (parent: string) => `The loan does not let ${parent} recall him`,
     notTerminable: "The loan cannot be ended early",
     worksAnyway: "The recall here works all the same: it does not go through the game's recall, it moves the loan's last day",
+    /**
+     * A line of what the recall does, for a loan with an option to buy: `club` is the club he is on loan at. When a loan
+     * with one ends, the game may let that club sign him for it.
+     */
+    dropsOption: (club: string, amount: string) =>
+      `${club}'s option to buy him for ${amount} is taken away: else, when the loan ends, the game may sell him to ${club}`,
     /** Nothing changes in the game until Recall. */
     hint: "Nothing changes in the game until you press Recall.",
     confirm: "Recall",
