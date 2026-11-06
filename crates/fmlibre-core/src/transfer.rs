@@ -182,6 +182,8 @@ pub enum MoveError {
     SameClub,
     /// The player is on loan, to his club or from it.
     OnLoan,
+    /// Making a loan permanent asked for a player who is not on loan.
+    NotOnLoan,
     /// A player-coach, who works as staff too.
     PlayerCoach,
     /// The contract does not point back at the player, is not a player's, or names two teams.
@@ -285,7 +287,10 @@ impl fmt::Display for MoveError {
             MoveError::NotAClub { uid } => write!(f, "the club with UID {uid} has no senior team to join"),
             MoveError::FreeAgent => f.write_str("the player has no club; free agents cannot be moved yet"),
             MoveError::SameClub => f.write_str("the player is at this club already"),
-            MoveError::OnLoan => f.write_str("the player is on loan; players on loan cannot be moved yet"),
+            MoveError::OnLoan => f.write_str(
+                "the player is on loan: recall him from his loan first, or make the loan permanent, in the Loan part of \n                 his profile",
+            ),
+            MoveError::NotOnLoan => f.write_str("the player is not on loan"),
             MoveError::PlayerCoach => f.write_str("player-coaches cannot be moved: they work as staff too"),
             MoveError::UnusualContract => f.write_str("the player's contract is not a plain player's contract"),
             MoveError::HumanClub => f.write_str(
@@ -371,6 +376,7 @@ impl Coded for MoveError {
             MoveError::FreeAgent => "move.freeAgent",
             MoveError::SameClub => "move.sameClub",
             MoveError::OnLoan => "move.onLoan",
+            MoveError::NotOnLoan => "move.notOnLoan",
             MoveError::PlayerCoach => "move.playerCoach",
             MoveError::UnusualContract => "move.unusualContract",
             MoveError::HumanClub => "move.humanClub",
@@ -671,6 +677,167 @@ impl Session {
             released: None,
             patches: patches.0,
             leavers: self.leavers(&[&leaving])?,
+        })
+    }
+
+    /// Works out making the loan of `player` permanent, on the contract `terms`: he stays where he plays, at the club
+    /// he is on loan to, now under contract with its senior team from today, with the squad number and status he has
+    /// there. He leaves every list of his own club and the captaincies he holds in it, and the loan is let go as the
+    /// game lets one go when it ends: the record of his other contracts loses the loan contract, and when it holds
+    /// nothing else he is left without one (see [`crate::loans`]). The loan contract and the record are left as they
+    /// are, with nothing pointing at them. Nothing is written.
+    pub fn plan_loan_permanent(
+        &self,
+        player: &PlayerSummary,
+        terms: MoveTerms,
+        human_clubs: &[u32],
+    ) -> Result<MovePlan, MoveError> {
+        self.check_terms(terms, self.game_date())?;
+        let (process, layout) = (&self.process, &self.layout);
+        let (p, c) = (&layout.player, &layout.contract);
+        let loan_layout = layout.loan.as_ref().ok_or(MoveError::NotOnLoan)?;
+        let object = player.address;
+        if process.read_u32(object + p.at(p.uid, player.shift))? != player.uid {
+            return Err(MoveError::Moved { uid: player.uid });
+        }
+        if player.shift != 0 {
+            return Err(MoveError::PlayerCoach);
+        }
+        let loan = self.loan_contract(object, player.shift)?.ok_or(MoveError::NotOnLoan)?;
+        let team = process.read_u64(object + p.team)?;
+        let contract = process.read_u64(object + p.contract)?;
+        if !is_user_pointer(team) || !is_user_pointer(contract) {
+            return Err(MoveError::FreeAgent);
+        }
+
+        // His own contract must be his, a player's, with one team to its name; the loan contract must be with the team
+        // he plays for, at another club.
+        let record = process.read_bytes(contract, c.end() as usize)?;
+        let loaned = process.read_bytes(loan, c.end() as usize)?;
+        let word = |bytes: &[u8], offset: u64| {
+            u64::from_le_bytes(bytes[offset as usize..offset as usize + 8].try_into().expect("8 bytes"))
+        };
+        let employer = word(&record, c.team);
+        if word(&record, c.owner) != object + p.identity()
+            || record[c.job as usize] != PLAYER_JOB
+            || word(&record, c.senior_team) != employer
+            || !is_user_pointer(employer)
+        {
+            return Err(MoveError::UnusualContract);
+        }
+        if word(&loaned, c.team) != team {
+            return Err(MoveError::UnusualContract);
+        }
+        let new_club = process.read_u64(team + layout.team.club)?;
+        let old_club = process.read_u64(employer + layout.team.club)?;
+        if !is_user_pointer(new_club) || !is_user_pointer(old_club) || new_club == old_club {
+            return Err(MoveError::NotOnLoan);
+        }
+        let new_uid = process.read_u32(new_club + layout.club.uid)?;
+        let old_uid = process.read_u32(old_club + layout.club.uid)?;
+        let human = human_clubs.contains(&old_uid);
+        if human && !self.selections_known() {
+            return Err(MoveError::HumanClub);
+        }
+
+        // Every list of his own club that holds him loses him. One does, as for any player out on loan: his employer's,
+        // or for a youngster that of the youth team he played for (Mirza Ćatović, on loan from VfB Stuttgart, is in its
+        // under-19s' list and not in the senior team's).
+        let mut old_teams = match PointerList::read(process, old_club + layout.club.teams)? {
+            Some(teams) => teams.elements(process)?,
+            None => Vec::new(),
+        };
+        old_teams.sort_unstable();
+        old_teams.dedup();
+        let mut leaving = Vec::new();
+        for &from in &old_teams {
+            let Some(list) = PointerList::read(process, from + layout.team.players)? else {
+                continue;
+            };
+            let elements = list.elements(process)?;
+            let found: Vec<usize> = (0..elements.len()).filter(|&j| elements[j] == object).collect();
+            match found[..] {
+                [] => {}
+                [index] => leaving.push((from, list, index, elements)),
+                _ => return Err(MoveError::NotListed),
+            }
+        }
+        if leaving.is_empty() {
+            return Err(MoveError::NotListed);
+        }
+        // He stays in the list of the team he plays for, which holds him once.
+        let Some(staying) = PointerList::read(process, team + layout.team.players)? else {
+            return Err(MoveError::NotListed);
+        };
+        if staying.elements(process)?.iter().filter(|&&element| element == object).count() != 1 {
+            return Err(MoveError::NotListed);
+        }
+        let (senior, _) = self.senior_team(new_club, new_uid)?;
+
+        let mut patches = Patches::default();
+        // His own contract: with the senior team of the club he stays at, from today, on the terms, with the squad
+        // number and status he has there, and off the transfer and loan lists.
+        for offset in [c.team, c.senior_team] {
+            patches.push(contract + offset, employer.to_le_bytes(), senior.to_le_bytes());
+        }
+        let date_at = |offset: u64| &record[offset as usize..offset as usize + 4];
+        if let Some(today) = self.game_date() {
+            for offset in [c.signed, c.joined] {
+                if Kind::Date.decode(date_at(offset)) != 0 {
+                    patches.push(
+                        contract + offset,
+                        date_at(offset),
+                        Kind::Date.encode(today.to_number(), date_at(offset)),
+                    );
+                }
+            }
+        }
+        if let Some(wage) = terms.wage {
+            let old = &record[c.wage as usize..c.wage as usize + 4];
+            patches.push(contract + c.wage, old, Kind::I32.encode(wage, old));
+        }
+        if let Some(expires) = terms.expires {
+            patches.push(contract + c.expires, date_at(c.expires), Kind::Date.encode(expires, date_at(c.expires)));
+        }
+        for offset in [c.squad_number, c.squad_status] {
+            patches.push(contract + offset, [record[offset as usize]], [loaned[offset as usize]]);
+        }
+        let listing = record[c.listing as usize];
+        patches.push(contract + c.listing, [listing], [listing & !LISTED]);
+        // His own club: its captaincies he holds are left empty, and its lists lose him.
+        let block = object + p.identity();
+        for &from in &old_teams {
+            for offset in [layout.team.captain, layout.team.vice_captain] {
+                if process.read_u64(from + offset)? == block {
+                    patches.push(from + offset, block.to_le_bytes(), 0u64.to_le_bytes());
+                }
+            }
+        }
+        for (_, list, index, elements) in &leaving {
+            removal_patches(list, *index, elements, &mut patches);
+        }
+        // The loan, let go as the game lets one go.
+        let at = object + p.at(loan_layout.record, player.shift);
+        let held = process.read_u64(at)?;
+        let mut others = Vec::new();
+        for &offset in &loan_layout.others {
+            others.push(process.read_u64(held + offset)?);
+        }
+        if others.iter().all(|&other| other == 0) {
+            patches.push(at, held.to_le_bytes(), 0u64.to_le_bytes());
+        } else {
+            patches.push(held + loan_layout.contract, loan.to_le_bytes(), 0u64.to_le_bytes());
+        }
+
+        let leavers = if human { vec![self.leaver(object, &old_teams)?] } else { Vec::new() };
+        Ok(MovePlan {
+            player: player.uid,
+            from_club: old_uid,
+            to_club: new_uid,
+            other: None,
+            released: None,
+            patches: patches.0,
+            leavers,
         })
     }
 

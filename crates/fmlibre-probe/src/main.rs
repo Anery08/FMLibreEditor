@@ -204,6 +204,24 @@ enum Command {
         #[arg(long, default_value_t = 0)]
         hold: u64,
     },
+    /// Make the loan of a player permanent in the running game: he stays at the club he is on loan to, now under
+    /// contract with it, and leaves his own club.
+    Permanent {
+        /// The player's UID.
+        uid: u32,
+        /// A new wage in pounds per week; his contract's otherwise.
+        #[arg(long)]
+        wage: Option<i64>,
+        /// A new contract end as YYYY-MM-DD; his contract's otherwise.
+        #[arg(long)]
+        expires: Option<String>,
+        /// Put it all back afterwards and check it: tests the change without changing the save.
+        #[arg(long)]
+        restore: bool,
+        /// With --restore, how many seconds to wait before putting it back, to look at the game meanwhile.
+        #[arg(long, default_value_t = 0)]
+        hold: u64,
+    },
     /// Work out a move as the app's transfer dialog does, on the player's contract, and say whether it can be made.
     /// Writes nothing.
     Plan {
@@ -295,6 +313,34 @@ enum Command {
     Ties {
         /// The player's UID.
         uid: u32,
+        /// Also print every entry of his list of relations as stored, the kinds the editor leaves alone included.
+        #[arg(long)]
+        all: bool,
+    },
+    /// List the players on loan: the club they are on loan to, the club they belong to, and the days the loan runs
+    /// from and to. With a UID, only that player.
+    Loans {
+        /// Only this player.
+        uid: Option<u32>,
+        /// Only loans to or from the club with this UID.
+        #[arg(long)]
+        club: Option<u32>,
+        /// Also print each loan contract's bytes from the squad number on.
+        #[arg(long)]
+        raw: bool,
+        /// How many loans to print.
+        #[arg(long, default_value_t = 40)]
+        max: usize,
+    },
+    /// Count the kinds of relation in every player's list of relations; with --kind, the targets of that kind, the
+    /// counts it holds, and a few players who have one with the club they play for.
+    RelationKinds {
+        /// The kind of relation to look into, as `ties --all` prints it (`rel`).
+        #[arg(long)]
+        kind: Option<u8>,
+        /// How many players to name for each target.
+        #[arg(long, default_value_t = 4)]
+        examples: usize,
     },
     /// Point one of a player's ties at another nation or club, or give a training another homegrown rule.
     TieSet {
@@ -797,6 +843,7 @@ fn run(cli: Cli) -> Result<()> {
         Some(
             Command::Set { .. }
                 | Command::Move { .. }
+                | Command::Permanent { .. }
                 | Command::Release { .. }
                 | Command::StaffMove { .. }
                 | Command::StaffJob { .. }
@@ -872,6 +919,11 @@ fn run(cli: Cli) -> Result<()> {
             let session = connect(process, ArraySource::ProfileFirst)?;
             move_player(&session, uid, club, terms, fee, release, restore.then_some(hold))
         }
+        Command::Permanent { uid, wage, expires, restore, hold } => {
+            let expires = expires.as_deref().map(parse_iso_date).transpose()?.map(FmDate::to_number);
+            let session = connect(process, ArraySource::ProfileFirst)?;
+            make_permanent(&session, uid, MoveTerms { wage, expires }, restore.then_some(hold))
+        }
         Command::Plan { uid, club, release } => {
             plan_move(&connect(process, ArraySource::ProfileFirst)?, uid, club, release)
         }
@@ -896,9 +948,16 @@ fn run(cli: Cli) -> Result<()> {
             let restore_after = restore.then_some(hold);
             retirements(&connect(process, ArraySource::ProfileFirst)?, uid, keep, restore_after)
         }
-        Command::Ties { uid } => {
+        Command::Ties { uid, all } => {
             let session = connect(process, ArraySource::ProfileFirst)?;
-            tie_change(&session, uid, None, RestoreArgs { restore: false, hold: 0 })
+            tie_change(&session, uid, None, RestoreArgs { restore: false, hold: 0 })?;
+            if all { relation_entries(&session, uid) } else { Ok(()) }
+        }
+        Command::Loans { uid, club, raw, max } => {
+            list_loans(&connect(process, ArraySource::ProfileFirst)?, uid, club, raw, max)
+        }
+        Command::RelationKinds { kind, examples } => {
+            relation_kinds(&connect(process, ArraySource::ProfileFirst)?, kind, examples)
         }
         Command::TieSet { uid, index, nation, club, rule, restore } => {
             let session = connect(process, ArraySource::ProfileFirst)?;
@@ -3176,6 +3235,48 @@ fn move_player(
     Ok(())
 }
 
+/// Makes the loan of the player `uid` permanent, shows where he is and what his contract says before and after, and
+/// with `restore_after` puts it all back and checks it.
+fn make_permanent(session: &Session, uid: u32, terms: MoveTerms, restore_after: Option<u64>) -> Result<()> {
+    let players = PlayerIndex::new(session.players()?);
+    let player = players.get(uid).with_context(|| format!("no player with UID {uid}"))?;
+    let human: Vec<u32> = session.staff()?.iter().filter(|s| s.is_human).filter_map(|s| s.club_uid).collect();
+    let contract_fields = ["contract.wage", "contract.expires", "contract.squad_number", "contract.squad_status"];
+    let show = |label: &str| -> Result<()> {
+        let now = session.players()?;
+        let player = now.iter().find(|p| p.uid == uid).context("the player is gone")?;
+        let loan = session.loan(player)?;
+        let target = player.target();
+        let fields: Vec<_> =
+            contract_fields.iter().map(|key| session.field(Entity::Player, key)).collect::<Result<_, _>>()?;
+        let values = session.read_fields(&target, &fields)?;
+        let values: Vec<String> = contract_fields
+            .iter()
+            .zip(values)
+            .map(|(key, value)| format!("{key} {}", value.map_or("-".to_owned(), |v| v.to_string())))
+            .collect();
+        let loan = loan.map_or("not on loan".to_owned(), |loan| {
+            format!("on loan from {} to {}", loan.parent.unwrap_or_default(), loan.club.unwrap_or_default())
+        });
+        println!("  {label}: plays for {}, {loan}; {}", player.club.as_deref().unwrap_or("-"), values.join(", "));
+        Ok(())
+    };
+    show("before")?;
+    let plan = session.plan_loan_permanent(player, terms, &human)?;
+    println!("{} (UID {uid}): club {} -> club {}, {} writes", player.name, plan.from_club, plan.to_club, plan.writes());
+    let done = session.apply_club_move(&plan)?;
+    show("after")?;
+    if let Some(hold) = restore_after {
+        if hold > 0 {
+            println!("  putting it back in {hold} s");
+            std::thread::sleep(std::time::Duration::from_secs(hold));
+        }
+        session.undo_club_move(&done)?;
+        show("restored")?;
+    }
+    Ok(())
+}
+
 fn plan_move(session: &Session, uid: u32, club: u32, release: Option<u32>) -> Result<()> {
     let players = PlayerIndex::new(session.players()?);
     let clubs = ClubIndex::new(session.clubs()?);
@@ -3433,6 +3534,240 @@ enum TieAction {
 }
 
 /// Lists a player's ties, after changing them as `action` says (and putting them back with --restore).
+/// Prints every entry of a player's list of relations as stored: the target, its class and name where known, and the
+/// bytes after it (a count, the kind of target, the kind of relation, a value, a level).
+fn relation_entries(session: &Session, uid: u32) -> Result<()> {
+    let (process, layout) = (&session.process, &session.layout);
+    let players = PlayerIndex::new(session.players()?);
+    let clubs = ClubIndex::new(session.clubs()?);
+    let player = players.get(uid).with_context(|| format!("no player with UID {uid}"))?;
+    let known = nations(players.iter().map(|p| (p.nation_address, p.nation.as_deref(), p.nation_uid)));
+    let club_name = |club: u64| -> Option<String> {
+        let uid = process.read_u32(club + layout.club.uid).ok()?;
+        clubs.get(uid).map(|c| format!("{} (club {uid})", c.name))
+    };
+    let entries = session.relation_entries(player)?;
+    println!("{} entries:", entries.len());
+    println!("    #  target          count kind rel  value level e  f   class / name");
+    for (index, bytes) in entries {
+        let target = u64::from_le_bytes(bytes[..8].try_into().expect("8 bytes"));
+        let count = u16::from_le_bytes([bytes[8], bytes[9]]);
+        let (kind, relation) = (bytes[10], bytes[11]);
+        let class = (is_user_pointer(target) && target >= 0x100_0000)
+            .then(|| fmlibre_core::rtti::class_of(process, &session.plugin, target))
+            .flatten()
+            .unwrap_or_default();
+        let name = match kind {
+            _ if !is_user_pointer(target) => None,
+            1 => club_name(target),
+            4 => process.read_u64(target + layout.team.club).ok().and_then(club_name).map(|c| format!("team of {c}")),
+            8 => known.iter().find(|n| n.address == target).map(|n| format!("{} (nation {:?})", n.name, n.uid)),
+            _ => None,
+        };
+        println!(
+            "  {index:>3}  {target:#014x} {count:>5} {kind:>4} {relation:>4} {:>5} {:>5} {:>2} {:02x}   {class} {}",
+            bytes[12],
+            bytes[13],
+            bytes[14],
+            bytes[15],
+            name.unwrap_or_default()
+        );
+    }
+    Ok(())
+}
+
+/// Lists the players on loan, and checks the loan contracts found against the players whose team belongs to another
+/// club than their contract's team.
+fn list_loans(session: &Session, only: Option<u32>, club: Option<u32>, raw: bool, max: usize) -> Result<()> {
+    let (process, layout) = (&session.process, &session.layout);
+    ensure!(session.loans_known(), "this game's layout does not place loans, or the game does not name their class");
+    let loan = layout.loan.as_ref().context("no loan layout")?;
+    let p = &layout.player;
+    let date = |d: Option<FmDate>| d.map_or("-".to_owned(), |d| format!("{:04}-{:02}-{:02}", d.year, d.month, d.day));
+    let club_of = |team: u64| -> Option<u64> {
+        let club = process.read_u64(team + layout.team.club).ok()?;
+        is_user_pointer(club).then_some(club)
+    };
+    let (mut records, mut pointers, mut found, mut away, mut away_found, mut shown) = (0, 0, 0, 0, 0, 0);
+    let mut slots: std::collections::BTreeMap<(usize, String), (usize, Vec<String>)> =
+        std::collections::BTreeMap::new();
+    let today = session.game_date();
+    println!("In-game date: {}", date(today));
+    for player in session.players()? {
+        if only.is_some_and(|uid| uid != player.uid) {
+            continue;
+        }
+        let record = process.read_u64(player.address + p.at(loan.record, player.shift))?;
+        if is_user_pointer(record) {
+            records += 1;
+            if is_user_pointer(process.read_u64(record + loan.contract)?) {
+                pointers += 1;
+            }
+            // What each slot of the record points at, by class: what else the record keeps.
+            for (slot, word) in process.read_bytes(record, 0x40)?.as_chunks::<8>().0.iter().enumerate() {
+                let word = u64::from_le_bytes(*word);
+                if is_user_pointer(word) && word >= 0x100_0000 {
+                    let class = fmlibre_core::rtti::class_of(process, &session.plugin, word).unwrap_or_default();
+                    let seen = slots.entry((slot * 8, class)).or_insert((0, Vec::new()));
+                    seen.0 += 1;
+                    if seen.1.len() < 3 {
+                        seen.1.push(format!("{} {}", player.uid, player.name));
+                    }
+                }
+            }
+        }
+        // Away from his club: the team he plays for belongs to another club than his contract's team.
+        let team = process.read_u64(player.address + p.team)?;
+        let contract = process.read_u64(player.address + p.at(p.contract, player.shift))?;
+        let employer = if is_user_pointer(contract) { process.read_u64(contract + layout.contract.team)? } else { 0 };
+        let is_away = is_user_pointer(team) && is_user_pointer(employer) && club_of(team) != club_of(employer);
+        away += usize::from(is_away);
+        let Some(details) = session.loan(&player)? else {
+            if is_away && only.is_some() {
+                println!("{} (UID {}) plays away from his club but has no loan contract", player.name, player.uid);
+            }
+            continue;
+        };
+        found += 1;
+        away_found += usize::from(is_away);
+        if club.is_some() && club != details.club_uid && club != details.parent_uid {
+            continue;
+        }
+        shown += 1;
+        if shown > max {
+            continue;
+        }
+        println!(
+            "{:>11}  {:<26} {} -> {}  {} to {}  number {}  wage {}",
+            player.uid,
+            player.name,
+            details.parent.as_deref().unwrap_or("?"),
+            details.club.as_deref().unwrap_or("?"),
+            date(details.from),
+            date(details.until),
+            details.squad_number.map_or("-".to_owned(), |n| n.to_string()),
+            details.wage,
+        );
+        if let Some(t) = details.terms {
+            let yes = |b: bool| if b { "yes" } else { "no" };
+            let amount = |a: Option<i32>| a.map_or("-".to_owned(), |a| a.to_string());
+            println!(
+                "             recall {}, terminate {}, cup matches {}, against own club {}, option fee {}, monthly fee \
+                 {} (unused {}), flags {:#06x}",
+                yes(t.can_be_recalled),
+                yes(t.can_be_terminated),
+                yes(t.cup_matches),
+                yes(t.against_own_club),
+                amount(t.option_fee),
+                amount(t.monthly_fee),
+                amount(t.unused_fee),
+                t.flags
+            );
+        }
+        if raw && let Some(at) = session.loan_contract(player.address, player.shift)? {
+            let bytes = process.read_bytes(at + 0x58, 0xA8)?;
+            for (i, line) in bytes.chunks(16).enumerate() {
+                let hex: Vec<String> = line.iter().map(|b| format!("{b:02x}")).collect();
+                println!("      +{:#05x}  {}", 0x58 + i * 16, hex.join(" "));
+            }
+        }
+    }
+    println!(
+        "{found} loan contract(s) ({shown} shown); {records} players with a record of other contracts, {pointers} of \
+         them pointing at a contract; {away} players away from their club's teams, {away_found} of them with a loan \
+         contract"
+    );
+    println!("What the records of other contracts point at, by slot and class:");
+    for ((slot, class), (count, names)) in &slots {
+        println!("  +{slot:#04x}  {count:>6}  {class}  e.g. {}", names.join(", "));
+    }
+    Ok(())
+}
+
+/// Counts the kinds of relation across every player; for one kind, its targets with the players who have it.
+fn relation_kinds(session: &Session, only: Option<u8>, examples: usize) -> Result<()> {
+    use std::collections::BTreeMap;
+    let (process, layout) = (&session.process, &session.layout);
+    let players = session.players()?;
+    let clubs = ClubIndex::new(session.clubs()?);
+    let known = nations(players.iter().map(|p| (p.nation_address, p.nation.as_deref(), p.nation_uid)));
+    let target_name = |kind: u8, target: u64| -> String {
+        let club = |club: u64| {
+            let uid = process.read_u32(club + layout.club.uid).ok()?;
+            clubs.get(uid).map(|c| c.name.clone())
+        };
+        let name = match kind {
+            _ if !is_user_pointer(target) => Some("(none)".to_owned()),
+            1 => club(target),
+            4 => process.read_u64(target + layout.team.club).ok().and_then(club).map(|c| format!("team of {c}")),
+            8 => known.iter().find(|n| n.address == target).map(|n| n.name.clone()),
+            _ => None,
+        };
+        name.unwrap_or_else(|| format!("{target:#x}"))
+    };
+    // kind -> (players with one, entries); for the kind asked: target -> (players, counts, values, examples).
+    let mut kinds: BTreeMap<(u8, u8), (usize, usize)> = BTreeMap::new();
+    type Seen = (usize, BTreeMap<u16, usize>, BTreeMap<u16, usize>, Vec<String>);
+    let mut targets: BTreeMap<String, Seen> = BTreeMap::new();
+    let mut read = 0;
+    for player in &players {
+        let Ok(entries) = session.relation_entries(player) else { continue };
+        read += 1;
+        let mut seen = std::collections::HashSet::new();
+        for (_, bytes) in entries {
+            let (kind, relation) = (bytes[10], bytes[11]);
+            let slot = kinds.entry((relation, kind)).or_default();
+            slot.1 += 1;
+            if seen.insert((relation, kind)) {
+                slot.0 += 1;
+            }
+            if only != Some(relation) {
+                continue;
+            }
+            let target = u64::from_le_bytes(bytes[..8].try_into().expect("8 bytes"));
+            let entry = targets.entry(target_name(kind, target)).or_default();
+            entry.0 += 1;
+            *entry.1.entry(u16::from_le_bytes([bytes[8], bytes[9]])).or_default() += 1;
+            *entry.2.entry(u16::from(bytes[12])).or_default() += 1;
+            if entry.3.len() < examples {
+                let club = player.club.as_deref().unwrap_or("-");
+                entry.3.push(format!(
+                    "{} {} ({}, {club})",
+                    player.uid,
+                    player.name,
+                    player.nation.as_deref().unwrap_or("?")
+                ));
+            }
+        }
+    }
+    println!("{read} players' lists read.");
+    match only {
+        None => {
+            println!("  rel kind  players  entries");
+            for ((relation, kind), (with, entries)) in kinds {
+                println!("  {relation:>3} {kind:>4}  {with:>7}  {entries:>7}");
+            }
+        }
+        Some(relation) => {
+            let mut rows: Vec<_> = targets.into_iter().collect();
+            rows.sort_by_key(|row| std::cmp::Reverse(row.1.0));
+            println!("Relation {relation}: {} target(s)", rows.len());
+            for (target, (with, counts, values, names)) in rows.iter().take(40) {
+                let top = |map: &BTreeMap<_, usize>| {
+                    let mut v: Vec<_> = map.iter().collect();
+                    v.sort_by(|a, b| b.1.cmp(a.1));
+                    v.iter().take(6).map(|(k, n)| format!("{k}x{n}")).collect::<Vec<_>>().join(" ")
+                };
+                println!("  {with:>6}  {target}  counts [{}] values [{}]", top(counts), top(values));
+                for name in names {
+                    println!("            {name}");
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn tie_change(session: &Session, uid: u32, action: Option<TieAction>, restore: RestoreArgs) -> Result<()> {
     let players = PlayerIndex::new(session.players()?);
     let clubs = ClubIndex::new(session.clubs()?);
@@ -4076,10 +4411,19 @@ fn dump(process: &Process, modules: &[Module], addr: u64, len: u64) -> Result<()
     }
     println!();
     println!("As 64-bit values:");
+    let plugin = find_module(modules, GAME_PLUGIN);
     for (i, chunk) in bytes.as_chunks::<8>().0.iter().enumerate() {
         let value = u64::from_le_bytes(*chunk);
         let (lo, hi) = (value as u32, (value >> 32) as u32);
-        println!("  +{:#06x}  {value:#018x}  lo={lo:<10} hi={hi:<10} {}", i * 8, pointer_hint(value, modules));
+        // The class the compiler names for a vtable here, or for the object a pointer leads to.
+        let class = plugin.and_then(|plugin| {
+            let object = if plugin.contains(value) { addr + i as u64 * 8 } else { value };
+            (is_user_pointer(value) && value >= 0x100_0000)
+                .then(|| fmlibre_core::rtti::class_of(process, plugin, object))
+                .flatten()
+        });
+        let class = class.map_or(String::new(), |name| format!(" [{name}]"));
+        println!("  +{:#06x}  {value:#018x}  lo={lo:<10} hi={hi:<10} {}{class}", i * 8, pointer_hint(value, modules));
     }
     Ok(())
 }

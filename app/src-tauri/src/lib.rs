@@ -8,11 +8,11 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use fmlibre_core::{
     ArraySource, CaptainRole, CaptainSet, Change, Clause, ClauseSet, ClubDetails, ClubFilter, ClubIndex, ClubMove,
     Coded, EditError, Entity, EntityArrays, ExportFormat, ExportHeader, FeePlan, Field, FmDate, GAME_EXE, GAME_PLUGIN,
-    GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind, Lifted, Listed, Loan, MoveError,
-    MovePlan, MoveTerms, Nation, Operation, Paid, Picture, Planned, PlayerDetails, PlayerFilter, PlayerIndex,
-    PlayerOrder, PlayerSummary, RelationSet, RetirementSet, STAFF_JOBS, SearchIndex, Session, SessionError, Skipped,
-    StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffOrder, StaffPlan, Target, Tie, TieTarget, find_game,
-    nations, sort_players, sort_staff,
+    GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind, LOAN_EXPIRES, LOAN_OPTION_FEE,
+    Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation, Operation, Paid, Picture, Planned, PlayerDetails,
+    PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary, RelationSet, RetirementSet, STAFF_JOBS, SearchIndex,
+    Session, SessionError, Skipped, StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffOrder, StaffPlan, Target,
+    Tie, TieTarget, find_game, nations, sort_players, sort_staff,
 };
 use fmlibre_mem::{Process, find_processes, is_current_process_elevated, list_modules};
 use serde::{Deserialize, Serialize};
@@ -506,6 +506,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: None,
+            recall: None,
             undo: None,
         };
         self.log.push(logged.clone());
@@ -569,6 +570,7 @@ impl Connection {
             captaincy: Some(captaincy),
             tie: None,
             clause: None,
+            recall: None,
             undo: Some(Undo::Captain(done)),
         };
         self.log.push(logged.clone());
@@ -595,6 +597,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: None,
+            recall: None,
             undo: Some(Undo::Heal(done)),
         };
         self.log.push(logged.clone());
@@ -621,6 +624,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: None,
+            recall: None,
             undo: Some(Undo::Lift(done)),
         };
         self.log.push(logged.clone());
@@ -648,6 +652,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: None,
+            recall: None,
             undo: Some(Undo::Retirement(done)),
         };
         self.log.push(logged.clone());
@@ -688,6 +693,7 @@ impl Connection {
             captaincy: None,
             tie: Some(TieChange { from: end(&done.before), to: end(&done.after) }),
             clause: None,
+            recall: None,
             undo: Some(Undo::Tie(done)),
         };
         self.log.push(logged.clone());
@@ -716,6 +722,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: Some(ClauseChange { from: done.before.clone(), to: done.after.clone() }),
+            recall: None,
             undo: Some(Undo::Clause(done)),
         };
         self.log.push(logged.clone());
@@ -774,6 +781,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: None,
+            recall: None,
             undo: Some(Undo::Staff(LoggedStaff { done, club, club_uid, job })),
         };
         self.log.push(logged.clone());
@@ -803,6 +811,12 @@ impl Connection {
             }
             None => self.session.plan_club_move(player, to, terms, &self.human_clubs)?,
         })
+    }
+
+    /// Works out making the loan of the player `uid` permanent on the contract `terms`.
+    fn plan_permanent(&self, uid: u32, terms: MoveTerms) -> Result<MovePlan, Failure> {
+        let player = self.players.get(uid).ok_or_else(|| not_found(Entity::Player, uid))?;
+        Ok(self.session.plan_loan_permanent(player, terms, &self.human_clubs)?)
     }
 
     /// Works out releasing the player `uid` from his club.
@@ -903,6 +917,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: None,
+            recall: None,
             undo: Some(Undo::Move(before)),
         };
         self.log.push(logged.clone());
@@ -943,6 +958,7 @@ impl Connection {
             captaincy: None,
             tie: None,
             clause: None,
+            recall: None,
             undo: Some(Undo::Move(LoggedMove { done, rows, paid: Vec::new() })),
         };
         self.log.push(logged.clone());
@@ -962,6 +978,20 @@ impl Connection {
             return Err(Failure::new("app.alreadyUndone", "This change has already been undone."));
         }
         match entry.undo {
+            Some(Undo::Recall(option)) => {
+                // The loan's end first, which checks that the game still holds the recall's day; then its option.
+                let (target, _) = self.target(entry.change.entity, entry.change.uid)?;
+                self.session.revert(&target, &entry.change)?;
+                if let Err(err) = self.session.revert(&target, &option) {
+                    let _ = self.session.write_field(
+                        &target,
+                        &self.session.field(entry.change.entity, &entry.change.field)?,
+                        entry.change.new,
+                    );
+                    return Err(err.into());
+                }
+                self.note_change(&entry.change, entry.change.old);
+            }
             Some(Undo::Move(moved)) => {
                 // The fee goes back first, by what it changed; if the player cannot go back, it is paid again.
                 self.session.refund_fee(&moved.paid)?;
@@ -1149,15 +1179,30 @@ struct LoggedChange {
     /// For a change to a player's contract clauses: the clause before and after.
     #[serde(skip_serializing_if = "Option::is_none")]
     clause: Option<ClauseChange>,
+    /// For a recall from loan that took the loan's option to buy away too: what the option was.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recall: Option<RecallNote>,
     /// For a move, healing, lifting bans, a captaincy, a tie or a clause: what undoing it takes. Other changes write
     /// back `old`.
     #[serde(skip)]
     undo: Option<Undo>,
 }
 
+/// A recall from loan that took the loan's option to buy away, so that the game would not sell him to the club he is on
+/// loan at when the loan ends.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecallNote {
+    /// The option to buy it took away, pounds.
+    option_fee: i64,
+}
+
 /// What undoing a change takes when writing back its old value is not enough.
 #[derive(Clone)]
 enum Undo {
+    /// A recall from loan that took the loan's option to buy away too: the change of the option, written back with the
+    /// loan's end.
+    Recall(Change),
     Move(LoggedMove),
     Heal(Healed),
     Lift(Lifted),
@@ -1951,7 +1996,20 @@ fn player_details(state: State<'_, AppState>, uid: u32) -> Result<PlayerDetails,
     let guard = state.0.lock()?;
     let connection = guard.as_ref().ok_or_else(not_connected)?;
     let player = connection.players.get(uid).ok_or_else(|| not_found(Entity::Player, uid))?;
-    connection.session.player_details(player)?.ok_or_else(data_changed)
+    let mut details = connection.session.player_details(player)?.ok_or_else(data_changed)?;
+    // A loan that ends on the day this session's recall wrote, not undone, is the editor's doing.
+    if let Some(loan) = details.loan.as_mut() {
+        let until = loan.until.map(FmDate::to_number);
+        loan.recalled = connection.log.iter().any(|logged| {
+            let change = &logged.change;
+            change.entity == Entity::Player
+                && change.uid == uid
+                && change.field == LOAN_EXPIRES
+                && logged.undone_at.is_none()
+                && Some(change.new) == until
+        });
+    }
+    Ok(details)
 }
 
 /// The full profile of the member of staff with `uid`. Only reads memory.
@@ -2230,6 +2288,49 @@ fn apply_edits(
     Ok(report)
 }
 
+/// Brings the player `uid` back from his loan: the loan now ends on the day after the game's date, and when the game
+/// gets there it ends the loan and brings him back to his club. Logged as a change of the day the loan ends, which an
+/// undo puts back while the game has not ended the loan. Nothing is written or logged when it ends then already.
+#[tauri::command]
+fn recall_loan(state: State<'_, AppState>, uid: u32) -> Result<Option<LoggedChange>, Failure> {
+    let mut guard = state.0.lock()?;
+    let connection = guard.as_mut().ok_or_else(not_connected)?;
+    let (target, name) = connection.target(Entity::Player, uid)?;
+    let session = &connection.session;
+    let written = session.loan_recall_day().and_then(|day| {
+        let field = session.field(Entity::Player, LOAN_EXPIRES)?;
+        session.write_field(&target, &field, day.to_number())
+    });
+    let change = match written {
+        Ok(change) if change.old == change.new => return Ok(None),
+        Ok(change) => change,
+        Err(err) => return Err(connection.with_names(err.into())),
+    };
+    // The loan's option to buy goes too: when a loan with one ends, the game may let the club he is on loan at sign him
+    // for it (Anton Kade, recalled, went to Liverpool for his option). The undo writes it back with the loan's end.
+    let option = session.field(Entity::Player, LOAN_OPTION_FEE).ok().and_then(|field| {
+        let held = session.read_field(&target, &field).ok()?;
+        (held >= 0).then(|| session.write_field_if(&target, &field, held, -1))
+    });
+    let option = match option {
+        None => None,
+        Some(Ok(option)) => Some(option),
+        Some(Err(err)) => {
+            // The end is written but not the option: put the end back, so that the recall is all or nothing.
+            let _ = session.revert(&target, &change);
+            return Err(connection.with_names(err.into()));
+        }
+    };
+    let mut logged = connection.log_change(change, name, None);
+    if let Some(option) = option {
+        let entry = connection.log.last_mut().expect("just logged");
+        entry.recall = Some(RecallNote { option_fee: option.old });
+        entry.undo = Some(Undo::Recall(option));
+        logged = entry.clone();
+    }
+    Ok(Some(logged))
+}
+
 /// Every change written this session, newest first.
 #[tauri::command]
 fn change_log(state: State<'_, AppState>) -> Result<Vec<LoggedChange>, Failure> {
@@ -2307,6 +2408,59 @@ async fn move_player(
         let mut guard = state.0.lock()?;
         let connection = guard.as_mut().ok_or_else(not_connected)?;
         let plan = connection.plan_move(uid, club, terms, release)?;
+        let fee_plan = connection.plan_fee(plan.from_club, plan.to_club, fee)?;
+        let club = |uid: u32| connection.clubs.get(uid).cloned().ok_or_else(|| not_found(Entity::Club, uid));
+        let (buyer, seller) = (club(plan.to_club)?, club(plan.from_club)?);
+        let done = connection.session.apply_club_move(&plan)?;
+        let paid = match fee_plan {
+            Some(fee_plan) => match connection.session.pay_fee(&fee_plan, &buyer, &seller) {
+                Ok(paid) => paid,
+                Err(err) => {
+                    let _ = connection.session.undo_club_move(&done);
+                    return Err(err.into());
+                }
+            },
+            None => Vec::new(),
+        };
+        Ok(connection.log_move(done, terms, paid, fee_plan.map(|plan| plan.fee)))
+    })
+    .await?
+}
+
+/// Checks that the loan of the player `uid` can be made permanent on the contract `terms`, the club he is on loan to
+/// paying his own one `fee` pounds if given, and names the clubs; the error says why it cannot. Nothing is written.
+#[tauri::command]
+fn plan_loan_permanent(
+    state: State<'_, AppState>,
+    uid: u32,
+    terms: MoveTerms,
+    fee: Option<i64>,
+) -> Result<MovePreview, Failure> {
+    let guard = state.0.lock()?;
+    let connection = guard.as_ref().ok_or_else(not_connected)?;
+    let plan = connection.plan_permanent(uid, terms)?;
+    let fee = connection.plan_fee(plan.from_club, plan.to_club, fee)?;
+    let name = |uid: u32| ClubName { uid, name: connection.club_name(uid) };
+    Ok(MovePreview { from: name(plan.from_club), to: name(plan.to_club), fee })
+}
+
+/// Makes the loan of the player `uid` permanent on the contract `terms`, the club he is on loan to paying his own one
+/// `fee` pounds if given, worked out again from the game as it is now: he stays where he plays, now under contract
+/// with that club, and leaves his own. Logged as a move between the two clubs, which one undo takes back. When the fee
+/// cannot be paid, nothing stays changed. Off the window's thread: leaving a club a human manager runs takes a few
+/// seconds.
+#[tauri::command]
+async fn make_loan_permanent(
+    app: tauri::AppHandle,
+    uid: u32,
+    terms: MoveTerms,
+    fee: Option<i64>,
+) -> Result<LoggedChange, Failure> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<LoggedChange, Failure> {
+        let state = app.state::<AppState>();
+        let mut guard = state.0.lock()?;
+        let connection = guard.as_mut().ok_or_else(not_connected)?;
+        let plan = connection.plan_permanent(uid, terms)?;
         let fee_plan = connection.plan_fee(plan.from_club, plan.to_club, fee)?;
         let club = |uid: u32| connection.clubs.get(uid).cloned().ok_or_else(|| not_found(Entity::Club, uid));
         let (buyer, seller) = (club(plan.to_club)?, club(plan.from_club)?);
@@ -2925,6 +3079,7 @@ pub fn run() {
             edit_fields,
             read_values,
             apply_edits,
+            recall_loan,
             change_log,
             undo_change,
             plan_mass_edit,
@@ -2933,6 +3088,8 @@ pub fn run() {
             plan_club_move,
             room_makers,
             move_player,
+            plan_loan_permanent,
+            make_loan_permanent,
             plan_release,
             release_player,
             plan_club_swap,

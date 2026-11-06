@@ -128,6 +128,8 @@ pub struct PlayerDetails {
     pub retires: Option<FmDate>,
     /// How many more clauses the list of his contract has room for (see [`crate::Session::clause_room`]).
     pub clause_room: usize,
+    /// Where he is on loan, when he is (see [`crate::Session::loan`]).
+    pub loan: Option<crate::loans::LoanDetails>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -329,6 +331,7 @@ pub fn read_player_details(
         retirement_known: false,
         retires: None,
         clause_room: 0,
+        loan: None,
     }))
 }
 

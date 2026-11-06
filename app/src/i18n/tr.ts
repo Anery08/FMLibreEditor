@@ -54,6 +54,7 @@ const UNSUPPORTED: Partial<Record<string, string>> = {
   "it is changed one person at a time": "bu alan kişi kişi değiştirilir",
   "the new value is not one of the game's own records of that kind":
     "yeni değer, oyunun bu türdeki kendi kayıtlarından biri değil",
+  "the in-game date is not known": "oyun içi tarih bilinmiyor",
 };
 
 const reload = "verileri yeniden okuyup tekrar deneyin";
@@ -92,7 +93,9 @@ const errors: ErrorTexts = {
   "move.notAClub": () => "Bu kulübün oyuncunun katılabileceği bir A takımı yok.",
   "move.freeAgent": () => "Oyuncunun kulübü yok; serbest oyuncular henüz taşınamıyor.",
   "move.sameClub": () => "Oyuncu zaten bu kulüpte.",
-  "move.onLoan": () => "Oyuncu kiralık; kiralık oyuncular henüz taşınamıyor.",
+  "move.onLoan": () =>
+    "Oyuncu kiralık: önce profilindeki Kiralık bölümünden geri çağırın ya da kiralığı kalıcı yapın.",
+  "move.notOnLoan": () => "Oyuncu kiralık değil.",
   "move.playerCoach": () => "Oyuncu-antrenörler taşınamıyor: aynı zamanda personel olarak da çalışıyorlar.",
   "move.unusualContract": () => "Oyuncunun sözleşmesi olağan bir oyuncu sözleşmesi değil.",
   "move.humanClub": () =>
@@ -471,6 +474,8 @@ export const tr: Strings = {
     "contract.squad_status": "Forma süresi",
     "contract.transfer_listed": "Transfer listesinde",
     "contract.loan_listed": "Kiralık listesinde",
+    "loan.expires": "Kiralık bitişi",
+    "loan.option_fee": "Satın alma opsiyonu",
     "contract.job": "Görev",
     "tie.nationality": "İkinci uyruk",
     "tie.trainedInNation": "Yetiştiği ülke",
@@ -600,6 +605,33 @@ export const tr: Strings = {
     playingTimeHappiness: "Forma süresi mutluluğu",
     moodTitle: "FMRTE'nin gösterdiği gibi, -100 ile 100 arasında; oyun bunu kelimelerle gösterir",
     clauseName: (kind) => CLAUSE_NAMES_TR[kind] ?? `Madde ${kind}`,
+    loan: "Kiralık",
+    loanAt: "Kiralık olduğu kulüp",
+    loanParent: "Bağlı olduğu kulüp",
+    loanFrom: "Başlangıç",
+    loanUntil: "Bitiş",
+    loanNumber: "Oradaki forma numarası",
+    recall: "Kiralıktan geri çağır",
+    recallTitle: "Oyuncuyu kulübüne geri getir: kiralık bugün biter. Bir şey değişmeden önce sorulur",
+    recallAgain: "Tekrar geri çağır",
+    makePermanent: "Kalıcı yap",
+    makePermanentTitle: "Oyuncuyu kiralık olduğu kulüpte, o kulüple sözleşmeli olarak tut. Bir şey değişmeden önce sorulur",
+    recalledWaiting: "Geri çağrıldı · dönüşü bekleniyor",
+    endsTodayWaiting: "Bugün bitiyor · dönüşü bekleniyor",
+    pendingTitle: (parent) => `Kiralığın son günü bugün: oyunda bir gün devam edin, oyuncu ${parent} kulübüne dönmüş olacak.`,
+    endPassed: (date) =>
+      `Kiralığın ${date} tarihinde bitmesi gerekiyordu ama oyun oyuncuyu geri getirmedi. Tekrar geri çağırıp bir gün devam edin.`,
+    loanCanRecall: "Geri çağrılabilir",
+    loanCanRecallTitle: "Kulübünün onu oyunda geri çağırıp çağıramayacağı. Buradaki Kiralıktan geri çağır her iki durumda da çalışır",
+    loanCanTerminate: "Erken bitirilebilir",
+    loanCupMatches: "Kupa maçlarında oynar",
+    loanAgainstClub: "Kendi kulübüne karşı oynar",
+    loanOptionFee: "Satın alma opsiyonu",
+    loanOptionFeeTitle: "Kiralık olduğu kulübün onu kalıcı olarak alabileceği bonservis",
+    loanMonthlyFee: "Aylık ücret",
+    loanMonthlyFeeTitle: "Kiralık olduğu kulübün, oynadığı her ay için kulübüne ödediği tutar",
+    loanUnusedFee: "Oynamazsa aylık ücret",
+    loanUnusedFeeTitle: "Kiralık olduğu kulübün, kullanılmadığı her ay için kulübüne ödediği tutar",
     clauseCondition: (kind, value) => {
       switch (kind) {
         case 10:
@@ -1076,6 +1108,7 @@ export const tr: Strings = {
     swappedWith: (name) => `Takas: ${name}`,
     released: (name) => `${name} serbest bırakıldı`,
     fee: (amount) => `Bedel ${amount}`,
+    optionRemoved: (amount) => `Satın alma opsiyonu (${amount}) kaldırıldı`,
     healed: (count) => `${format(count)} sakatlık iyileştirildi`,
     lifted: (count) => `${format(count)} ceza kaldırıldı`,
     keptPlaying: (date) => (date === null ? "Oynamaya devam edecek" : `${date} tarihli emeklilik engellendi`),
@@ -1497,6 +1530,48 @@ export const tr: Strings = {
     hint: "Siz serbest bırakmadan oyunda hiçbir şey değişmez.",
     release: "Serbest bırak",
     releasing: "Serbest bırakılıyor…",
+    cancel: "İptal",
+  },
+
+  permanent: {
+    title: "Kiralığı kalıcı yap",
+    stays: "Kalacağı kulüp",
+    leaves: "Ayrılacağı kulüp",
+    checking: "Kontrol ediliyor…",
+    doesHeading: "Ne yapar",
+    does: [
+      "Oyuncu oynadığı kulüpte kalır; sözleşmesi bugünden başlayarak bu kulüple ve yukarıdaki şartlarla olur",
+      "Oradaki forma numarası ve forma süresi korunur",
+      "Kendi kulübünün bütün takımlarından çıkar ve kiralık sona erer",
+      "Oyunun transfer geçmişinde görünmez",
+      "Değişiklikler bölümünde transfer olarak listelenir; tek geri alma kiralığı geri getirir",
+    ],
+    optionFee: (money) => `Kiralığın satın alma opsiyonundan dolduruldu: ${money}`,
+    hint: "Siz kalıcı yapmadan oyunda hiçbir şey değişmez.",
+    confirm: "Kalıcı yap",
+    confirming: "Kalıcı yapılıyor…",
+    cancel: "İptal",
+  },
+
+  recall: {
+    title: "Kiralıktan geri çağır",
+    from: "Kiralık olduğu kulüp",
+    to: "Döneceği kulüp",
+    doesHeading: "Geri çağırma ne yapar",
+    does: (parent) => [
+      "Kiralığın son günü bugün olur: gün bitince oyun kiralığı kendisi sona erdirir",
+      `Oyunda bir gün devam ettiğinizde oyuncu ${parent} kulübüne dönmüş olur`,
+      "O zamana kadar Değişiklikler bölümünde listelenir; geri alma kiralığın eski bitiş tarihini geri getirir",
+    ],
+    termsHeading: "Oyunda",
+    notRecallable: (parent) => `Kiralık sözleşmesi ${parent} kulübünün onu geri çağırmasına izin vermiyor`,
+    notTerminable: "Kiralık erken bitirilemiyor",
+    worksAnyway: "Buradaki geri çağırma yine de çalışır: oyunun geri çağırmasını kullanmaz, kiralığın son gününü değiştirir",
+    dropsOption: (club, amount) =>
+      `${club} kulübünün onu ${amount} karşılığında alma opsiyonu kaldırılır; yoksa kiralık bitince oyun onu ${club} kulübüne satabilir`,
+    hint: "Siz geri çağırmadan oyunda hiçbir şey değişmez.",
+    confirm: "Geri çağır",
+    confirming: "Geri çağrılıyor…",
     cancel: "İptal",
   },
 
