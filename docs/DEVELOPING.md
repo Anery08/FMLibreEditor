@@ -25,8 +25,10 @@ only into the game's heap. It never patches the game's code. On Windows it takes
 in the game (`VirtualAllocEx`, see `own_memory.rs`) for two things: a stadium's name
 that does not fit the block of the old one, a string laid out as the game's with a count
 of holders the game never brings down to nothing, so the game never hands it to its
-allocator (see `stadium_name.rs`); and a list of relations with no room for a tie added,
-whose entries it moves there (see `relations.rs`). It never gives that memory back. On
+allocator (see `stadium_name.rs`); and a list with no room for one more, a player's relations
+for a tie added (see `relations.rs`) or a club's department for a member of staff (see
+`staff_move.rs`), whose elements it moves there (see `own_memory.rs`). It never gives that
+memory back. On
 Windows it puts no code of its own in the game; on macOS
 the game loads one small library of ours, the bridge (see [On macOS](#on-macos)).
 

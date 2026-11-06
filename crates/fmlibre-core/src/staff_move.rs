@@ -6,7 +6,8 @@
 //! puts him in the same departments of the new club, and points his contract at its senior team, dated from today. A
 //! new job changes his contract's job code, and moves him between his club's departments as the job needs.
 //!
-//! Like a player's move, it allocates nothing: a list must have room in the block it has. And only staff whom neither
+//! A department list with no room for him in its block is grown into memory of the editor's own (see
+//! `own_memory.rs`), where the editor can take memory (Windows); elsewhere the move is refused. Only staff whom neither
 //! the club nor its teams point at directly are moved or given a new job: a team's manager, for one, is held by his
 //! team, and is left to the game.
 //!
@@ -16,6 +17,7 @@ use fmlibre_mem::is_user_pointer;
 
 use crate::clubs::ClubSummary;
 use crate::edit::Kind;
+use crate::own_memory::{CAN_ALLOCATE, Growth};
 use crate::profile::Layout;
 use crate::session::Session;
 use crate::staff::StaffSummary;
@@ -87,7 +89,10 @@ pub struct StaffPlan {
     pub to_club: u32,
     /// The job he has, and the one he will have (the same for a move).
     pub job: (u8, u8),
+    /// Whether a department list he joins is grown into memory of the editor's own, its block having no room.
+    pub grows: bool,
     patches: Vec<Patch>,
+    grow: Vec<Growth>,
 }
 
 /// A move or a new job that was written: what undoing it takes.
@@ -97,6 +102,8 @@ pub struct StaffChange {
     pub from_club: u32,
     pub to_club: u32,
     pub job: (u8, u8),
+    /// Whether a department list was grown.
+    pub grew: bool,
     patches: Vec<Patch>,
 }
 
@@ -138,14 +145,13 @@ impl Session {
             return Err(MoveError::NotAClub { uid: club.uid });
         }
 
-        let mut patches = Patches::default();
+        let (mut patches, mut grow) = (Patches::default(), Vec::new());
         for (department, list, index, elements) in &holder.lists {
             let joining = self.department_list(club.address, *department)?;
             if joining.1.contains(&holder.object) {
                 return Err(MoveError::NotInDepartment);
             }
-            self.check_room(&joining.0, *department)?;
-            self.append_patches(&joining.0, holder.object, &mut patches)?;
+            self.join_department(&joining, holder.object, *department, &mut patches, &mut grow)?;
             removal_patches(list, *index, elements, &mut patches);
         }
         self.staff_contract_patches(&holder, Some(senior), holder.job, &mut patches);
@@ -154,7 +160,9 @@ impl Session {
             from_club: holder.club_uid,
             to_club: club.uid,
             job: (holder.job, holder.job),
+            grows: !grow.is_empty(),
             patches: patches.0,
+            grow,
         })
     }
 
@@ -165,7 +173,7 @@ impl Session {
         department_of(holder.job).ok_or(MoveError::UnusualJob { job: holder.job })?;
         let department = department_of(job).ok_or(MoveError::UnusualJob { job })?;
 
-        let mut patches = Patches::default();
+        let (mut patches, mut grow) = (Patches::default(), Vec::new());
         if job != holder.job {
             for (from, list, index, elements) in &holder.lists {
                 if *from != department {
@@ -173,9 +181,8 @@ impl Session {
                 }
             }
             if !holder.lists.iter().any(|(from, ..)| *from == department) {
-                let (list, _) = self.department_list(holder.club, department)?;
-                self.check_room(&list, department)?;
-                self.append_patches(&list, holder.object, &mut patches)?;
+                let joining = self.department_list(holder.club, department)?;
+                self.join_department(&joining, holder.object, department, &mut patches, &mut grow)?;
             }
             self.staff_contract_patches(&holder, None, job, &mut patches);
         }
@@ -184,15 +191,20 @@ impl Session {
             from_club: holder.club_uid,
             to_club: holder.club_uid,
             job: (holder.job, job),
+            grows: !grow.is_empty(),
             patches: patches.0,
+            grow,
         })
     }
 
-    /// Writes a plan, each write over the bytes it expects, after checking them all.
+    /// Writes a plan, each write over the bytes it expects, after checking them all. A department list to grow gets
+    /// its buffer first, and is pointed at it before the rest is written.
     pub fn apply_staff_plan(&self, plan: &StaffPlan) -> Result<StaffChange, MoveError> {
-        self.apply_patches(&plan.patches)?;
-        let StaffPlan { member, from_club, to_club, job, ref patches } = *plan;
-        Ok(StaffChange { member, from_club, to_club, job, patches: patches.clone() })
+        let mut patches = plan.grow.iter().map(|growth| self.grown_list(growth)).collect::<Result<Vec<_>, _>>()?;
+        patches.extend(plan.patches.iter().cloned());
+        self.apply_patches(&patches)?;
+        let StaffPlan { member, from_club, to_club, job, grows, .. } = *plan;
+        Ok(StaffChange { member, from_club, to_club, job, grew: grows, patches })
     }
 
     /// Puts the member of staff back as he was, provided memory still holds everything the change wrote.
@@ -256,18 +268,33 @@ impl Session {
         Ok(Holder { object, contract, record, club, club_uid, job, lists })
     }
 
-    /// The club's list of `department`, and what it holds.
+    /// The club's list of `department`, and what it holds; an empty one where the club has no one in it yet.
     fn department_list(&self, club: u64, department: Department) -> Result<(PointerList, Vec<u64>), MoveError> {
-        let list = PointerList::read(&self.process, club + department.offset(&self.layout))?
+        let list = PointerList::read_or_empty(&self.process, club + department.offset(&self.layout))?
             .ok_or(MoveError::DepartmentFull { department: department.name(), staff: 0 })?;
         let elements = list.elements(&self.process)?;
         Ok((list, elements))
     }
 
-    fn check_room(&self, list: &PointerList, department: Department) -> Result<(), MoveError> {
-        if list.len() + 1 > list.room(&self.process, &self.layout.heap)? {
+    /// Puts `object` into the list of `department` (as read, with what it holds): after them where its block has room,
+    /// or else in the list grown (see the module's notes).
+    fn join_department(
+        &self,
+        (list, elements): &(PointerList, Vec<u64>),
+        object: u64,
+        department: Department,
+        patches: &mut Patches,
+        grow: &mut Vec<Growth>,
+    ) -> Result<(), MoveError> {
+        if list.len() < list.room(&self.process, &self.layout.heap)? {
+            return self.append_patches(list, object, patches);
+        }
+        if !CAN_ALLOCATE {
             return Err(MoveError::DepartmentFull { department: department.name(), staff: list.len() });
         }
+        let mut bytes: Vec<u8> = elements.iter().flat_map(|element| element.to_le_bytes()).collect();
+        bytes.extend(object.to_le_bytes());
+        grow.push(Growth::new(list.header(), list.words(), bytes, 8));
         Ok(())
     }
 

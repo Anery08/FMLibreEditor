@@ -281,7 +281,7 @@ const errors: ErrorTexts = {
   "staff.notListed": () => "Las listas de personal del club no lo tienen donde deberían.",
   "staff.noRoom": (p) =>
     `La lista ${STAFF_DEPARTMENTS[p.department] ?? `de ${p.department}`} del club no tiene sitio para nadie más ` +
-    `(ahora ${p.staff}) y el editor no puede ampliarla.`,
+    `(ahora ${p.staff}) y el editor no puede ampliarla aquí.`,
   "stadium.none": () => "No se puede leer el estadio en el que juega el primer equipo del club.",
   "stadium.shared": (p) => `${p.holders} cosas del juego comparten este nombre; no se puede cambiar solo para el estadio.`,
   "stadium.nameLength": (p) =>

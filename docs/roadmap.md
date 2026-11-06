@@ -268,8 +268,9 @@ changes many at once, and undo.
   - [x] Move a member of staff to another club, keeping the job and the contract, and change a job. A club
     keeps its staff in three department lists (medical, coaching, scouting); a move takes them out of the
     old club's and into the new club's, and a new job moves them between departments. Staff whom the club or
-    a team points at directly, such as a team's manager, are left to the game, and a full list is refused.
-    Checked on the Mac Steam build and both Windows builds, each change restored.
+    a team points at directly, such as a team's manager, are left to the game. Checked on the Mac Steam build and
+    both Windows builds, each change restored. A full department (most of them, once a save is loaded) is grown into
+    memory the editor takes in the game, as the lists of ties are (Windows); on macOS it is refused.
   - [x] Release a player on a free: he leaves his club's lists, and his team and contract pointers are
     cleared, as the game's own free agents have them. A captaincy he held is left empty; so is one a player
     gives up by moving. Checked on the Mac Steam build and both Windows builds, restored.

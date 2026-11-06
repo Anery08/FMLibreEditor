@@ -21,7 +21,7 @@ use fmlibre_mem::is_user_pointer;
 use serde::{Deserialize, Serialize};
 
 use crate::clubs::ClubSummary;
-use crate::own_memory::CAN_ALLOCATE;
+use crate::own_memory::{CAN_ALLOCATE, Growth};
 use crate::players::{Nation, PlayerSummary, nation_name};
 use crate::session::Session;
 use crate::text::read_fm_string;
@@ -37,10 +37,6 @@ const NATION: u8 = 8;
 /// The days a nation he needs no work permit in is given for, where no player of the save has one to take them from:
 /// ten years.
 const PERMIT_DAYS: u16 = 3650;
-
-/// The room a list grown by the editor has past its new entry: so that the game, adding one of its own, finds room for
-/// it where it is.
-const GROWN_ROOM: u64 = 3;
 
 /// The homegrown rules the editor writes, by the game's code: 15–21, 0–21, 15–21 excluding loans, and 0–19 for a
 /// year. The game has others, which the editor shows but does not write.
@@ -140,18 +136,6 @@ impl RelationPlan {
     fn new(patches: Patches) -> Self {
         Self { player: 0, before: None, after: None, grows: false, patches: patches.0, grow: None }
     }
-}
-
-/// A list to grow into memory of the editor's own: what its header holds now, and the entries it is to hold.
-#[derive(Debug, Clone)]
-struct Growth {
-    header: u64,
-    /// Its begin, end and capacity now.
-    was: [u64; 3],
-    /// Its entries and the new one, as they are written.
-    entries: Vec<u8>,
-    /// How many entries the new buffer has room for.
-    capacity: u64,
 }
 
 /// A change to a player's ties that was written: what undoing it takes.
@@ -291,8 +275,7 @@ impl Session {
             }
             let mut entries = list.entries.concat();
             entries.extend(self.entry_of(&after));
-            let capacity = list.entries.len() as u64 + 1 + GROWN_ROOM;
-            let grow = Growth { header: list.header, was: [list.begin, list.end, list.capacity], entries, capacity };
+            let grow = Growth::new(list.header, [list.begin, list.end, list.capacity], entries, size);
             return Ok(RelationPlan {
                 player: player.uid,
                 after: Some(after),
@@ -315,28 +298,11 @@ impl Session {
     pub fn apply_relation(&self, plan: &RelationPlan) -> Result<RelationSet, MoveError> {
         let patches = match &plan.grow {
             None => plan.patches.clone(),
-            Some(grow) => self.grown_list(grow)?,
+            Some(grow) => vec![self.grown_list(grow)?],
         };
         self.apply_patches(&patches)?;
         let RelationPlan { player, ref before, ref after, grows, .. } = *plan;
         Ok(RelationSet { player, before: before.clone(), after: after.clone(), grew: grows, patches })
-    }
-
-    /// The buffer of a list to grow, in memory of the editor's own, with its entries in it, and the write that points
-    /// the list at it. The block is as large as the game's allocator gives a buffer of that capacity, should the game
-    /// ever pass it on.
-    fn grown_list(&self, grow: &Growth) -> Result<Vec<Patch>, MoveError> {
-        if let Some(lock) = self.structure_lock() {
-            return Err(MoveError::Locked(lock));
-        }
-        let bytes = grow.capacity * self.layout.relation.size;
-        let block = self.own_block(self.layout.heap.block_size(bytes).unwrap_or(bytes))?;
-        self.process.write_bytes(block, &grow.entries)?;
-        let words = |words: [u64; 3]| words.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<u8>>();
-        let now = [block, block + grow.entries.len() as u64, block + bytes];
-        let mut patches = Patches::default();
-        patches.push(grow.header, words(grow.was), words(now));
-        Ok(patches.0)
     }
 
     /// A new tie of `tie` to `target` for `player`, at `index` in his list, with the homegrown rule `rule` for a

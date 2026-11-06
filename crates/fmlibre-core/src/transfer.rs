@@ -351,7 +351,7 @@ impl fmt::Display for MoveError {
             MoveError::DepartmentFull { department, staff } => write!(
                 f,
                 "the club's {department} staff list has no room for another ({staff} now), and the editor cannot \
-                 make it bigger"
+                 make it bigger here"
             ),
             MoveError::UnusualJob { job } => match job_name(*job) {
                 Some(name) => write!(f, "the editor does not yet move staff whose job is {name}, or give that job"),
@@ -497,6 +497,14 @@ impl PointerList {
         Self::read_up_to(process, header, LONGEST_LIST)
     }
 
+    /// [`PointerList::read`], where a header of three zeros is a list with nothing in it and no buffer yet.
+    pub(crate) fn read_or_empty(process: &Process, header: u64) -> Result<Option<Self>, MoveError> {
+        if process.read_bytes(header, 24)?.iter().all(|&b| b == 0) {
+            return Ok(Some(Self { header, begin: 0, end: 0, capacity: 0 }));
+        }
+        Self::read(process, header)
+    }
+
     /// [`PointerList::read`] for a list whose block may hold up to `longest` pointers.
     pub(crate) fn read_up_to(process: &Process, header: u64, longest: u64) -> Result<Option<Self>, MoveError> {
         let bytes = process.read_bytes(header, 24)?;
@@ -520,7 +528,19 @@ impl PointerList {
         self.begin
     }
 
+    /// Where it keeps its begin, end and capacity, and what they are.
+    pub(crate) fn header(&self) -> u64 {
+        self.header
+    }
+
+    pub(crate) fn words(&self) -> [u64; 3] {
+        [self.begin, self.end, self.capacity]
+    }
+
     pub(crate) fn elements(&self, process: &Process) -> Result<Vec<u64>, MoveError> {
+        if self.end == self.begin {
+            return Ok(Vec::new());
+        }
         let bytes = process.read_bytes(self.begin, (self.end - self.begin) as usize)?;
         Ok(bytes.as_chunks::<8>().0.iter().map(|word| u64::from_le_bytes(*word)).collect())
     }
@@ -528,6 +548,9 @@ impl PointerList {
     /// How many pointers its block holds: the capacity, or the whole block of the
     /// allocator when its size is known and nothing has been written past the capacity.
     pub(crate) fn room(&self, process: &Process, heap: &HeapLayout) -> Result<u64, MoveError> {
+        if self.begin == 0 {
+            return Ok(0);
+        }
         let capacity = (self.capacity - self.begin) / 8;
         let Some(block) = heap.block_size(self.capacity - self.begin) else {
             return Ok(capacity);

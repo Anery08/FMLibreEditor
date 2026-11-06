@@ -3636,6 +3636,9 @@ fn staff_change(session: &Session, id: u32, action: StaffAction, restore: bool) 
         job(plan.job.1)
     );
     let done = session.apply_staff_plan(&plan)?;
+    if done.grew {
+        println!("  (a department list had no room: grown into memory of the editor's own)");
+    }
     let now = |label: &str| -> Result<()> {
         let read = session.staff()?.into_iter().find(|s| s.uid == id).context("the member of staff is gone")?;
         println!("  {label} {} as {}", read.club.as_deref().unwrap_or("-"), read.job.map_or("-".to_owned(), job));
