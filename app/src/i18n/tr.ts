@@ -159,6 +159,11 @@ const errors: ErrorTexts = {
   "staff.notListed": () => "Kulübün personel listeleri onu olması gereken yerde tutmuyor.",
   "staff.noRoom": (p) =>
     `Kulübün ${STAFF_DEPARTMENTS[p.department] ?? p.department} listesinde bir kişiye daha yer yok (şu an ${p.staff}) ve düzenleyici listeyi büyütemez.`,
+  "stadium.none": () => "Kulübün A takımının oynadığı stadyum okunamıyor.",
+  "stadium.shared": (p) => `Bu adı oyunda ${p.holders} şey paylaşıyor; yalnızca bu stadyum için değiştirilemez.`,
+  "stadium.nameLength": (p) =>
+    `Bu stadyumun yeni adı, oyunun adı tuttuğu yere sığmak için ${p.min} ile ${p.max} bayt arası olmalı; bu ad ${p.bytes} bayt.`,
+  "stadium.badName": () => "Stadyum adı boş olamaz, boşlukla başlayıp bitemez ve denetim karakteri içeremez.",
   "staff.job": (p) => `Düzenleyici, görevi ${jobName(p.job)} olan personeli henüz taşıyamıyor ve bu görevi veremiyor.`,
   "squad.noTeam": () => `Kulübün böyle bir takımı yok ya da takım doğrulanamadı; ${reload}.`,
   "captain.notInTeam": () => "Oyuncu bu takımda oynamıyor; kaptan ancak takımın kendi oyuncularından seçilebilir.",
@@ -555,6 +560,7 @@ export const tr: Strings = {
     "finance.wage_budget": "Maaş bütçesi",
     "finance.total_wage_budget": "Toplam maaş bütçesi",
     "stadium.capacity": "Stadyum kapasitesi",
+    "stadium.name": "Stadyum adı",
     "stadium.seating": "Oturma kapasitesi",
     "stadium.used": "Kullanılan kapasite",
     "stadium.expansion": "Genişleme kapasitesi",
@@ -933,7 +939,7 @@ export const tr: Strings = {
 
     // The tabs under the header
     tabsLabel: "Kulüp bölümleri",
-    tabs: { overview: "Genel", squad: "Kadro" },
+    tabs: { overview: "Genel", squad: "Kadro", stadium: "Stadyum" },
     squadLocked: "Kadroyu açmak için düzenlemeyi bitirin",
 
     facilities: "Tesisler",
@@ -967,6 +973,18 @@ export const tr: Strings = {
     usedTitle: "Oyunun kapasitenin ne kadarını kullandığı, bir sınır koyduğunda (örneğin bazı tribünler kapalıyken); 0 tamamı demektir",
     expansion: "Genişleyebileceği",
     noStadium: "Bu kulübün stadyumu okunamadı.",
+    stadiumName: "Adı",
+    rename: "Adını değiştir",
+    renameTitle: "Stadyuma başka bir ad verin; hemen yazılır, Değişiklikler bölümünden geri alınabilir",
+    saveName: "Kaydet",
+    renaming: "Kaydediliyor…",
+    cancelRename: "Vazgeç",
+    nameLength: (bytes, min, max) =>
+      min <= 1
+        ? `${bytes} / en çok ${max} karakter (ç, ğ, ı, ö, ş, ü gibi harfler iki sayılır)`
+        : `${bytes} karakter: oyunun adı tuttuğu yere sığması için ${min} ile ${max} arası (ç, ğ, ı, ö, ş, ü gibi harfler iki sayılır)`,
+    nameShared: (holders) =>
+      `Bu adı oyunda ${holders} şey paylaşıyor; bu yüzden yalnızca bu stadyum için değiştirilemez`,
     info: "Kulüp bilgisi",
     seasonTickets: "Sezonluk biletler",
     socialMedia: "Sosyal medya takipçileri",

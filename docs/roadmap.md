@@ -289,6 +289,10 @@ changes many at once, and undo.
   - [x] Stadium capacity: a club's senior team points at its stadium (`db::STADIUM`, team `+0x78`), whose capacity,
     seats, capacity in use and expansion ceiling the club profile shows and edits. Checked on the Windows Game Pass
     build (Old Trafford 74,879; the Emirates 60,704) and on the Mac Steam build, where stadiums are laid out alike.
+  - [x] Stadium name, in the club's Stadium tab: renamed in place, in the block the game gave the old name, so a new
+    name keeps that block's size (1 to 15 bytes in a block of 32, 16 to 31 in one of 48), and only a name the stadium
+    alone holds (2,293 of the Game Pass save's are shared, such as the Maracanã's). See `stadium_name.rs`; the
+    probe's `stadium-name`.
   - [ ] Sponsors, ticket prices and league prize money (`sicomps::PRIZE_MONEY_PROVIDER`).
   - [x] Jadedness: how worn out a player is by playing, which rest takes away (an `i16` at player `+0x25A`,
     -500 when rested). Found from the numbers FMRTE shows for three players, read without editing in FMRTE;

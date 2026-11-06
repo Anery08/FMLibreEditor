@@ -223,6 +223,17 @@ enum Command {
         #[arg(long, default_value_t = 0)]
         hold: u64,
     },
+    /// Show the name of the stadium a club plays at and the names it can take in place; with NAME, rename it in the
+    /// running game. Without a club, how many stadiums' names the editor can change, by the size of their blocks.
+    StadiumName {
+        /// The club's UID.
+        club: Option<u32>,
+        /// The new name.
+        name: Option<String>,
+        /// Put the old name back afterwards and check it: tests the change without changing the save.
+        #[arg(long)]
+        restore: bool,
+    },
     /// Work out a move as the app's transfer dialog does, on the player's contract, and say whether it can be made.
     /// Writes nothing.
     Plan {
@@ -880,6 +891,7 @@ fn run(cli: Cli) -> Result<()> {
             Command::Set { .. }
                 | Command::Move { .. }
                 | Command::Permanent { .. }
+                | Command::StadiumName { name: Some(_), .. }
                 | Command::Release { .. }
                 | Command::StaffMove { .. }
                 | Command::StaffJob { .. }
@@ -959,6 +971,9 @@ fn run(cli: Cli) -> Result<()> {
             let expires = expires.as_deref().map(parse_iso_date).transpose()?.map(FmDate::to_number);
             let session = connect(process, ArraySource::ProfileFirst)?;
             make_permanent(&session, uid, MoveTerms { wage, expires }, restore.then_some(hold))
+        }
+        Command::StadiumName { club, name, restore } => {
+            stadium_name(&connect(process, ArraySource::ProfileFirst)?, club, name.as_deref(), restore)
         }
         Command::Plan { uid, club, release } => {
             plan_move(&connect(process, ArraySource::ProfileFirst)?, uid, club, release)
@@ -3338,6 +3353,58 @@ fn make_permanent(session: &Session, uid: u32, terms: MoveTerms, restore_after: 
             std::thread::sleep(std::time::Duration::from_secs(hold));
         }
         session.undo_club_move(&done)?;
+        show("restored")?;
+    }
+    Ok(())
+}
+
+/// `stadium-name`: one club's stadium name and the names it can take, renamed with `name`; or, without a club, how
+/// many stadiums' names can be changed, by the size of their blocks, and a few that cannot.
+fn stadium_name(session: &Session, club: Option<u32>, name: Option<&str>, restore: bool) -> Result<()> {
+    let clubs = ClubIndex::new(session.clubs()?);
+    let Some(uid) = club else {
+        let (mut sizes, mut shared, mut unread) = (BTreeMap::<(usize, usize), usize>::new(), Vec::new(), 0);
+        for club in clubs.iter() {
+            match session.stadium_name(club) {
+                Ok(found) if found.renamable() => *sizes.entry((found.min_bytes, found.max_bytes)).or_default() += 1,
+                Ok(found) => shared.push(format!("{} ({}, {} holders)", found.name, club.name, found.holders)),
+                Err(_) => unread += 1,
+            }
+        }
+        println!("Stadium names the editor can change, by the lengths a new one may take:");
+        for ((min, max), count) in &sizes {
+            println!("  {min:>3} to {max:>3} bytes  {count:>6}");
+        }
+        println!("Shared, so left alone: {}{}", shared.len(), if shared.is_empty() { "" } else { ", e.g." });
+        for example in shared.iter().take(8) {
+            println!("  {example}");
+        }
+        println!("No stadium the editor can read: {unread} clubs");
+        return Ok(());
+    };
+    let club = clubs.get(uid).with_context(|| format!("no club with UID {uid}"))?;
+    let show = |label: &str| -> Result<()> {
+        let found = session.stadium_name(club)?;
+        println!(
+            "{label}: {:?} ({} bytes; {} holder(s); a new name may take {} to {} bytes)",
+            found.name,
+            found.name.len(),
+            found.holders,
+            found.min_bytes,
+            found.max_bytes
+        );
+        Ok(())
+    };
+    println!("{} (club {}):", club.name, club.uid);
+    show("stadium")?;
+    let Some(name) = name else {
+        return Ok(());
+    };
+    let plan = session.plan_stadium_rename(club, name)?;
+    session.apply_stadium_rename(&plan)?;
+    show("renamed")?;
+    if restore {
+        session.undo_stadium_rename(&plan)?;
         show("restored")?;
     }
     Ok(())

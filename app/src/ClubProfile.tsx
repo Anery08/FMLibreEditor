@@ -1,6 +1,6 @@
 import { useContext, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { EditableValue } from "./EditControls";
-import { freezeMoney, frozenClubs } from "./editing";
+import { freezeMoney, frozenClubs, renameStadium, stadiumName } from "./editing";
 import { converts, inCurrency } from "./currency";
 import { describeError, formatMoney, formatNumber } from "./format";
 import {
@@ -23,18 +23,18 @@ import {
   type RatingRow,
 } from "./ProfileParts";
 import { SquadTab } from "./SquadTab";
-import type { ClubDetails, ClubSummary, Finances, Stadium } from "./types";
+import type { ClubDetails, ClubSummary, Finances, Stadium, StadiumName } from "./types";
 import { EditorContext, useProfileEditing } from "./useProfileEditing";
 
 const text = clubProfileText;
 
-/** The tabs of the profile: what the club has, and its squad. */
-export type ClubTab = "overview" | "squad";
+/** The tabs of the profile: what the club has, its squad, and its stadium. */
+export type ClubTab = "overview" | "squad" | "stadium";
 
-const TABS: readonly ClubTab[] = ["overview", "squad"];
+const TABS: readonly ClubTab[] = ["overview", "squad", "stadium"];
 
 /** The tab saved before the language was switched; the overview when there is none. */
-export const readTab = (value: unknown): ClubTab => (value === "squad" ? "squad" : "overview");
+export const readTab = (value: unknown): ClubTab => (value === "squad" || value === "stadium" ? value : "overview");
 
 interface ClubProfileProps {
   /** The row that was picked; its fields fill the header while the full profile loads. */
@@ -56,15 +56,15 @@ export function ClubProfile({ club, version, tab, onTab, onClose }: ClubProfileP
   const info: ClubSummary = details ?? club;
   const vitals = [info.founded !== null && text.founded(info.founded), `${profileText.uid} ${info.uid}`];
 
-  // The club is edited on the Overview, which has its inputs: editing starts there, and the Squad tab is not offered
-  // until it is done.
+  // The club is edited on the Overview and the Stadium tab, which have its inputs: editing starts on the Overview
+  // unless the Stadium tab is open, and the Squad tab is not offered until it is done.
   const locked = editing.stage !== "view";
   useEffect(() => {
-    if (locked) {
+    if (locked && tab === "squad") {
       onTab("overview");
     }
-  }, [locked, onTab]);
-  const shown = locked ? "overview" : tab;
+  }, [locked, tab, onTab]);
+  const shown = locked && tab === "squad" ? "overview" : tab;
   const panel: PanelIds = { id: `${base}-panel`, labelledBy: `${base}-${shown}` };
 
   return (
@@ -93,6 +93,8 @@ export function ClubProfile({ club, version, tab, onTab, onClose }: ClubProfileP
       {details &&
         (shown === "squad" ? (
           <SquadTab clubUid={club.uid} version={version} panel={panel} />
+        ) : shown === "stadium" ? (
+          <StadiumTab club={club.uid} stadium={details.stadium} panel={panel} />
         ) : (
           <ClubBody details={details} panel={panel} />
         ))}
@@ -171,7 +173,6 @@ function ClubBody({ details, panel }: { details: ClubDetails; panel: PanelIds })
       <div className="profile-stack">
         <Facilities facilities={details.facilities} />
         <FinancesGroup club={details.uid} finances={details.finances} />
-        <StadiumGroup stadium={details.stadium} />
       </div>
       <div className="profile-stack">
         <Supporters traits={details.supporterTraits} mix={details.supporterMix} />
@@ -316,11 +317,24 @@ function FinancesGroup({ club, finances }: { club: number; finances: Finances | 
   );
 }
 
+/**
+ * The Stadium tab: the stadium the senior team plays at, its name, which can be changed in place, and its capacities,
+ * inputs while the club is edited.
+ */
+function StadiumTab({ club, stadium, panel }: { club: number; stadium: Stadium | null; panel: PanelIds }) {
+  return (
+    <div className="profile-stack stadium-tab" role="tabpanel" id={panel.id} aria-labelledby={panel.labelledBy}>
+      <StadiumGroup club={club} stadium={stadium} />
+    </div>
+  );
+}
+
 /** The stadium the senior team plays at: its name, and its capacities, inputs while the club is edited. */
-function StadiumGroup({ stadium }: { stadium: Stadium | null }) {
+function StadiumGroup({ club, stadium }: { club: number; stadium: Stadium | null }) {
   return (
     <section className="profile-group">
-      <h3>{stadium?.name ? `${text.stadium} · ${stadium.name}` : text.stadium}</h3>
+      <h3>{text.stadium}</h3>
+      {stadium && <StadiumNameRow club={club} name={stadium.name} />}
       {stadium ? (
         <dl className="stats">
           <Fact label={text.capacity}>
@@ -340,6 +354,145 @@ function StadiumGroup({ stadium }: { stadium: Stadium | null }) {
         <p className="note">{text.noStadium}</p>
       )}
     </section>
+  );
+}
+
+/** How many bytes of UTF-8 `text` takes, as the game keeps a name. */
+const utf8Length = (value: string) => new TextEncoder().encode(value).length;
+
+/**
+ * A stadium's name, with Rename while the game can be written to: under it, an input, Save and Cancel, and a note of
+ * the lengths it may take. The new name goes into the block the game gave the old one, so it must take as many bytes
+ * as `stadium_name` allows; a name other things in the game share is not offered. Written at once, and logged.
+ */
+function StadiumNameRow({ club, name }: { club: number; name: string | null }) {
+  const { editable, onEdited } = useContext(EditorContext);
+  const [room, setRoom] = useState<StadiumName | null>(null);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const noteId = useId();
+
+  // What the name may become, read again whenever it changes.
+  useEffect(() => {
+    let alive = true;
+    setRoom(null);
+    stadiumName(club).then(
+      (found) => alive && setRoom(found),
+      () => alive && setRoom(null),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [club, name]);
+
+  // The input takes the focus when it comes.
+  const renamingNow = draft !== null;
+  useEffect(() => {
+    if (renamingNow) {
+      input.current?.focus();
+    }
+  }, [renamingNow]);
+
+  const shared = room !== null && room.holders > 1;
+  const row = (
+    <dl className="stats">
+      <Fact label={text.stadiumName}>
+        <span className="stadium-name">
+          <span>{name ?? profileText.none}</span>
+          {room !== null && !shared && draft === null && (
+            <button
+              type="button"
+              className="heal-toggle"
+              disabled={!editable}
+              title={text.renameTitle}
+              onClick={() => {
+                setError(null);
+                setDraft(room.name);
+              }}
+            >
+              {text.rename}
+            </button>
+          )}
+        </span>
+      </Fact>
+    </dl>
+  );
+  if (draft === null) {
+    return (
+      <>
+        {row}
+        {shared && <p className="note">{text.nameShared(room.holders)}</p>}
+      </>
+    );
+  }
+
+  const bytes = utf8Length(draft);
+  const fits = room !== null && bytes >= room.minBytes && bytes <= room.maxBytes;
+  const clean = draft.trim() === draft && draft.length > 0;
+  const changed = draft !== room?.name;
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await renameStadium(club, draft);
+      setDraft(null);
+      onEdited();
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <>
+      {row}
+      <div className="stadium-rename">
+        <div className="stadium-rename-line">
+          <input
+            ref={input}
+            type="text"
+            className="stadium-name-input"
+            aria-label={text.stadiumName}
+            aria-describedby={noteId}
+            aria-invalid={!fits || !clean || undefined}
+            value={draft}
+            disabled={saving}
+            onChange={(e) => setDraft(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && fits && clean && changed && !saving) {
+                void save();
+              } else if (e.key === "Escape") {
+                e.stopPropagation();
+                setDraft(null);
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="primary"
+            disabled={saving || !fits || !clean || !changed}
+            onClick={() => void save()}
+          >
+            {saving ? text.renaming : text.saveName}
+          </button>
+          <button type="button" disabled={saving} onClick={() => setDraft(null)}>
+            {text.cancelRename}
+          </button>
+        </div>
+        {room !== null && (
+          <p id={noteId} className={fits && clean ? "move-note" : "move-note invalid"}>
+            {text.nameLength(bytes, room.minBytes, room.maxBytes)}
+          </p>
+        )}
+        {error !== null && (
+          <p className="move-note invalid" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+    </>
   );
 }
 

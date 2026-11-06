@@ -282,6 +282,11 @@ const errors: ErrorTexts = {
   "staff.noRoom": (p) =>
     `La lista ${STAFF_DEPARTMENTS[p.department] ?? `de ${p.department}`} del club no tiene sitio para nadie más ` +
     `(ahora ${p.staff}) y el editor no puede ampliarla.`,
+  "stadium.none": () => "No se puede leer el estadio en el que juega el primer equipo del club.",
+  "stadium.shared": (p) => `${p.holders} cosas del juego comparten este nombre; no se puede cambiar solo para el estadio.`,
+  "stadium.nameLength": (p) =>
+    `El nuevo nombre de este estadio debe ocupar de ${p.min} a ${p.max} bytes para caber donde el juego lo guarda; este ocupa ${p.bytes}.`,
+  "stadium.badName": () => "El nombre de un estadio no puede estar vacío, empezar o acabar con un espacio ni tener caracteres de control.",
   "staff.job": (p) => `El editor todavía no mueve al personal con el puesto de ${jobName(p.job)} ni da ese puesto.`,
   "squad.noTeam": () => `El club no tiene ese equipo o no supera la comprobación; ${reload}.`,
   "captain.notInTeam": () =>
@@ -568,6 +573,7 @@ export const es: Strings = {
     "finance.wage_budget": "Presupuesto salarial",
     "finance.total_wage_budget": "Presupuesto salarial total",
     "stadium.capacity": "Aforo del estadio",
+    "stadium.name": "Nombre del estadio",
     "stadium.seating": "Aforo con asientos",
     "stadium.used": "Aforo en uso",
     "stadium.expansion": "Aforo ampliable",
@@ -962,7 +968,7 @@ export const es: Strings = {
     reputationTitle: "Reputación",
 
     tabsLabel: "Secciones del club",
-    tabs: { overview: "Resumen", squad: "Plantilla" },
+    tabs: { overview: "Resumen", squad: "Plantilla", stadium: "Estadio" },
     squadLocked: "Termina de editar para abrir la plantilla",
 
     facilities: "Instalaciones",
@@ -998,6 +1004,18 @@ export const es: Strings = {
       "todo",
     expansion: "Ampliable hasta",
     noStadium: "No se ha podido leer el estadio de este club.",
+    stadiumName: "Nombre",
+    rename: "Cambiar nombre",
+    renameTitle: "Da al estadio otro nombre; se escribe en el acto y Cambios puede deshacerlo",
+    saveName: "Guardar",
+    renaming: "Guardando…",
+    cancelRename: "Cancelar",
+    nameLength: (bytes, min, max) =>
+      min <= 1
+        ? `${bytes} de ${max} caracteres como mucho (una letra con tilde cuenta como dos)`
+        : `${bytes} caracteres: de ${min} a ${max}, para que quepa donde el juego guarda el nombre (una letra con tilde cuenta como dos)`,
+    nameShared: (holders) =>
+      `${holders} cosas del juego comparten este nombre, así que no se puede cambiar solo para el estadio`,
 
     // Datos del club
     info: "Datos del club",

@@ -63,6 +63,7 @@ import type {
   MoveTerms,
   PlannedChange,
   RoomMaker,
+  StadiumName,
   SkippedField,
 } from "../types";
 
@@ -593,6 +594,72 @@ function logClause(player: PlayerSummary, before: Clause | null, after: Clause |
     undoneAt: null,
     batch: null,
     clause: { from: before, to: after },
+  };
+  changes.push(logged);
+  return { ...logged };
+}
+
+// Stadium names ---------------------------------------------------------------------------------------------------
+
+/** The stadiums renamed through the editor, by club UID, while the rename is not undone. */
+const stadiumNames = new Map<number, string>();
+
+/** The name of a fixture club's stadium, as renamed. */
+function stadiumNameOf(club: ClubSummary): string {
+  return stadiumNames.get(club.uid) ?? `${club.shortName} Park`;
+}
+
+/** Bytes of UTF-8, as the real app counts a name. */
+const utf8Bytes = (text: string) => new TextEncoder().encode(text).length;
+
+/**
+ * `stadium_name`: as the real command, the lengths that keep the name's block (16-byte steps, 17 bytes besides the
+ * text), and one club in eleven whose name other things share.
+ */
+function stadiumNameRoom(uid: number): StadiumName {
+  const club = clubs.find((c) => c.uid === uid);
+  if (!club) {
+    throw notFound("club", uid);
+  }
+  const name = stadiumNameOf(club);
+  const size = Math.ceil((utf8Bytes(name) + 17) / 16) * 16;
+  return { name, holders: uid % 11 === 3 ? 3 : 1, minBytes: size <= 32 ? 1 : size - 32, maxBytes: size - 17 };
+}
+
+/** `rename_stadium`: checked as the real command, and logged with the names; its undo puts the old one back. */
+function renameStadium(uid: number, name: string): LoggedChange {
+  const room = stadiumNameRoom(uid);
+  if (room.holders > 1) {
+    throw failure("stadium.shared", `${room.holders} things in the game share this stadium's name`, {
+      holders: String(room.holders),
+    });
+  }
+  // eslint-disable-next-line no-control-regex
+  if (name === "" || name.trim() !== name || /[\u0000-\u001f\u007f]/.test(name)) {
+    throw failure("stadium.badName", "a stadium's name cannot be empty, start or end with a space, or hold control characters");
+  }
+  const bytes = utf8Bytes(name);
+  if (bytes < room.minBytes || bytes > room.maxBytes) {
+    throw failure("stadium.nameLength", "the new name does not fit where the game keeps the old one", {
+      min: String(room.minBytes),
+      max: String(room.maxBytes),
+      bytes: String(bytes),
+    });
+  }
+  const club = clubs.find((c) => c.uid === uid)!;
+  stadiumNames.set(uid, name);
+  const logged: LoggedChange = {
+    id: changes.length + 1,
+    at: Date.now(),
+    name: club.name,
+    entity: "club",
+    uid,
+    field: "stadium.name",
+    old: utf8Bytes(room.name),
+    new: bytes,
+    undoneAt: null,
+    batch: null,
+    stadium: { from: room.name, to: name },
   };
   changes.push(logged);
   return { ...logged };
@@ -1347,6 +1414,11 @@ function undoChange(id: number): LoggedChange {
   }
   if (entry.clause) {
     clausesSet.set(entry.uid, clauseUndo.get(entry.id)!);
+    entry.undoneAt = Date.now();
+    return { ...entry };
+  }
+  if (entry.stadium) {
+    stadiumNames.set(entry.uid, entry.stadium.from);
     entry.undoneAt = Date.now();
     return { ...entry };
   }
@@ -2255,7 +2327,7 @@ function clubDetails(club: ClubSummary): ClubDetails {
 /** A made-up stadium for `club`: all seated, as in the top leagues, with room to grow. */
 function stadiumOf(club: ClubSummary, next: () => number): ClubDetails["stadium"] {
   const capacity = Math.round(8000 + next() * 60000);
-  return { name: `${club.shortName} Park`, capacity, seating: capacity, used: 0, expansion: Math.round(capacity * 1.25) };
+  return { name: stadiumNameOf(club), capacity, seating: capacity, used: 0, expansion: Math.round(capacity * 1.25) };
 }
 
 /** A date as a number that orders like the date. */
@@ -2776,6 +2848,10 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       return healPlayer(Number(args?.uid)) as T;
     case "lift_bans":
       return liftBans(Number(args?.uid)) as T;
+    case "stadium_name":
+      return stadiumNameRoom(Number(args?.club)) as T;
+    case "rename_stadium":
+      return renameStadium(Number(args?.club), String(args?.name ?? "")) as T;
     case "change_clause":
       return changeClause(
         Number(args?.uid),

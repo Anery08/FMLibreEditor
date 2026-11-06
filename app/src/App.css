@@ -5547,3 +5547,33 @@ button.danger:hover:not(:disabled) {
   background: color-mix(in srgb, var(--tier-1) 12%, transparent);
   color: var(--tier-1);
 }
+
+/* The club's Stadium tab: one column, as wide as a list of facts reads well. */
+.stadium-tab {
+  max-width: 640px;
+}
+
+/* A stadium's name, with Rename beside it. */
+.stadium-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Renaming it: the input and its buttons on one line under the name, the note of its length under them. */
+.stadium-rename {
+  display: grid;
+  gap: 6px;
+  padding: 8px 0 12px;
+}
+
+.stadium-rename-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stadium-name-input {
+  flex: 1;
+  min-width: 0;
+}

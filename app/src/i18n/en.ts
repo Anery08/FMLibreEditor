@@ -503,6 +503,7 @@ export const en = {
     "finance.wage_budget": "Wage budget",
     "finance.total_wage_budget": "Total wage budget",
     "stadium.capacity": "Stadium capacity",
+    "stadium.name": "Stadium name",
     "stadium.seating": "Seated capacity",
     "stadium.used": "Capacity in use",
     "stadium.expansion": "Expansion capacity",
@@ -956,7 +957,7 @@ export const en = {
     // The tabs under the header: what the club has, and its squad (see `squad`).
     /** The name of the tabs for assistive technology. */
     tabsLabel: "Club sections",
-    tabs: { overview: "Overview", squad: "Squad" },
+    tabs: { overview: "Overview", squad: "Squad", stadium: "Stadium" },
     /** Hover text of the Squad tab while the club is edited: its values are on the Overview. */
     squadLocked: "Finish editing to open the squad",
 
@@ -998,6 +999,21 @@ export const en = {
     expansion: "Can grow to",
     /** When the layout of this build does not know where the stadium is, or the club's stadium did not check out. */
     noStadium: "The stadium could not be read for this club.",
+    /** Its name, which can be changed in place: in the block the game gave the old one. */
+    stadiumName: "Name",
+    rename: "Rename",
+    renameTitle: "Give the stadium another name; it is written at once, and Changes can undo it",
+    saveName: "Save",
+    renaming: "Saving…",
+    cancelRename: "Cancel",
+    /** How long the name being typed is, in bytes of UTF-8, and how long it may be. */
+    nameLength: (bytes: number, min: number, max: number) =>
+      min <= 1
+        ? `${bytes} of at most ${max} characters (an accented letter counts as two)`
+        : `${bytes} characters: from ${min} to ${max}, to fit where the game keeps the name (an accented letter counts as two)`,
+    /** Instead of Rename, when other things in the game hold the same name. */
+    nameShared: (holders: number) =>
+      `${holders} things in the game share this name, so it cannot be changed for the stadium alone`,
 
     // Club info
     info: "Club info",

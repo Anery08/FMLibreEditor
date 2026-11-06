@@ -12,8 +12,8 @@ use fmlibre_core::{
     LOAN_EXPIRES, LOAN_OPTION_FEE, Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation, Operation, Paid,
     Picture, Planned, PlayerDetails, PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary, ROLES, RelationSet,
     RetirementSet, Role, SCOUT_POSITIONS, STAFF_JOBS, ScoutError, ScoutPosition, ScoutRequest, Scouted, SearchIndex,
-    Session, SessionError, Skipped, SquadReport, StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffOrder,
-    StaffPlan, Target, Tie, TieTarget, find_game, nations, sort_players, sort_staff,
+    Session, SessionError, Skipped, SquadReport, StadiumName, StadiumRename, StaffChange, StaffDetails, StaffFilter,
+    StaffIndex, StaffOrder, StaffPlan, Target, Tie, TieTarget, find_game, nations, sort_players, sort_staff,
 };
 use fmlibre_mem::{Process, find_processes, is_current_process_elevated, list_modules};
 use serde::{Deserialize, Serialize};
@@ -508,6 +508,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: None,
         };
         self.log.push(logged.clone());
@@ -572,6 +573,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Captain(done)),
         };
         self.log.push(logged.clone());
@@ -599,6 +601,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Heal(done)),
         };
         self.log.push(logged.clone());
@@ -626,6 +629,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Lift(done)),
         };
         self.log.push(logged.clone());
@@ -654,6 +658,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Retirement(done)),
         };
         self.log.push(logged.clone());
@@ -695,6 +700,7 @@ impl Connection {
             tie: Some(TieChange { from: end(&done.before), to: end(&done.after) }),
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Tie(done)),
         };
         self.log.push(logged.clone());
@@ -703,6 +709,36 @@ impl Connection {
 
     /// Logs a change to a player's contract clauses just written, as a change of his field `clause` from one amount to
     /// the other (0 for none, or for a clause added or taken out), with the clause before and after.
+    /// Logs a stadium renamed, as a change of the club's `stadium.name` from one length in bytes to the other, with the
+    /// names; its undo writes the old name back.
+    fn log_stadium(&mut self, done: StadiumRename) -> LoggedChange {
+        let change = Change {
+            entity: Entity::Club,
+            uid: done.club,
+            field: "stadium.name".to_owned(),
+            old: done.from.len() as i64,
+            new: done.to.len() as i64,
+        };
+        let name = self.clubs.get(done.club).map_or_else(|| done.club.to_string(), |club| club.name.clone());
+        let logged = LoggedChange {
+            id: self.log.len() + 1,
+            at: now_ms(),
+            name,
+            change,
+            undone_at: None,
+            batch: None,
+            moved: None,
+            captaincy: None,
+            tie: None,
+            clause: None,
+            recall: None,
+            stadium: Some(StadiumNames { from: done.from.clone(), to: done.to.clone() }),
+            undo: Some(Undo::Stadium(done)),
+        };
+        self.log.push(logged.clone());
+        logged
+    }
+
     fn log_clause(&mut self, done: ClauseSet) -> LoggedChange {
         let amount = |clause: &Option<Clause>| clause.as_ref().and_then(|c| c.amount).map_or(0, i64::from);
         let change = Change {
@@ -724,6 +760,7 @@ impl Connection {
             tie: None,
             clause: Some(ClauseChange { from: done.before.clone(), to: done.after.clone() }),
             recall: None,
+            stadium: None,
             undo: Some(Undo::Clause(done)),
         };
         self.log.push(logged.clone());
@@ -783,6 +820,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Staff(LoggedStaff { done, club, club_uid, job })),
         };
         self.log.push(logged.clone());
@@ -919,6 +957,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Move(before)),
         };
         self.log.push(logged.clone());
@@ -960,6 +999,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Move(LoggedMove { done, rows, paid: Vec::new() })),
         };
         self.log.push(logged.clone());
@@ -993,6 +1033,7 @@ impl Connection {
                 }
                 self.note_change(&entry.change, entry.change.old);
             }
+            Some(Undo::Stadium(renamed)) => self.session.undo_stadium_rename(&renamed)?,
             Some(Undo::Move(moved)) => {
                 // The fee goes back first, by what it changed; if the player cannot go back, it is paid again.
                 self.session.refund_fee(&moved.paid)?;
@@ -1183,6 +1224,10 @@ struct LoggedChange {
     /// For a recall from loan that took the loan's option to buy away too: what the option was.
     #[serde(skip_serializing_if = "Option::is_none")]
     recall: Option<RecallNote>,
+    /// For a stadium renamed, logged as a change of the club's field `stadium.name` from one length in bytes to the
+    /// other: the names.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stadium: Option<StadiumNames>,
     /// For a move, healing, lifting bans, a captaincy, a tie or a clause: what undoing it takes. Other changes write
     /// back `old`.
     #[serde(skip)]
@@ -1198,12 +1243,22 @@ struct RecallNote {
     option_fee: i64,
 }
 
+/// A stadium's name before and after a rename.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StadiumNames {
+    from: String,
+    to: String,
+}
+
 /// What undoing a change takes when writing back its old value is not enough.
 #[derive(Clone)]
 enum Undo {
     /// A recall from loan that took the loan's option to buy away too: the change of the option, written back with the
     /// loan's end.
     Recall(Change),
+    /// A stadium renamed: the bytes it wrote, which the undo writes back.
+    Stadium(StadiumRename),
     Move(LoggedMove),
     Heal(Healed),
     Lift(Lifted),
@@ -2695,6 +2750,27 @@ fn remove_clause(state: State<'_, AppState>, uid: u32, index: usize) -> Result<L
     Ok(connection.log_clause(done))
 }
 
+/// The name of the stadium the club `club` plays at, with the names it can take in place. Only reads memory.
+#[tauri::command]
+fn stadium_name(state: State<'_, AppState>, club: u32) -> Result<StadiumName, Failure> {
+    let guard = state.0.lock()?;
+    let connection = guard.as_ref().ok_or_else(not_connected)?;
+    let found = connection.clubs.get(club).ok_or_else(|| not_found(Entity::Club, club))?;
+    Ok(connection.session.stadium_name(found)?)
+}
+
+/// Renames the stadium the club `club` plays at to `name`, in the block the game gave its name (see `StadiumName`).
+/// Logged and undone like any change.
+#[tauri::command]
+fn rename_stadium(state: State<'_, AppState>, club: u32, name: String) -> Result<LoggedChange, Failure> {
+    let mut guard = state.0.lock()?;
+    let connection = guard.as_mut().ok_or_else(not_connected)?;
+    let found = connection.clubs.get(club).ok_or_else(|| not_found(Entity::Club, club))?;
+    let plan = connection.session.plan_stadium_rename(found, &name)?;
+    connection.session.apply_stadium_rename(&plan)?;
+    Ok(connection.log_stadium(plan))
+}
+
 /// Gives the contract of the player `uid`, which has none, a release clause of `amount` pounds, where its list has
 /// room. Logged and undone like any change.
 #[tauri::command]
@@ -3174,6 +3250,8 @@ pub fn run() {
             change_clause,
             remove_clause,
             add_release_clause,
+            stadium_name,
+            rename_stadium,
             homegrown_rules,
             club_squads,
             scouting_overview,

@@ -513,6 +513,8 @@ function ChangeRow({ change, field, failure, undoing, onUndo, inBatch }: ChangeR
         ? valueChange(tieEnd(change.tie.from), tieEnd(change.tie.to))
       : change.clause
         ? valueChange(clauseEnd(change.clause.from), clauseEnd(change.clause.to))
+      : change.stadium
+        ? valueChange(change.stadium.from, change.stadium.to)
       : change.field === "injuries"
         ? text.healed(change.old)
         : change.field === "bans"

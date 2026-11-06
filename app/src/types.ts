@@ -229,6 +229,18 @@ export interface Stadium {
   expansion: number;
 }
 
+/**
+ * A stadium's name as `stadium_name` reads it, with the names it can take in place: the editor writes a new name into
+ * the block the game gave the old one, so it must take `minBytes` to `maxBytes` bytes of UTF-8, and only when the
+ * stadium alone holds the name (`holders` 1).
+ */
+export interface StadiumName {
+  name: string;
+  holders: number;
+  minBytes: number;
+  maxBytes: number;
+}
+
 /** A manager, coach, scout, director or other non-playing person. */
 export interface StaffSummary {
   uid: number;
@@ -704,6 +716,14 @@ export interface LoggedChange {
   clause?: {
     from: Clause | null;
     to: Clause | null;
+  };
+  /**
+   * Set for a stadium renamed (`rename_stadium`), logged as a change of the club's field `stadium.name` from one length
+   * in bytes to the other: the names.
+   */
+  stadium?: {
+    from: string;
+    to: string;
   };
   /**
    * Set for a recall from loan (`recall_loan`, logged as a change of `loan.expires`) that took the loan's option to buy
