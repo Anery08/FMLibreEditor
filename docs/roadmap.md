@@ -283,6 +283,10 @@ changes many at once, and undo.
     rule each meets (15-21, 0-21, ...). They are entries of the person's list of relations; the editor changes,
     removes and, where the list has room, adds them. Checked on the Mac Steam build against the game's eligibility
     page, and on both Windows builds: see the [nationality notes](recon/fm27-nationality.md).
+  - [x] Trained at club: the dialog points a club he was trained at at another one, found by a search, and adds one;
+    where his list has no room (most lists), the new club takes the place of a club he favours or dislikes, which he
+    no longer has an opinion of; undone, he has it again. His relations to people are left alone: the other person's
+    list holds them too. The probe's `tie-replace` and `ties`, which lists those clubs.
   - [ ] Place of birth: a pointer to a city record (`+0x2C8` on macOS), whose nation the game shows.
   - [ ] Appearance. FM27 keeps a person's looks as dozens of 3D face values for the match engine
     (`MATCH_PERSON_APPEARANCE_INPUT`: skin tone, hair and eye colours, face shape); set aside.

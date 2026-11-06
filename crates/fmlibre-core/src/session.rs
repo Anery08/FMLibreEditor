@@ -360,6 +360,7 @@ impl Session {
         details.bans = self.bans(player).unwrap_or_default();
         details.ties = self.relations(player).unwrap_or_default();
         details.tie_room = self.relation_room(player).unwrap_or(0);
+        details.club_opinions = self.club_opinions(player).unwrap_or_default();
         details.clause_room = self.clause_room(player).unwrap_or(0);
         details.loan = self.loan(player).unwrap_or(None);
         if let Ok(date) = self.planned_retirement(player) {

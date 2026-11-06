@@ -48,6 +48,7 @@ By default nothing that changes the game. With `--writes`, the tests change the 
 | `move` | yes | A transfer the app agrees to, and the undo that moves the player back |
 | `medical` | yes | Healing an injured player, and keeping a player from retiring, each undone |
 | `loan` | yes | A loan's terms, as the app and the probe read them; recalling a player on loan: the game's date becomes the loan's last day, as the probe reads it, his profile says his return is pending, the option to buy is taken away (and written back by the undo), and the dialog says what the terms would not allow in the game; a day the game has finished is refused; making the loan permanent, its fee starting as the option to buy; each undone |
+| `ties` | yes | Clubs a player was trained at: one pointed at another club, one added in place of a club he favours or dislikes where his list is full (adding refused, a relation that is not such a club refused), each read back by the probe and undone; then Change club through his profile's dialog (the search, Escape giving up only the search, Enter on the club found) |
 | `freeze` | yes | Frozen attributes put back after the probe changes one as the game would; unfrozen, a changed value stays |
 | `unknown` | no | The day of an update rehearsed (`FMLIBRE_IGNORE_PROFILES=1`): the build is new to the app, which finds the in-game date and the planned retirements by itself and writes nothing until Edit anyway |
 

@@ -272,6 +272,7 @@ const errors: ErrorTexts = {
     "La lista del jugador no tiene sitio y el editor no puede ampliarla; cambia una de sus entradas en su lugar.",
   "relation.target": () => "No es un país ni un club del juego del tipo que admite esta entrada.",
   "relation.same": () => "El jugador ya tiene eso.",
+  "relation.noOpinion": () => `Ese no es un club que le guste o le disguste al jugador; ${reload}.`,
   "relation.rule": (p) => `La regla de formación local ${p.rule} no es de las que escribe el editor.`,
   "staff.you": () => "Eres tú, el mánager que controlas.",
   "staff.unemployed": () => "Este miembro del personal no tiene club.",
@@ -1233,6 +1234,8 @@ export const es: Strings = {
     released: (name) => `Contrato rescindido: ${name}`,
     fee: (amount) => `Traspaso: ${amount}`,
     optionRemoved: (amount) => `Opción de compra (${amount}) eliminada`,
+    replacedOpinion: (opinion, name) =>
+      opinion === "favoured" ? `En lugar del club favorito ${name}` : `En lugar del club que le disgusta ${name}`,
     healed: (count) => (count === 1 ? "1 lesión curada" : `${format(count)} lesiones curadas`),
     lifted: (count) => (count === 1 ? "1 sanción levantada" : `${format(count)} sanciones levantadas`),
     keptPlaying: (date) => (date === null ? "Seguirá jugando" : `Retirada del ${date} evitada`),
@@ -1607,7 +1610,8 @@ export const es: Strings = {
     hint: "Cada cambio se escribe en el juego al momento y aparece en Cambios, donde se puede deshacer.",
     full:
       "El juego hizo la lista de este jugador justo del tamaño de lo que contiene: se puede cambiar o quitar una " +
-      "nacionalidad o una formación, pero no añadir.",
+      "nacionalidad o una formación, y un club puede ocupar el lugar de un club que le gusta o le disgusta, pero no se " +
+      "puede añadir nada más.",
     nationOf: (name) => `País en lugar de ${name}`,
     ruleOf: (name) => `Regla de formación local para ${name}`,
     remove: "Quitar",
@@ -1616,7 +1620,26 @@ export const es: Strings = {
     addNation: "Añadir un país…",
     newRule: "Regla de formación local del nuevo país",
     add: "Añadir",
-    clubNote: "A un club se le puede dar otra regla o quitarlo; los clubes los añade el propio juego.",
+    changeClub: "Cambiar club",
+    changeClubTitle: (name) => `Que se haya formado en otro club en lugar de ${name}`,
+    clubInsteadOf: (name) => `Club en lugar de ${name}`,
+    addClub: "Añadir un club…",
+    addClubTitle: "Que se haya formado en un club más",
+    newClub: "Nuevo club",
+    pickAnother: "Elegir otro",
+    newClubRule: "Regla de formación local del nuevo club",
+    inPlaceOf: "En lugar de",
+    opinion: (opinion, name) => (opinion === "favoured" ? `Club favorito: ${name}` : `Club que le disgusta: ${name}`),
+    inPlaceOfInfoLabel: "¿Por qué en lugar de otro?",
+    inPlaceOfInfo:
+      "El juego hizo su lista justo del tamaño de lo que contiene, y FMLibreEditor no la agranda. Por eso el nuevo " +
+      "club ocupa el lugar de un club que le gusta o le disgusta: deja de tener esa opinión de él, y nada más cambia. " +
+      "Sus relaciones con personas no se tocan, porque la lista de la otra persona también las guarda. Deshacer el " +
+      "cambio le devuelve la opinión.",
+    noOpinion:
+      "Su lista no tiene sitio, y no hay ningún club que le guste o le disguste cuyo lugar pueda ocupar uno nuevo: " +
+      "cambia uno de sus clubes.",
+    cancel: "Cancelar",
     working: "Escribiendo en el juego…",
     close: "Cerrar",
   },

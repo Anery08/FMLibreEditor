@@ -43,8 +43,8 @@ function keepTabInside(event: KeyboardEvent, box: HTMLElement): void {
  * Makes `box` a modal dialog while it is mounted: Tab and focus stay inside it, and Escape closes it when `canClose`
  * (and does nothing while a call runs). Escape is answered here and goes no further, so the profile behind the dialog,
  * which closes on Escape too, stays open. While a note of the dialog shows (see `InfoTip`), Escape is the note's: it
- * hides that, and stops the key itself. With `active` false it does none of this, for a box that is a dialog only
- * sometimes (see `ProfileFrame`).
+ * hides that, and stops the key itself; so is Escape in a control marked `data-takes-escape` (see `ClubSearch`). With
+ * `active` false it does none of this, for a box that is a dialog only sometimes (see `ProfileFrame`).
  */
 export function useModal(
   box: RefObject<HTMLElement | null>,
@@ -72,7 +72,9 @@ export function useModal(
         return;
       }
       if (event.key === "Escape") {
-        if (dialog.querySelector("[data-open-tip]")) {
+        // A note that shows, or a control that answers Escape itself (a search, say), takes it: the dialog stays.
+        const own = event.target instanceof Element && event.target.closest("[data-takes-escape]");
+        if (dialog.querySelector("[data-open-tip]") || own) {
           return;
         }
         event.stopPropagation();

@@ -209,6 +209,11 @@ pub enum MoveError {
     },
     /// The player's list of relations has no room for another.
     RelationsFull,
+    /// The player's relation at this place in his list is not what he thinks of a club, which a tie may take the place
+    /// of.
+    NoOpinion {
+        index: usize,
+    },
     /// The new nation or club is not one of the game's own, or not of the kind the tie takes.
     WrongTarget,
     /// The player has that tie already.
@@ -313,6 +318,9 @@ impl fmt::Display for MoveError {
                 "the player's list of nationalities and ties has no room for another, and the editor cannot make it \
                  bigger; change one of them instead",
             ),
+            MoveError::NoOpinion { index } => {
+                write!(f, "the player's relation number {index} is not a club he favours or dislikes")
+            }
             MoveError::WrongTarget => {
                 f.write_str("that is not a nation or club of the game, of the kind this tie takes")
             }
@@ -387,6 +395,7 @@ impl Coded for MoveError {
             MoveError::NotBanned => "ban.notBanned",
             MoveError::NoRelation { .. } => "relation.missing",
             MoveError::RelationsFull => "relation.noRoom",
+            MoveError::NoOpinion { .. } => "relation.noOpinion",
             MoveError::WrongTarget => "relation.target",
             MoveError::SameRelation => "relation.same",
             MoveError::UnknownRule { .. } => "relation.rule",
@@ -431,7 +440,9 @@ impl Coded for MoveError {
                 vec![("department", (*department).to_owned()), ("staff", staff.to_string())]
             }
             MoveError::UnusualJob { job } => vec![("job", job.to_string())],
-            MoveError::NoRelation { index } | MoveError::NoClause { index } => vec![("index", index.to_string())],
+            MoveError::NoRelation { index } | MoveError::NoClause { index } | MoveError::NoOpinion { index } => {
+                vec![("index", index.to_string())]
+            }
             MoveError::NotInClause { field } => vec![("field", (*field).to_owned())],
             MoveError::UnknownRule { rule } => vec![("rule", rule.to_string())],
             MoveError::Locked(lock) => lock.params(),

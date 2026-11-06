@@ -569,6 +569,7 @@ mod tests {
             bans: Vec::new(),
             ties: Vec::new(),
             tie_room: 0,
+            club_opinions: Vec::new(),
             retirement_known: false,
             retires: None,
             clause_room: 0,

@@ -14,10 +14,10 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use fmlibre_core::{
     ATTRIBUTE_GROUPS, ArrayCandidate, ArrayRvas, ArraySource, AttributeBound, BuildProfile, Buyer, CaptainRole,
     ClubIndex, Entity, ExportFormat, ExportHeader, Field, FmDate, Found, GAME_EXE, GAME_PLUGIN, GameInfo,
-    GraphicsIndex, Kind, Loan, MoveTerms, PERSONALITY, POSITIONS, Picture, PlayerFilter, PlayerIndex, PlayerOrder,
-    PlayerSort, ProfileNotes, Purpose, STAFF_ATTRIBUTE_GROUPS, SUPPORTER_MIX, SUPPORTER_TRAITS, Scale, ScanOptions,
-    ScoutOrder, ScoutRequest, Session, SessionError, StaffIndex, Target, Tie, TieTarget, find_game, job_name, nations,
-    profile_text, scan_object_arrays, sort_players,
+    GraphicsIndex, Kind, Loan, MoveTerms, Opinion, PERSONALITY, POSITIONS, Picture, PlayerFilter, PlayerIndex,
+    PlayerOrder, PlayerSort, ProfileNotes, Purpose, STAFF_ATTRIBUTE_GROUPS, SUPPORTER_MIX, SUPPORTER_TRAITS, Scale,
+    ScanOptions, ScoutOrder, ScoutRequest, Session, SessionError, StaffIndex, Target, Tie, TieTarget, find_game,
+    job_name, nations, profile_text, scan_object_arrays, sort_players,
 };
 #[cfg(target_os = "macos")]
 use fmlibre_mem::MachImage;
@@ -374,6 +374,23 @@ enum Command {
     TieAdd {
         /// The player's UID.
         uid: u32,
+        #[arg(value_enum)]
+        tie: TieArg,
+        /// The UID of the nation, or of the club for a club he was trained at.
+        target: u32,
+        /// The homegrown rule of a training: 1 for 15-21, 2 for 0-21, 5 for 15-21 excluding loans, 10 for 0-19.
+        #[arg(long)]
+        rule: Option<u8>,
+        #[command(flatten)]
+        restore: RestoreArgs,
+    },
+    /// Give a player a tie in place of a club he favours or dislikes (`ties` lists them), where his list has no room
+    /// for another.
+    TieReplace {
+        /// The player's UID.
+        uid: u32,
+        /// The number of the club he favours or dislikes, from `ties`.
+        index: usize,
         #[arg(value_enum)]
         tie: TieArg,
         /// The UID of the nation, or of the club for a club he was trained at.
@@ -893,6 +910,7 @@ fn run(cli: Cli) -> Result<()> {
                 | Command::TieSet { .. }
                 | Command::TieRemove { .. }
                 | Command::TieAdd { .. }
+                | Command::TieReplace { .. }
                 | Command::Captain { .. }
         )
     );
@@ -1012,6 +1030,15 @@ fn run(cli: Cli) -> Result<()> {
                 TieArg::Club => (Tie::TrainedAtClub, TieUid::Club(target)),
             };
             tie_change(&session, uid, Some(TieAction::Add { tie, target, rule }), restore)
+        }
+        Command::TieReplace { uid, index, tie, target, rule, restore } => {
+            let session = connect(process, ArraySource::ProfileFirst)?;
+            let (tie, target) = match tie {
+                TieArg::Nationality => (Tie::Nationality, TieUid::Nation(target)),
+                TieArg::Nation => (Tie::TrainedInNation, TieUid::Nation(target)),
+                TieArg::Club => (Tie::TrainedAtClub, TieUid::Club(target)),
+            };
+            tie_change(&session, uid, Some(TieAction::Replace { index, tie, target, rule }), restore)
         }
         Command::Swap { uid, other, restore } => {
             swap_players(&connect(process, ArraySource::ProfileFirst)?, uid, other, restore)
@@ -3597,9 +3624,13 @@ enum TieAction {
     Set { index: usize, target: Option<TieUid>, rule: Option<u8> },
     Remove { index: usize },
     Add { tie: Tie, target: TieUid, rule: Option<u8> },
+    Replace { index: usize, tie: Tie, target: TieUid, rule: Option<u8> },
 }
 
-/// Lists a player's ties, after changing them as `action` says (and putting them back with --restore).
+/// Where a relation to a person points into a player's object, and into a member of staff's (Windows).
+const PERSON_IN_PLAYER: u64 = 0x288;
+const PERSON_IN_STAFF: u64 = 0x100;
+
 /// Prints every entry of a player's list of relations as stored: the target, its class and name where known, and the
 /// bytes after it (a count, the kind of target, the kind of relation, a value, a level).
 fn relation_entries(session: &Session, uid: u32) -> Result<()> {
@@ -3611,6 +3642,29 @@ fn relation_entries(session: &Session, uid: u32) -> Result<()> {
     let club_name = |club: u64| -> Option<String> {
         let uid = process.read_u32(club + layout.club.uid).ok()?;
         clubs.get(uid).map(|c| format!("{} (club {uid})", c.name))
+    };
+    let staff = session.staff()?;
+    // A relation to a person points into his object: on Windows a player's at +0x288 past his person block's shift, a
+    // member of staff's at +0x100 (see docs/recon/fm27-nationality.md). Elsewhere, the people whose objects are close.
+    let person_name = |person: u64| -> Option<String> {
+        let player = players.iter().find(|p| p.address + PERSON_IN_PLAYER + p.shift == person);
+        let found = player.map(|p| format!("{} (player {})", p.name, p.uid)).or_else(|| {
+            let member = staff.iter().find(|s| s.address + PERSON_IN_STAFF + s.shift == person)?;
+            Some(format!("{} (staff {})", member.name, member.uid))
+        });
+        found.or_else(|| {
+            let close = |address: u64| (person as i64 - address as i64).unsigned_abs() <= 0x400;
+            let offset = |address: u64| person as i64 - address as i64;
+            let mut near: Vec<String> = players
+                .iter()
+                .filter(|p| close(p.address))
+                .map(|p| format!("player {} {:+#x}", p.uid, offset(p.address)))
+                .collect();
+            near.extend(
+                staff.iter().filter(|s| close(s.address)).map(|s| format!("staff {} {:+#x}", s.uid, offset(s.address))),
+            );
+            Some(format!("near: {}", near.join(", ")))
+        })
     };
     let entries = session.relation_entries(player)?;
     println!("{} entries:", entries.len());
@@ -3626,6 +3680,7 @@ fn relation_entries(session: &Session, uid: u32) -> Result<()> {
         let name = match kind {
             _ if !is_user_pointer(target) => None,
             1 => club_name(target),
+            3 => person_name(target),
             4 => process.read_u64(target + layout.team.club).ok().and_then(club_name).map(|c| format!("team of {c}")),
             8 => known.iter().find(|n| n.address == target).map(|n| format!("{} (nation {:?})", n.name, n.uid)),
             _ => None,
@@ -3776,9 +3831,29 @@ fn relation_kinds(session: &Session, only: Option<u8>, examples: usize) -> Resul
     type Seen = (usize, BTreeMap<u16, usize>, BTreeMap<u16, usize>, Vec<String>);
     let mut targets: BTreeMap<String, Seen> = BTreeMap::new();
     let mut read = 0;
+    // Room for a club he was trained at: [with one already, with room, without one: with room, with a favoured or
+    // disliked club, with a favoured or disliked person only, with none of those].
+    let mut club_room = [0usize; 6];
     for player in &players {
         let Ok(entries) = session.relation_entries(player) else { continue };
         read += 1;
+        let has = |relations: &[u8]| entries.iter().any(|(_, bytes)| relations.contains(&bytes[11]));
+        let room = session.relation_room(player).unwrap_or(0) > 0;
+        let without = !has(&[72]);
+        club_room[0] += usize::from(!without);
+        club_room[1] += usize::from(room);
+        if without {
+            let slot = if room {
+                2
+            } else if has(&[3, 4]) {
+                3
+            } else if has(&[1, 2]) {
+                4
+            } else {
+                5
+            };
+            club_room[slot] += 1;
+        }
         let mut seen = std::collections::HashSet::new();
         for (_, bytes) in entries {
             let (kind, relation) = (bytes[10], bytes[11]);
@@ -3813,6 +3888,13 @@ fn relation_kinds(session: &Session, only: Option<u8>, examples: usize) -> Resul
             for ((relation, kind), (with, entries)) in kinds {
                 println!("  {relation:>3} {kind:>4}  {with:>7}  {entries:>7}");
             }
+            let [with, room, without_room, clubs, people, none] = club_room;
+            println!("Trained at a club (72): {with} players; room for another tie: {room}.");
+            println!(
+                "Without a club: {} players; {without_room} with room, {clubs} with a favoured or disliked club (3, 4), \
+                 {people} with only a favoured or disliked person (1, 2), {none} with none of those.",
+                without_room + clubs + people + none
+            );
         }
         Some(relation) => {
             let mut rows: Vec<_> = targets.into_iter().collect();
@@ -3834,6 +3916,7 @@ fn relation_kinds(session: &Session, only: Option<u8>, examples: usize) -> Resul
     Ok(())
 }
 
+/// Lists a player's ties, after changing them as `action` says (and putting them back with --restore).
 fn tie_change(session: &Session, uid: u32, action: Option<TieAction>, restore: RestoreArgs) -> Result<()> {
     let players = PlayerIndex::new(session.players()?);
     let clubs = ClubIndex::new(session.clubs()?);
@@ -3855,6 +3938,11 @@ fn tie_change(session: &Session, uid: u32, action: Option<TieAction>, restore: R
             let rule = tie.rule.map_or(String::new(), |rule| format!(", homegrown rule {rule}"));
             println!("  #{:<3} {kind:<18} {name} (UID {}){rule}", tie.index, tie.target_uid);
         }
+        for opinion in session.club_opinions(player)? {
+            let kind = if opinion.opinion == Opinion::Favoured { "favoured club" } else { "disliked club" };
+            let name = opinion.name.as_deref().unwrap_or("?");
+            println!("  #{:<3} {kind:<18} {name} (UID {})", opinion.index, opinion.target_uid);
+        }
         Ok(())
     };
     show("now")?;
@@ -3875,6 +3963,9 @@ fn tie_change(session: &Session, uid: u32, action: Option<TieAction>, restore: R
         }
         TieAction::Remove { index } => session.plan_relation_removal(player, index)?,
         TieAction::Add { tie, target: by, rule } => session.plan_relation_add(player, tie, target(by)?, rule)?,
+        TieAction::Replace { index, tie, target: by, rule } => {
+            session.plan_relation_replace(player, index, tie, target(by)?, rule)?
+        }
     };
     let done = session.apply_relation(&plan)?;
     show("changed")?;

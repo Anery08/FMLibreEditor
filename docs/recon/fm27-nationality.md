@@ -60,6 +60,20 @@ Out of a sample of 3,636 lists, 94% were exactly as long as their capacity, and 
 can seldom be added without allocating, which the editor never does. Changing or removing an
 entry always works.
 
+On the Game Pass save of July 2027 (10,655 players, `fmlibre-probe relation-kinds`): 8,372
+players were trained at a club (relation 72), whose club the editor can point elsewhere, and 662
+lists had room for one more entry. Of the 2,283 players trained at no club, 58 had room, 778
+favoured or disliked a club (relations 3 and 4), 463 only favoured or disliked people (1 and 2),
+and 984 had none of those.
+
+So a club he was trained at can take the place of a club he favours or dislikes: the entry is
+written over as a new one would be (`plan_relation_replace`), and he no longer has that opinion.
+His relations to people are left alone, because they are kept on both sides: Bukayo Saka's
+list holds Ezri Konsa (relation 1, count 5, value 60), and Konsa's holds Saka with the same
+values. Such an entry points into the person's object, not at its start: a player's at
+`+0x288` (plus his person block's shift: `+0x380` for a player who is also staff), a member of
+staff's at `+0x100` (Saka's other one is Mikel Arteta's).
+
 ## Checked in the game
 
 With the probe holding the changes (`tie-set` and `tie-add` with `--hold`), the game's page

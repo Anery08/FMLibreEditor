@@ -10,7 +10,9 @@
 //! The editor reads those three kinds of tie. It points one at another nation or club, gives a training another
 //! rule, takes one out, or adds one. Like the squad lists, the list is as long as the game made it and the editor
 //! allocates nothing: a tie is added only where the list's block has room (see [`HeapLayout`]), which most players'
-//! lists lack, so changing one of his ties is the way to give him another.
+//! lists lack. So a tie can also take the place of what he thinks of a club: a club he favours (relation 3) or dislikes
+//! (4), which says no more than that. His relations to people are left alone, as the other person's list holds the same
+//! relation back to him.
 //!
 //! [`HeapLayout`]: crate::profile::HeapLayout
 //! [`RelationLayout`]: crate::profile::RelationLayout
@@ -30,6 +32,10 @@ const MOST_RELATIONS: u64 = 256;
 /// The game's codes for the kinds of target.
 const CLUB: u8 = 1;
 const NATION: u8 = 8;
+
+/// The game's codes for a club a person favours, and one he dislikes.
+const FAVOURED_CLUB: u8 = 3;
+const DISLIKED_CLUB: u8 = 4;
 
 /// The homegrown rules the editor writes, by the game's code: 15–21, 0–21, 15–21 excluding loans, and 0–19 for a
 /// year. The game has others, which the editor shows but does not write.
@@ -106,6 +112,29 @@ pub struct Relation {
     pub rule: Option<u8>,
 }
 
+/// What a player thinks of a club.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Opinion {
+    Favoured,
+    Disliked,
+}
+
+/// A club a player favours or dislikes, which a tie may take the place of where his list has no room for another (see
+/// [`Session::plan_relation_replace`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClubOpinion {
+    /// Where it is in his list of relations.
+    pub index: usize,
+    pub opinion: Opinion,
+    /// The club.
+    #[serde(skip)]
+    pub target: u64,
+    pub target_uid: u32,
+    pub name: Option<String>,
+}
+
 /// A change to a player's ties, worked out from the game as it is now and ready to be written.
 #[derive(Debug, Clone)]
 pub struct RelationPlan {
@@ -113,6 +142,8 @@ pub struct RelationPlan {
     /// The tie before and after: none before for one added, none after for one taken out.
     pub before: Option<Relation>,
     pub after: Option<Relation>,
+    /// For a tie that took the place of what he thought of a club: that.
+    pub replaced: Option<ClubOpinion>,
     patches: Vec<Patch>,
 }
 
@@ -122,6 +153,7 @@ pub struct RelationSet {
     pub player: u32,
     pub before: Option<Relation>,
     pub after: Option<Relation>,
+    pub replaced: Option<ClubOpinion>,
     patches: Vec<Patch>,
 }
 
@@ -158,6 +190,14 @@ impl Session {
         }
     }
 
+    /// The clubs `player` favours or dislikes, which a tie may take the place of (see `plan_relation_replace`).
+    pub fn club_opinions(&self, player: &PlayerSummary) -> Result<Vec<ClubOpinion>, MoveError> {
+        let Some(list) = self.relation_list(player)? else {
+            return Ok(Vec::new());
+        };
+        Ok(list.entries.iter().enumerate().filter_map(|(index, entry)| self.opinion_at(index, entry)).collect())
+    }
+
     /// Works out pointing the tie at `index` in the list of `player` at another nation or club, and giving a training
     /// another rule; what is left out stays. Nothing is written.
     pub fn plan_relation_change(
@@ -191,7 +231,13 @@ impl Session {
         if patches.0.is_empty() || self.relations(player)?.iter().any(|tie| tie.index != index && same(tie, &after)) {
             return Err(MoveError::SameRelation);
         }
-        Ok(RelationPlan { player: player.uid, before: Some(before), after: Some(after), patches: patches.0 })
+        Ok(RelationPlan {
+            player: player.uid,
+            before: Some(before),
+            after: Some(after),
+            replaced: None,
+            patches: patches.0,
+        })
     }
 
     /// Works out taking the tie at `index` out of the list of `player`: the entries after it move up one. Nothing is
@@ -208,7 +254,7 @@ impl Session {
         patches.push(list.begin + index as u64 * size, entries[index..last].concat(), entries[index + 1..].concat());
         patches.push(list.header + 8, list.end.to_le_bytes(), (list.end - size).to_le_bytes());
         patches.push(list.begin + last as u64 * size, entries[last].clone(), vec![0; size as usize]);
-        Ok(RelationPlan { player: player.uid, before: Some(before), after: None, patches: patches.0 })
+        Ok(RelationPlan { player: player.uid, before: Some(before), after: None, replaced: None, patches: patches.0 })
     }
 
     /// Works out adding a tie of `tie` to `target` to the list of `player`, with the homegrown rule `rule` for a
@@ -220,54 +266,100 @@ impl Session {
         target: TieTarget,
         rule: Option<u8>,
     ) -> Result<RelationPlan, MoveError> {
-        let r = &self.layout.relation;
+        let size = self.layout.relation.size;
         let list = self.relation_list(player)?.ok_or(MoveError::RelationsFull)?;
+        let after = self.new_tie(player, list.entries.len(), tie, target, rule)?;
+        if self.room(&list)? == 0 {
+            return Err(MoveError::RelationsFull);
+        }
+        let mut patches = Patches::default();
+        let slot = self.process.read_bytes(list.end, size as usize)?;
+        patches.push(list.end, slot, self.entry_of(&after));
+        let end = list.end + size;
+        let header = [list.end.to_le_bytes(), list.capacity.to_le_bytes()].concat();
+        patches.push(list.header + 8, header, [end.to_le_bytes(), list.capacity.max(end).to_le_bytes()].concat());
+        Ok(RelationPlan { player: player.uid, before: None, after: Some(after), replaced: None, patches: patches.0 })
+    }
+
+    /// Works out giving `player` a tie of `tie` to `target`, with the homegrown rule `rule` for a training, in place of
+    /// the club he favours or dislikes at `index` in his list: the way to give him one more tie where his list has no
+    /// room for it. Nothing is written.
+    pub fn plan_relation_replace(
+        &self,
+        player: &PlayerSummary,
+        index: usize,
+        tie: Tie,
+        target: TieTarget,
+        rule: Option<u8>,
+    ) -> Result<RelationPlan, MoveError> {
+        let list = self.relation_list(player)?.ok_or(MoveError::NoOpinion { index })?;
+        let old = list.entries.get(index).ok_or(MoveError::NoOpinion { index })?;
+        let replaced = self.opinion_at(index, old).ok_or(MoveError::NoOpinion { index })?;
+        let after = self.new_tie(player, index, tie, target, rule)?;
+        let mut patches = Patches::default();
+        patches.push(list.begin + index as u64 * self.layout.relation.size, old.clone(), self.entry_of(&after));
+        let replaced = Some(replaced);
+        Ok(RelationPlan { player: player.uid, before: None, after: Some(after), replaced, patches: patches.0 })
+    }
+
+    /// Writes a planned change to a player's ties, each write over the bytes it expects, after checking them all.
+    pub fn apply_relation(&self, plan: &RelationPlan) -> Result<RelationSet, MoveError> {
+        self.apply_patches(&plan.patches)?;
+        let RelationPlan { player, ref before, ref after, ref replaced, ref patches } = *plan;
+        Ok(RelationSet {
+            player,
+            before: before.clone(),
+            after: after.clone(),
+            replaced: replaced.clone(),
+            patches: patches.clone(),
+        })
+    }
+
+    /// A new tie of `tie` to `target` for `player`, at `index` in his list, with the homegrown rule `rule` for a
+    /// training: checked to be one the editor writes, and one he does not have yet.
+    fn new_tie(
+        &self,
+        player: &PlayerSummary,
+        index: usize,
+        tie: Tie,
+        target: TieTarget,
+        rule: Option<u8>,
+    ) -> Result<Relation, MoveError> {
         let rule = match (tie.is_training(), rule) {
             (true, Some(rule)) if HOMEGROWN_RULES.contains(&rule) => Some(rule),
             (false, None) => None,
             (_, rule) => return Err(MoveError::UnknownRule { rule: rule.unwrap_or(0) }),
         };
-        let after = Relation {
-            index: list.entries.len(),
+        let tie = Relation {
+            index,
             tie,
             target: self.tie_target(player, tie, target)?,
             target_uid: target.uid(),
             name: Some(target.name()),
             rule,
         };
-        if self.relations(player)?.iter().any(|known| same(known, &after)) {
+        if self.relations(player)?.iter().any(|known| same(known, &tie)) {
             return Err(MoveError::SameRelation);
         }
-        if self.room(&list)? == 0 {
-            return Err(MoveError::RelationsFull);
-        }
-        // A new entry as the game writes one: a nationality's strength of 100 and 80, or a training's rule.
+        Ok(tie)
+    }
+
+    /// The bytes of a new entry for `tie`, as the game writes one: a nationality's strength of 100 and 80, or a
+    /// training's rule.
+    fn entry_of(&self, tie: &Relation) -> Vec<u8> {
+        let r = &self.layout.relation;
         let mut entry = vec![0u8; r.size as usize];
-        entry[r.target as usize..r.target as usize + 8].copy_from_slice(&after.target.to_le_bytes());
-        let (kind, relation) = tie.codes();
+        entry[r.target as usize..r.target as usize + 8].copy_from_slice(&tie.target.to_le_bytes());
+        let (kind, relation) = tie.tie.codes();
         entry[r.target_kind as usize] = kind;
         entry[r.relation as usize] = relation;
         let value = r.value as usize;
-        (entry[value], entry[value + 1]) = match rule {
+        (entry[value], entry[value + 1]) = match tie.rule {
             Some(rule) => (rule, 0xFF),
             None => (0x64, 0x50),
         };
         entry[r.size as usize - 1] = 0xFF;
-
-        let mut patches = Patches::default();
-        let slot = self.process.read_bytes(list.end, r.size as usize)?;
-        patches.push(list.end, slot, entry);
-        let end = list.end + r.size;
-        let header = [list.end.to_le_bytes(), list.capacity.to_le_bytes()].concat();
-        patches.push(list.header + 8, header, [end.to_le_bytes(), list.capacity.max(end).to_le_bytes()].concat());
-        Ok(RelationPlan { player: player.uid, before: None, after: Some(after), patches: patches.0 })
-    }
-
-    /// Writes a planned change to a player's ties, each write over the bytes it expects, after checking them all.
-    pub fn apply_relation(&self, plan: &RelationPlan) -> Result<RelationSet, MoveError> {
-        self.apply_patches(&plan.patches)?;
-        let RelationPlan { player, ref before, ref after, ref patches } = *plan;
-        Ok(RelationSet { player, before: before.clone(), after: after.clone(), patches: patches.clone() })
+        entry
     }
 
     /// Puts the ties back as they were, provided the list still holds what the change wrote.
@@ -323,6 +415,25 @@ impl Session {
         let target_uid = self.process.read_u32(target + target_uid).ok()?;
         let rule = tie.is_training().then_some(entry[r.value as usize]);
         Some(Relation { index, tie, target, target_uid, name, rule })
+    }
+
+    /// The club `entry` at `index` says the player favours or dislikes, or `None` for a relation of another kind, or one
+    /// whose club does not check out.
+    fn opinion_at(&self, index: usize, entry: &[u8]) -> Option<ClubOpinion> {
+        let r = &self.layout.relation;
+        let opinion = match (entry[r.target_kind as usize], entry[r.relation as usize]) {
+            (CLUB, FAVOURED_CLUB) => Opinion::Favoured,
+            (CLUB, DISLIKED_CLUB) => Opinion::Disliked,
+            _ => return None,
+        };
+        let target = u64::from_le_bytes(entry[r.target as usize..r.target as usize + 8].try_into().ok()?);
+        if !is_user_pointer(target) {
+            return None;
+        }
+        let target_uid = self.process.read_u32(target + self.layout.club.uid).ok()?;
+        let name = self.process.read_u64(target + self.layout.club.name).ok();
+        let name = name.and_then(|text| read_fm_string(&self.process, text));
+        Some(ClubOpinion { index, opinion, target, target_uid, name })
     }
 
     /// How many more entries the block of `list` holds: up to its capacity, or to the end of the allocator's block

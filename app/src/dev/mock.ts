@@ -33,6 +33,7 @@ import type {
   Injury,
   LoanDetails,
   Tie,
+  ClubOpinion,
   Clause,
   TieKind,
   PlayerDetails,
@@ -315,6 +316,7 @@ function details(player: PlayerSummary): PlayerDetails {
     bans: bansOf(player.uid),
     ties: tiesOf(player),
     tieRoom: tieRoomOf(player),
+    clubOpinions: opinionsOf(player),
     clauseRoom: player.club ? clauseRoomOf(player.uid) : 0,
     retirementKnown: true,
     retires: retiresOf(player.uid),
@@ -435,9 +437,54 @@ function fixtureTies(player: PlayerSummary): Tie[] {
 
 const tiesOf = (player: PlayerSummary) => tiesSet.get(player.uid) ?? fixtureTies(player);
 
-/** Room for one or two more ties in every third list, less what was added to it. */
+/** The club opinions of the fixture players changed through the editor (a tie took the place of one), by UID. */
+const opinionsSet = new Map<number, ClubOpinion[]>();
+
+/** What each change to a player's ties (by the id of its logged change) found of his club opinions, for its undo. */
+const opinionUndo = new Map<number, ClubOpinion[]>();
+
+/**
+ * A fixture player's club opinions, at the even places of his list: three players in four favour a club, and one in
+ * seven dislikes another.
+ */
+function fixtureOpinions(player: PlayerSummary): ClubOpinion[] {
+  const opinions: ClubOpinion[] = [];
+  const mens = clubs.filter((c) => !c.women);
+  const club = (offset: number) => mens[(player.uid + offset) % mens.length];
+  if (player.uid % 4 !== 0) {
+    const favoured = club(0);
+    opinions.push({ index: 0, opinion: "favoured", targetUid: favoured.uid, name: favoured.name });
+  }
+  if (player.uid % 7 === 0) {
+    const disliked = club(3);
+    opinions.push({ index: 2, opinion: "disliked", targetUid: disliked.uid, name: disliked.name });
+  }
+  return opinions;
+}
+
+const opinionsOf = (player: PlayerSummary) => opinionsSet.get(player.uid) ?? fixtureOpinions(player);
+
+/** Room for one or two more ties in every third list, less what was added to it (not what took an opinion's place). */
 const tieRoomOf = (player: PlayerSummary) =>
-  Math.max(0, (player.uid % 3) - (tiesOf(player).length - fixtureTies(player).length));
+  Math.max(
+    0,
+    (player.uid % 3) -
+      (tiesOf(player).length - fixtureTies(player).length) +
+      (fixtureOpinions(player).length - opinionsOf(player).length),
+  );
+
+/** The fixture club with the UID `uid`, or the real commands' failure. */
+function mockClub(uid: number): ClubSummary {
+  const club = clubs.find((c) => c.uid === uid);
+  if (!club) {
+    throw notFound("club", uid);
+  }
+  return club;
+}
+
+/** The name of the nation or club with the UID `target`, as a tie of `kind` points at one or the other. */
+const targetName = (kind: TieKind, target: number) =>
+  kind === "trainedAtClub" ? mockClub(target).name : mockNation(target);
 
 /** The fixture nation with the UID `uid`, or the real commands' failure. */
 function mockNation(uid: number): string {
@@ -448,11 +495,27 @@ function mockNation(uid: number): string {
   return name;
 }
 
-/** Logs a change to a player's ties as the real commands do, keeping his ties as they were for undoing it. */
-function logTie(player: PlayerSummary, before: Tie | null, after: Tie | null, ties: Tie[]): LoggedChange {
+/**
+ * Logs a change to a player's ties as the real commands do, keeping his ties and club opinions as they were for undoing
+ * it; `replaced` is the opinion a new tie took the place of.
+ */
+function logTie(
+  player: PlayerSummary,
+  before: Tie | null,
+  after: Tie | null,
+  ties: Tie[],
+  replaced?: ClubOpinion,
+): LoggedChange {
   const id = changes.length + 1;
   tieUndo.set(id, tiesOf(player));
+  opinionUndo.set(id, opinionsOf(player));
   tiesSet.set(player.uid, ties);
+  if (replaced) {
+    opinionsSet.set(
+      player.uid,
+      opinionsOf(player).filter((opinion) => opinion.index !== replaced.index),
+    );
+  }
   const kind = (before ?? after)!.tie;
   const end = (tie: Tie | null) => tie && { name: tie.name ?? String(tie.targetUid), rule: tie.rule };
   const logged: LoggedChange = {
@@ -466,7 +529,13 @@ function logTie(player: PlayerSummary, before: Tie | null, after: Tie | null, ti
     new: after?.targetUid ?? 0,
     undoneAt: null,
     batch: null,
-    tie: { from: end(before), to: end(after) },
+    tie: {
+      from: end(before),
+      to: end(after),
+      ...(replaced && {
+        replaced: { opinion: replaced.opinion, name: replaced.name ?? String(replaced.targetUid) },
+      }),
+    },
   };
   changes.push(logged);
   return { ...logged };
@@ -485,15 +554,19 @@ function tieAt(uid: number, index: number): [PlayerSummary, Tie] {
   return [player, tie];
 }
 
-/** `change_tie`: points a fixture player's tie at another nation, or gives a training another rule. */
-function changeTie(uid: number, index: number, nation?: number, rule?: number): LoggedChange {
+/** `change_tie`: points a fixture player's tie at another nation or club, or gives a training another rule. */
+function changeTie(uid: number, index: number, nation?: number, club?: number, rule?: number): LoggedChange {
   const [player, tie] = tieAt(uid, index);
   if (rule !== undefined && (tie.rule === null || !HOMEGROWN_RULES.includes(rule))) {
     throw failure("relation.rule", `homegrown rule ${rule} is not one the editor writes`, { rule });
   }
+  const target = nation ?? club;
+  if (target !== undefined && (club !== undefined) !== (tie.tie === "trainedAtClub")) {
+    throw failure("relation.target", "that is not a nation or club of the game, of the kind this tie takes");
+  }
   const after: Tie = {
     ...tie,
-    ...(nation !== undefined && { targetUid: nation, name: mockNation(nation) }),
+    ...(target !== undefined && { targetUid: target, name: targetName(tie.tie, target) }),
     ...(rule !== undefined && { rule }),
   };
   const ties = tiesOf(player);
@@ -509,25 +582,54 @@ function removeTie(uid: number, index: number): LoggedChange {
   return logTie(player, tie, null, tiesOf(player).filter((t) => t.index !== index));
 }
 
-/** `add_tie`: gives a fixture player a nationality or a nation he was trained in, where his list has room. */
+/**
+ * A new tie of `kind` to `target` for a fixture player at `index`, checked as the real commands check it: a training
+ * takes a rule the editor writes, and he may not have it already.
+ */
+function newTie(player: PlayerSummary, index: number, kind: TieKind, target: number, rule?: number): Tie {
+  const training = kind !== "nationality";
+  if (training !== (rule !== undefined) || (rule !== undefined && !HOMEGROWN_RULES.includes(rule))) {
+    throw failure("relation.rule", `homegrown rule ${rule ?? 0} is not one the editor writes`, { rule: rule ?? 0 });
+  }
+  const tie: Tie = { index, tie: kind, targetUid: target, name: targetName(kind, target), rule: rule ?? null };
+  if (tiesOf(player).some((t) => t.tie === kind && t.targetUid === target && t.rule === tie.rule)) {
+    throw failure("relation.same", "the player has that already");
+  }
+  return tie;
+}
+
+/** `add_tie`: gives a fixture player a nationality, or a nation or club he was trained in, where his list has room. */
 function addTie(uid: number, kind: TieKind, target: number, rule?: number): LoggedChange {
   const player = players.find((p) => p.uid === uid);
   if (!player) {
     throw notFound("player", uid);
   }
+  const ties = tiesOf(player);
+  const last = Math.max(0, ...ties.map((t) => t.index), ...opinionsOf(player).map((o) => o.index));
+  const after = newTie(player, last + 1, kind, target, rule);
   if (tieRoomOf(player) === 0) {
     throw failure(
       "relation.noRoom",
       "the player's list of nationalities and ties has no room for another, and the editor cannot make it bigger; change one of them instead",
     );
   }
-  const ties = tiesOf(player);
-  const index = Math.max(0, ...ties.map((t) => t.index)) + 1;
-  const after: Tie = { index, tie: kind, targetUid: target, name: mockNation(target), rule: rule ?? null };
-  if (ties.some((t) => t.tie === kind && t.targetUid === target && t.rule === after.rule)) {
-    throw failure("relation.same", "the player has that already");
-  }
   return logTie(player, null, after, [...ties, after]);
+}
+
+/** `replace_tie`: gives a fixture player a tie in place of the club he favours or dislikes at `index`. */
+function replaceTie(uid: number, index: number, kind: TieKind, target: number, rule?: number): LoggedChange {
+  const player = players.find((p) => p.uid === uid);
+  if (!player) {
+    throw notFound("player", uid);
+  }
+  const replaced = opinionsOf(player).find((opinion) => opinion.index === index);
+  if (!replaced) {
+    throw failure("relation.noOpinion", `the player's relation number ${index} is not a club he favours or dislikes`, {
+      index,
+    });
+  }
+  const after = newTie(player, index, kind, target, rule);
+  return logTie(player, null, after, [...tiesOf(player), after], replaced);
 }
 
 /** The fixture players whose bans were lifted through the editor, by UID, while the lifting is not undone. */
@@ -1352,6 +1454,7 @@ function undoChange(id: number): LoggedChange {
   }
   if (entry.tie) {
     tiesSet.set(entry.uid, tieUndo.get(entry.id)!);
+    opinionsSet.set(entry.uid, opinionUndo.get(entry.id)!);
     entry.undoneAt = Date.now();
     return { ...entry };
   }
@@ -2794,12 +2897,21 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         Number(args?.uid),
         Number(args?.index),
         args?.nation as number | undefined,
+        args?.club as number | undefined,
         args?.rule as number | undefined,
       ) as T;
     case "remove_tie":
       return removeTie(Number(args?.uid), Number(args?.index)) as T;
     case "add_tie":
       return addTie(Number(args?.uid), args?.tie as TieKind, Number(args?.target), args?.rule as number | undefined) as T;
+    case "replace_tie":
+      return replaceTie(
+        Number(args?.uid),
+        Number(args?.index),
+        args?.tie as TieKind,
+        Number(args?.target),
+        args?.rule as number | undefined,
+      ) as T;
     case "homegrown_rules":
       return [...HOMEGROWN_RULES] as T;
     case "scouting_overview":

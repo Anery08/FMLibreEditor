@@ -280,6 +280,13 @@ export const removeTie = (uid: number, index: number) => call<LoggedChange>("rem
 export const addTie = (uid: number, tie: TieKind, target: number, rule?: number) =>
   call<LoggedChange>("add_tie", { uid, tie, target, rule });
 
+/**
+ * The same in place of the club he favours or dislikes at `index` in his list (see `PlayerDetails.clubOpinions`), for
+ * a list with no room for another. Logged and undone like any change: the undo gives him back what he thought of it.
+ */
+export const replaceTie = (uid: number, index: number, tie: TieKind, target: number, rule?: number) =>
+  call<LoggedChange>("replace_tie", { uid, index, tie, target, rule });
+
 /** The homegrown rules `changeTie` and `addTie` write, by the game's code. */
 export const homegrownRules = () => call<number[]>("homegrown_rules");
 

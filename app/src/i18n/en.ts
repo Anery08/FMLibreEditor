@@ -19,6 +19,7 @@ import type {
   GraphicsCounts,
   MassOperationKind,
   MassPreview,
+  Opinion,
   PlayerSort,
   SquadSort,
   StaffSort,
@@ -1294,6 +1295,9 @@ export const en = {
     fee: (amount: string) => `Fee ${amount}`,
     /** Under a recall from loan that took the loan's option to buy away, which its undo writes back. */
     optionRemoved: (amount: string) => `Option to buy (${amount}) taken away`,
+    /** Under a club he was trained at, given in place of a club he favoured or disliked. */
+    replacedOpinion: (opinion: Opinion, name: string) =>
+      opinion === "favoured" ? `In place of favoured club ${name}` : `In place of disliked club ${name}`,
     /** What a heal changed, in the place of its values: `count` is how many injuries the player had. */
     healed: (count: number) => (count === 1 ? "Healed 1 injury" : `Healed ${format(count)} injuries`),
     /** The same for lifting bans: `count` is how many bans the player had. */
@@ -1750,7 +1754,8 @@ export const en = {
     /** When the player's list has no room for another tie. */
     full:
       "The game made this player's list just big enough for what it holds: a nationality or a training can be " +
-      "changed or removed, but not added.",
+      "changed or removed, and a club can take the place of a club he favours or dislikes, but nothing else can be " +
+      "added.",
     /** The control of a row, for assistive technology: `name` is the nation's or club's. */
     nationOf: (name: string) => `Nation instead of ${name}`,
     ruleOf: (name: string) => `Homegrown rule for ${name}`,
@@ -1761,8 +1766,30 @@ export const en = {
     addNation: "Add a nation…",
     newRule: "Homegrown rule of the new nation",
     add: "Add",
-    /** Under the clubs: what the dialog cannot do with them. */
-    clubNote: "A club can be given another rule or removed; the game itself adds clubs.",
+    /** A club he was trained at: the button that points it at another club, and the search it opens. */
+    changeClub: "Change club",
+    changeClubTitle: (name: string) => `Make him trained at another club instead of ${name}`,
+    clubInsteadOf: (name: string) => `Club instead of ${name}`,
+    /** The button that adds a club he was trained at, and what it opens. */
+    addClub: "Add a club…",
+    addClubTitle: "Make him trained at one more club",
+    newClub: "New club",
+    pickAnother: "Pick another",
+    newClubRule: "Homegrown rule of the new club",
+    /** Where his list has no room: the club he favours or dislikes whose place the new club takes. */
+    inPlaceOf: "In place of",
+    opinion: (opinion: Opinion, name: string) =>
+      opinion === "favoured" ? `Favoured club: ${name}` : `Disliked club: ${name}`,
+    inPlaceOfInfoLabel: "Why in place of another?",
+    inPlaceOfInfo:
+      "The game made his list just big enough for what it holds, and FMLibreEditor does not make it bigger. So the " +
+      "new club takes the place of a club he favours or dislikes: he no longer has that opinion of it, and nothing " +
+      "else changes. His relations to people are left alone, as the other person's list holds them too. Undoing the " +
+      "change gives the opinion back.",
+    noOpinion:
+      "His list has no room, and he favours or dislikes no club whose place a new one could take: change one of his " +
+      "clubs instead.",
+    cancel: "Cancel",
     working: "Writing to the game…",
     close: "Close",
   },
