@@ -500,6 +500,7 @@ export const es: Strings = {
     2: "Entrenador",
     4: "Presidente",
     6: "Directivo",
+    10: "Director de fútbol",
     12: "Fisioterapeuta",
     14: "Ojeador",
     16: "Mánager",

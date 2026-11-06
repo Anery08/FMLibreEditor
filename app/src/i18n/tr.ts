@@ -486,6 +486,7 @@ export const tr: Strings = {
     2: "Antrenör",
     4: "Başkan",
     6: "Yönetici",
+    10: "Futbol Direktörü",
     12: "Fizyoterapist",
     14: "Gözlemci",
     16: "Teknik Direktör",

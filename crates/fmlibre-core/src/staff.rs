@@ -52,6 +52,8 @@ pub fn job_name(code: u8) -> Option<&'static str> {
         2 => "Coach",
         4 => "Chairperson",
         6 => "Director",
+        // Deco (Barcelona), Julian Ward (Liverpool), Luís Campos (Paris Saint-Germain), as the game names their job.
+        10 => "Director of Football",
         // Giuseppe Marotta (Inter) and Florentino Pérez (Real Madrid).
         70 => "President",
         12 => "Physio",
@@ -368,6 +370,7 @@ mod tests {
         assert_eq!(job_name(1), Some("Player"));
         assert_eq!(job_name(3), Some("Coach"));
         assert_eq!(job_name(7), Some("Director"));
+        assert_eq!(job_name(10), Some("Director of Football"));
         assert_eq!(job_name(255), None);
     }
 
