@@ -224,6 +224,9 @@ function ContractGroup({ details, contract }: { details: PlayerDetails; contract
         <div>
           <WageFact wage={contract.wage} />
           <dl className="stats">
+            {contract.contractType !== null && (
+              <Fact label={profileText.contractType}>{profileText.contractTypeName(contract.contractType)}</Fact>
+            )}
             <Fact label={profileText.squadStatus}>
               <EditableValue field="contract.squad_status">
                 {profileText.squadStatusName(contract.squadStatus)}
@@ -257,7 +260,13 @@ function ContractGroup({ details, contract }: { details: PlayerDetails; contract
         </div>
         <ContractDates contract={contract} />
       </div>
-      <ClauseList uid={uid} name={details.name} clauses={contract.clauses} room={details.clauseRoom} />
+      <ClauseList
+        uid={uid}
+        name={details.name}
+        clauses={contract.clauses}
+        room={details.clauseRoom}
+        signed={contract.signed}
+      />
       <ConcernList uid={uid} concerns={contract.concerns} />
     </section>
   );

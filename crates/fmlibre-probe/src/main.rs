@@ -2773,6 +2773,9 @@ fn player(session: &Session, uid: u32) -> Result<()> {
                 c.squad_number.map_or_else(|| "-".to_owned(), |n| n.to_string())
             );
             println!("                 transfer listed {}, loan listed {}", c.transfer_listed, c.loan_listed);
+            if let Some(kind) = c.contract_type {
+                println!("                 contract type {kind}");
+            }
         }
         None => println!("  contract       none"),
     }

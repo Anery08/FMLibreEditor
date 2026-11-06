@@ -53,12 +53,39 @@ const entityCount: Record<Entity, (count: number) => string> = {
 /** What each list holds, in the plural. */
 const entityNouns: Record<Entity, string> = { player: "players", staff: "staff", club: "clubs" };
 
+/**
+ * Squad statuses, by the codes contracts hold them as; named as the game's English contract screen names them. 15, 16,
+ * 17, 20 and 21 are goalkeepers' (21 is the game's "Emergency Backup" too).
+ */
 const SQUAD_STATUSES: Partial<Record<number, string>> = {
   1: "Star player",
   2: "Important player",
   3: "Regular starter",
-  4: "Rotation player",
+  4: "Squad player",
   5: "Impact sub",
+  7: "Fringe player",
+  9: "Emergency backup",
+  10: "Breakthrough prospect",
+  11: "Future prospect",
+  13: "Youngster",
+  14: "B team regular",
+  15: "First-choice goalkeeper",
+  16: "Cup goalkeeper",
+  17: "Domestic cup goalkeeper",
+  20: "Backup",
+  21: "Emergency backup (goalkeeper)",
+  22: "Surplus to requirements",
+};
+
+/** The kinds of contract, by the codes contracts hold them as; 10 and 11 are the MLS's. */
+const CONTRACT_TYPES: Partial<Record<number, string>> = {
+  0: "Part-time contract",
+  1: "Full-time contract",
+  2: "Amateur contract",
+  3: "Youth contract",
+  4: "Non-contract",
+  10: "Senior minimum salary contract",
+  11: "Senior contract",
 };
 
 /**
@@ -109,22 +136,53 @@ const errors: ErrorTexts = {
     "try again, or enter the launch option in Steam yourself.",
 };
 
-/** The kinds of contract clauses and bonuses, by the codes contracts hold them as; named as FMRTE names them. */
+/**
+ * The kinds of contract clauses and bonuses, by the codes contracts hold them as; named as the game's English contract
+ * screen names them (6, which only the German one was seen in, after what it does). The game shows no 54, 58 or 63.
+ */
 const CLAUSE_NAMES_EN: Partial<Record<number, string>> = {
   0: "Minimum fee release clause",
   1: "Relegation release clause",
+  2: "Non promotion release clause",
   3: "Yearly wage rise",
+  4: "Promotion wage rise",
+  5: "Relegation wage drop",
+  6: "Release clause for a staff role",
+  8: "Sell on fee percentage",
+  9: "Sell on fee profit percentage",
   10: "Seasonal landmark goal bonus",
+  11: "One-year extension after league games (final season)",
+  12: "Match highest earner clause",
+  13: "Wage after reaching club league games",
+  14: "Top division promotion wage rise",
   15: "Top division relegation wage drop",
+  16: "Minimum fee release clause (foreign clubs)",
+  17: "Minimum fee release clause (domestic clubs in higher division)",
+  18: "Minimum fee release clause (domestic clubs)",
   19: "Wage after reaching international matches",
+  20: "Percentage of wages paid by sponsor",
+  21: "Percentage of gate receipts paid to player",
   22: "Optional contract extension by club",
-  27: "Minimum fee release clause (clubs in the Champions Cup)",
+  23: "Waive club compensation for managerial role",
+  25: "One-year extension after league games (promoted final season)",
+  26: "One-year extension after league games (avoid relegation final season)",
+  27: "Minimum fee release clause (clubs in UEFA Champions League)",
+  28: "MLS guaranteed contract clause",
+  29: "Contract extension after promotion",
+  30: "Injury release clause",
+  31: "Minimum fee release clause (clubs in a continental competition)",
   32: "Appearance fee",
   33: "Goal bonus",
   34: "Clean sheet bonus",
+  37: "International cap bonus",
   38: "Unused substitute fee",
   39: "Assist bonus",
   40: "Seasonal landmark assist bonus",
+  41: "Seasonal landmark combined goal and assist bonus",
+  54: "Not shown in the game (54)",
+  55: "Active relegation release clause",
+  58: "Not shown in the game (58)",
+  63: "Not shown in the game (63)",
 };
 
 /** Reasons to be unhappy, by the codes the game keeps them as; named as FMRTE names them. */
@@ -507,6 +565,8 @@ export const en = {
     joined: "Joined",
     squadStatus: "Squad status",
     squadStatusName: (status: number) => SQUAD_STATUSES[status] ?? `Status ${status}`,
+    contractType: "Contract type",
+    contractTypeName: (code: number) => CONTRACT_TYPES[code] ?? `Type ${code}`,
     squadNumber: "Squad number",
     transferListed: "Transfer listed",
     loanListed: "Loan listed",
@@ -558,24 +618,47 @@ export const en = {
     moodTitle: "As FMRTE shows it, from -100 to 100; the game shows it in words",
     /** The name of a clause or bonus by its kind; a kind the app does not know yet by its number. */
     clauseName: (kind: number) => CLAUSE_NAMES_EN[kind] ?? `Clause ${kind}`,
-    /** What a clause depends on, by kind: goals, assists, matches, years or a percentage. */
+    /** What a clause depends on, by kind: goals, assists, league games, matches, years or a percentage. */
     clauseCondition: (kind: number, value: number) => {
       switch (kind) {
         case 10:
-          return `${value} goals`;
+          return value === 1 ? "1 goal" : `${value} goals`;
         case 40:
-          return `${value} assists`;
+          return value === 1 ? "1 assist" : `${value} assists`;
+        case 41:
+          return `${value} goals and assists`;
         case 19:
-          return `${value} international matches`;
+          return value === 1 ? "1 international match" : `${value} international matches`;
+        case 11:
+        case 13:
+        case 25:
+        case 26:
+          return value === 1 ? "1 league game" : `${value} league games`;
         case 22:
+        case 29:
           return value === 1 ? "1 year" : `${value} years`;
         case 3:
+        case 4:
+        case 5:
+        case 8:
+        case 9:
+        case 14:
         case 15:
+        case 20:
+        case 21:
           return `${value}%`;
         default:
           return String(value);
       }
     },
+    /** When a release clause expires: on `date`, or, with the contract's start not known, `days` after it. */
+    clauseExpires: (date: string) => `expires ${date}`,
+    clauseExpiresAfter: (days: number) =>
+      days === 1 ? "expires 1 day after signing" : `expires ${format(days)} days after signing`,
+    /** A sell-on clause on the profit: its percentage of what the selling club makes over the amount. */
+    clauseProfitShare: (percent: string, amount: string) => `${percent} of the profit over ${amount}`,
+    /** The wage a clause gives from then on. */
+    clauseWage: (amount: string) => `${amount} a week`,
     moraleTitle: "The game shows morale as the player's overall happiness: content at 10, slightly happy at 11, extremely happy at 15 and 20",
     /** Hover text of jadedness, which the profile shows as stored. */
     jadednessTitle: "How worn out the player is by playing, which rest takes away: -500 is fully rested, and the higher it is, the more he needs a rest",

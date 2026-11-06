@@ -7,10 +7,10 @@ import { useContext, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toPounds, toShown } from "./currency";
 import { addReleaseClause, changeClause, removeClause } from "./editing";
-import { describeError, formatAmount, formatMoney, formatNumber } from "./format";
+import { describeError, formatAmount, formatDate, formatMoney, formatNumber } from "./format";
 import { clauseText as text, profileText } from "./labels";
 import { Fact } from "./ProfileParts";
-import type { Clause } from "./types";
+import type { Clause, FmDate } from "./types";
 import { useModal } from "./useModal";
 import { EditorContext } from "./useProfileEditing";
 
@@ -25,19 +25,59 @@ const MOST_CONDITION = 1_000;
 /** The kind of a release clause, the one the dialog adds. */
 const RELEASE_CLAUSE = 0;
 
-/** The kinds whose condition is known (goals, assists, international matches, years, a percentage): only those change. */
+/** The kinds whose condition the dialog changes (goals, assists, international matches, years, a percentage). */
 const KNOWN_CONDITIONS = new Set([3, 10, 15, 19, 22, 40]);
 
-/** What a clause depends on and its amount, as one line: "10 goals · £848,768"; ✓ for one with neither. */
-export function clauseDetail(clause: Clause): string {
-  return (
-    [
-      clause.condition === null ? null : profileText.clauseCondition(clause.kind, clause.condition),
-      clause.amount === null ? null : formatMoney(clause.amount),
-    ]
-      .filter((part) => part !== null)
-      .join(" · ") || "✓"
-  );
+/**
+ * The kinds of release clause (see `RELEASE_CLAUSES` in `clauses.rs`): their condition, when they have one, is the days
+ * from the contract's start until they expire.
+ */
+const RELEASE_CLAUSES = new Set([0, 1, 2, 16, 17, 18, 27, 31, 55]);
+
+/** The sell-on clause whose amount is a threshold: the selling club gets its percentage of the profit over it. */
+const SELL_ON_PROFIT = 9;
+
+/** The clauses whose amount is the wage they give a week from then on. */
+const WAGE_CLAUSES = new Set([13, 19]);
+
+/** The day `days` after `date`. */
+function plusDays(date: FmDate, days: number): FmDate {
+  const day = new Date(Date.UTC(date.year, date.month - 1, date.day + days));
+  return { year: day.getUTCFullYear(), month: day.getUTCMonth() + 1, day: day.getUTCDate() };
+}
+
+/**
+ * What a clause depends on, in words: the day a release clause expires, counted from `signed` (the contract's start)
+ * when it is known; otherwise the goals, league games, years or percentage it names.
+ */
+function conditionText(clause: Clause, signed: FmDate | null): string | null {
+  if (clause.condition === null) {
+    return null;
+  }
+  if (RELEASE_CLAUSES.has(clause.kind)) {
+    return signed === null
+      ? profileText.clauseExpiresAfter(clause.condition)
+      : profileText.clauseExpires(formatDate(plusDays(signed, clause.condition)));
+  }
+  return profileText.clauseCondition(clause.kind, clause.condition);
+}
+
+/**
+ * What a clause depends on and its amount, as one line: "10 goals · £848,768", "expires 1 Sep 2029 · £30,000,000"
+ * (with `signed`, the contract's start), "7% of the profit over £2,147,579"; ✓ for one with neither.
+ */
+export function clauseDetail(clause: Clause, signed: FmDate | null = null): string {
+  const condition = conditionText(clause, signed);
+  if (clause.kind === SELL_ON_PROFIT && condition !== null && clause.amount !== null) {
+    return profileText.clauseProfitShare(condition, formatMoney(clause.amount));
+  }
+  const amount =
+    clause.amount === null
+      ? null
+      : WAGE_CLAUSES.has(clause.kind)
+        ? profileText.clauseWage(formatMoney(clause.amount))
+        : formatMoney(clause.amount);
+  return [condition, amount].filter((part) => part !== null).join(" · ") || "✓";
 }
 
 /** A clause as the change log names it: its name, what it depends on and its amount. */
@@ -58,10 +98,12 @@ interface ClauseListProps {
   clauses: Clause[];
   /** How many more clauses the contract's list has room for. */
   room: number;
+  /** The contract's start, from which a release clause's expiry counts. */
+  signed: FmDate | null;
 }
 
 /** The list in the profile, and the button that opens the dialog while the game can be written to. */
-export function ClauseList({ uid, name, clauses, room }: ClauseListProps) {
+export function ClauseList({ uid, name, clauses, room, signed }: ClauseListProps) {
   const { editable, readOnlyNote } = useContext(EditorContext);
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -97,12 +139,21 @@ export function ClauseList({ uid, name, clauses, room }: ClauseListProps) {
         <dl className="stats">
           {clauses.map((clause) => (
             <Fact key={clause.index} label={profileText.clauseName(clause.kind)}>
-              {clauseDetail(clause)}
+              {clauseDetail(clause, signed)}
             </Fact>
           ))}
         </dl>
       )}
-      {open && <ClauseDialog uid={uid} name={name} clauses={clauses} room={room} onClose={() => setOpen(false)} />}
+      {open && (
+        <ClauseDialog
+          uid={uid}
+          name={name}
+          clauses={clauses}
+          room={room}
+          signed={signed}
+          onClose={() => setOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -116,7 +167,7 @@ interface ClauseDialogProps extends ClauseListProps {
  * condition, with Save and Remove; and the row that adds a release clause where the list has room. A write keeps every
  * control busy until the profile has read the game again; then the dialog shows the clauses the game holds.
  */
-function ClauseDialog({ uid, name, clauses, room, onClose }: ClauseDialogProps) {
+function ClauseDialog({ uid, name, clauses, room, signed, onClose }: ClauseDialogProps) {
   const { onEdited } = useContext(EditorContext);
   const base = useId();
   const id = (part: string) => `${base}-${part}`;
@@ -199,7 +250,7 @@ function ClauseDialog({ uid, name, clauses, room, onClose }: ClauseDialogProps) 
         <span className="tie-target">
           {label}
           {clause.condition !== null && !conditionChanges && (
-            <span className="tie-rule">{` · ${profileText.clauseCondition(clause.kind, clause.condition)}`}</span>
+            <span className="tie-rule">{` · ${conditionText(clause, signed)}`}</span>
           )}
         </span>
         {clause.amount !== null && (

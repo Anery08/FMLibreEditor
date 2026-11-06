@@ -419,6 +419,11 @@ export interface Contract {
   expires: FmDate | null;
   joined: FmDate | null;
   squadStatus: number;
+  /**
+   * The kind of contract (0 part-time, 1 full-time, 2 amateur, 3 youth, 4 non-contract, 10 and 11 the MLS's); null where
+   * the game's layout does not know where it is.
+   */
+  contractType: number | null;
   squadNumber: number | null;
   transferListed: boolean;
   loanListed: boolean;

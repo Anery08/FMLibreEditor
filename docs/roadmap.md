@@ -305,6 +305,9 @@ changes many at once, and undo.
   - [x] Contract extras: the loyalty bonus (`+0x38`), happiness and playing time happiness, editable, and the list of
     clauses and bonuses (`+0x68`: amount, condition and kind), shown by name. Kinds named against FMRTE's contract
     page for Kane, Haaland, Alex Scott, Courtois and Olise.
+  - [x] Every clause kind, squad status and kind of contract the game uses, named as its English contract screen
+    names them, with the day a release clause expires and the kind of contract (`+0xC3`) in the profile and the
+    export: see the [contract notes](recon/fm27-contracts.md). The squad status menu still offers 1 to 5.
   - [x] Edit the clauses and bonuses: an entry's amount or condition (a condition only for the kinds whose meaning is
     known: goals, assists, international matches, years, a percentage), take an entry out, and add a release clause
     to a contract without one. The editor allocates nothing, so a release clause goes only where the list's capacity

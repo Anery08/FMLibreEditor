@@ -39,6 +39,29 @@ const SQUAD_STATUSES: Partial<Record<number, string>> = {
   3: "Düzenli ilk 11 oyuncusu",
   4: "Rotasyon oyuncusu",
   5: "Etkili yedek",
+  7: "Kenarda kalan oyuncu",
+  9: "Acil durum yedeği",
+  10: "A takıma yükselmeye yakın genç",
+  11: "Geleceğin yeteneği",
+  13: "Genç oyuncu",
+  14: "B takımının düzenli oyuncusu",
+  15: "Birinci kaleci",
+  16: "Kupa kalecisi",
+  17: "Yerel kupa kalecisi",
+  20: "Yedek kaleci",
+  21: "Acil durum yedek kalecisi",
+  22: "İhtiyaç fazlası",
+};
+
+/** The kinds of contract (see `en.ts`). */
+const CONTRACT_TYPES: Partial<Record<number, string>> = {
+  0: "Yarı zamanlı sözleşme",
+  1: "Tam zamanlı sözleşme",
+  2: "Amatör sözleşme",
+  3: "Genç oyuncu sözleşmesi",
+  4: "Sözleşmesiz",
+  10: "Asgari ücretli A takım sözleşmesi",
+  11: "A takım sözleşmesi",
 };
 
 /** The name of the field a failure names. The sentences put no ending on it: "için" and a colon need none. */
@@ -257,18 +280,46 @@ const CONCERN_MOTIVES_TR: Partial<Record<number, string>> = {
 const CLAUSE_NAMES_TR: Partial<Record<number, string>> = {
   0: "Serbest kalma maddesi",
   1: "Küme düşmede serbest kalma maddesi",
+  2: "Üst lige çıkamazsa serbest kalma maddesi",
   3: "Yıllık maaş artışı",
+  4: "Üst lige çıkışta maaş artışı",
+  5: "Küme düşmede maaş indirimi",
+  6: "Teknik ekip görevi için serbest kalma maddesi",
+  8: "Sonraki satıştan pay yüzdesi",
+  9: "Sonraki satış kârından pay yüzdesi",
   10: "Sezonluk gol hedefi primi",
+  11: "Lig maçı sayısına ulaşınca bir yıl uzatma (son sezon)",
+  12: "En yüksek maaşa eşitleme maddesi",
+  13: "Lig maçı sayısına ulaşınca maaş",
+  14: "En üst lige çıkışta maaş artışı",
   15: "Üst ligden düşmede maaş indirimi",
+  16: "Serbest kalma maddesi (yabancı kulüpler)",
+  17: "Serbest kalma maddesi (üst ligdeki yerli kulüpler)",
+  18: "Serbest kalma maddesi (yerli kulüpler)",
   19: "Milli maç sayısına ulaşınca maaş",
+  20: "Maaşın sponsorca ödenen yüzdesi",
+  21: "Bilet gelirinden oyuncuya ödenen yüzde",
   22: "Kulübün tek taraflı uzatma opsiyonu",
-  27: "Serbest kalma maddesi (Şampiyonlar Kupası'ndaki kulüpler)",
+  23: "Teknik direktörlük için kulüp tazminatından feragat",
+  25: "Lig maçı sayısına ulaşınca bir yıl uzatma (üst lige çıkılan son sezon)",
+  26: "Lig maçı sayısına ulaşınca bir yıl uzatma (küme düşülmeyen son sezon)",
+  27: "Serbest kalma maddesi (UEFA Şampiyonlar Ligi'ndeki kulüpler)",
+  28: "MLS garantili sözleşme maddesi",
+  29: "Üst lige çıkışta sözleşme uzatma",
+  30: "Sakatlıkta serbest kalma maddesi",
+  31: "Serbest kalma maddesi (kıtasal kupadaki kulüpler)",
   32: "Maç başına ücret",
   33: "Gol primi",
   34: "Gol yememe primi",
+  37: "Milli maç primi",
   38: "Oynamayan yedek ücreti",
   39: "Asist primi",
   40: "Sezonluk asist hedefi primi",
+  41: "Sezonluk gol ve asist hedefi primi",
+  54: "Oyunda gösterilmiyor (54)",
+  55: "Etkin küme düşme serbest kalma maddesi",
+  58: "Oyunda gösterilmiyor (58)",
+  63: "Oyunda gösterilmiyor (63)",
 };
 
 export const tr: Strings = {
@@ -556,6 +607,8 @@ export const tr: Strings = {
     joined: "Katılım tarihi",
     squadStatus: "Forma süresi",
     squadStatusName: (status) => SQUAD_STATUSES[status] ?? `Durum ${status}`,
+    contractType: "Sözleşme türü",
+    contractTypeName: (code) => CONTRACT_TYPES[code] ?? `Tür ${code}`,
     squadNumber: "Forma numarası",
     transferListed: "Transfer listesinde",
     loanListed: "Kiralık listesinde",
@@ -606,17 +659,36 @@ export const tr: Strings = {
           return `${value} gol`;
         case 40:
           return `${value} asist`;
+        case 41:
+          return `${value} gol ve asist`;
         case 19:
           return `${value} milli maç`;
+        case 11:
+        case 13:
+        case 25:
+        case 26:
+          return `${value} lig maçı`;
         case 22:
+        case 29:
           return `${value} yıl`;
         case 3:
+        case 4:
+        case 5:
+        case 8:
+        case 9:
+        case 14:
         case 15:
+        case 20:
+        case 21:
           return `%${value}`;
         default:
           return String(value);
       }
     },
+    clauseExpires: (date) => `${date} tarihinde sona erer`,
+    clauseExpiresAfter: (days) => `imzadan ${format(days)} gün sonra sona erer`,
+    clauseProfitShare: (percent, amount) => `${amount} üzeri kârdan ${percent}`,
+    clauseWage: (amount) => `haftalık ${amount}`,
     moraleTitle: "Oyun morali Genel Mutluluk olarak gösterir: 10'da Memnun, 11'de Biraz Mutlu, 15 ve 20'de Aşırı Mutlu",
     jadednessTitle: "Oyuncunun maç oynamaktan ne kadar yıprandığı, dinlenince azalır: -500 tamamen dinlenmiş demektir, değer yükseldikçe dinlenmeye daha çok ihtiyaç duyar",
     noInjuries: "Sakatlığı yok",

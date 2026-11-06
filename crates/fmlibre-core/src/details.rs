@@ -168,6 +168,8 @@ pub struct Contract {
     pub expires: Option<FmDate>,
     pub joined: Option<FmDate>,
     pub squad_status: u8,
+    /// The kind of contract (see `ContractLayout::contract_type`); none where the layout does not know it.
+    pub contract_type: Option<u8>,
     pub squad_number: Option<u8>,
     pub transfer_listed: bool,
     pub loan_listed: bool,
@@ -348,6 +350,7 @@ fn read_contract(process: &Process, layout: &Layout, address: u64) -> Option<Con
         expires: date_at(c.expires),
         joined: date_at(c.joined),
         squad_status: buf[c.squad_status as usize],
+        contract_type: c.contract_type.map(|offset| buf[offset as usize]),
         squad_number: (squad_number != 255).then_some(squad_number),
         transfer_listed: listing & 1 != 0,
         loan_listed: listing & 2 != 0,

@@ -46,6 +46,29 @@ const SQUAD_STATUSES: Partial<Record<number, string>> = {
   3: "Titular habitual",
   4: "Jugador de rotación",
   5: "Revulsivo",
+  7: "Jugador secundario",
+  9: "Suplente de emergencia",
+  10: "Promesa a punto de despuntar",
+  11: "Promesa de futuro",
+  13: "Joven",
+  14: "Habitual del filial",
+  15: "Portero titular",
+  16: "Portero de copa",
+  17: "Portero de copa nacional",
+  20: "Portero suplente",
+  21: "Portero suplente de emergencia",
+  22: "Prescindible",
+};
+
+/** The kinds of contract (see `en.ts`). */
+const CONTRACT_TYPES: Partial<Record<number, string>> = {
+  0: "Contrato a tiempo parcial",
+  1: "Contrato a tiempo completo",
+  2: "Contrato amateur",
+  3: "Contrato juvenil",
+  4: "Sin contrato",
+  10: "Contrato sénior de salario mínimo",
+  11: "Contrato sénior",
 };
 
 /** The name of the field a failure names. */
@@ -76,18 +99,46 @@ const STAFF_DEPARTMENTS: Partial<Record<string, string>> = {
 const CLAUSE_NAMES_ES: Partial<Record<number, string>> = {
   0: "Cláusula de rescisión por traspaso mínimo",
   1: "Cláusula de rescisión por descenso",
+  2: "Cláusula de rescisión por no ascender",
   3: "Aumento salarial anual",
+  4: "Aumento salarial por ascenso",
+  5: "Rebaja salarial por descenso",
+  6: "Cláusula de salida para un puesto técnico",
+  8: "Porcentaje de un futuro traspaso",
+  9: "Porcentaje del beneficio de un futuro traspaso",
   10: "Prima por objetivo de goles en la temporada",
+  11: "Ampliación de un año tras partidos de liga (última temporada)",
+  12: "Cláusula de igualar al mejor pagado",
+  13: "Salario tras alcanzar partidos de liga con el club",
+  14: "Aumento salarial por ascenso a primera división",
   15: "Rebaja salarial por descenso de primera división",
+  16: "Cláusula de rescisión por traspaso mínimo (clubes extranjeros)",
+  17: "Cláusula de rescisión por traspaso mínimo (clubes nacionales de categoría superior)",
+  18: "Cláusula de rescisión por traspaso mínimo (clubes nacionales)",
   19: "Salario tras alcanzar partidos internacionales",
+  20: "Porcentaje del salario pagado por un patrocinador",
+  21: "Porcentaje de la taquilla para el jugador",
   22: "Ampliación opcional del contrato por parte del club",
-  27: "Cláusula de rescisión por traspaso mínimo (clubes en la Copa de Campeones)",
+  23: "Renuncia a la compensación del club por un puesto de entrenador",
+  25: "Ampliación de un año tras partidos de liga (última temporada con ascenso)",
+  26: "Ampliación de un año tras partidos de liga (última temporada sin descenso)",
+  27: "Cláusula de rescisión por traspaso mínimo (clubes en la Liga de Campeones de la UEFA)",
+  28: "Cláusula de contrato garantizado de la MLS",
+  29: "Ampliación del contrato tras ascender",
+  30: "Cláusula de rescisión por lesión",
+  31: "Cláusula de rescisión por traspaso mínimo (clubes en una competición continental)",
   32: "Prima por partido jugado",
   33: "Prima por gol",
   34: "Prima por portería a cero",
+  37: "Prima por internacionalidad",
   38: "Prima por suplente no utilizado",
   39: "Prima por asistencia",
   40: "Prima por objetivo de asistencias en la temporada",
+  41: "Prima por objetivo de goles y asistencias en la temporada",
+  54: "No se muestra en el juego (54)",
+  55: "Cláusula de rescisión por descenso activa",
+  58: "No se muestra en el juego (58)",
+  63: "No se muestra en el juego (63)",
 };
 
 /** Reasons to be unhappy, by the codes the game keeps them as (see `en.ts`). */
@@ -569,6 +620,8 @@ export const es: Strings = {
     joined: "Incorporación",
     squadStatus: "Estatus en la plantilla",
     squadStatusName: (status) => SQUAD_STATUSES[status] ?? `Estatus ${status}`,
+    contractType: "Tipo de contrato",
+    contractTypeName: (code) => CONTRACT_TYPES[code] ?? `Tipo ${code}`,
     squadNumber: "Dorsal",
     transferListed: "Transferible",
     loanListed: "Cedible",
@@ -621,17 +674,37 @@ export const es: Strings = {
           return value === 1 ? "1 gol" : `${format(value)} goles`;
         case 40:
           return value === 1 ? "1 asistencia" : `${format(value)} asistencias`;
+        case 41:
+          return `${format(value)} goles y asistencias`;
         case 19:
           return value === 1 ? "1 partido internacional" : `${format(value)} partidos internacionales`;
+        case 11:
+        case 13:
+        case 25:
+        case 26:
+          return value === 1 ? "1 partido de liga" : `${format(value)} partidos de liga`;
         case 22:
+        case 29:
           return value === 1 ? "1 año" : `${format(value)} años`;
         case 3:
+        case 4:
+        case 5:
+        case 8:
+        case 9:
+        case 14:
         case 15:
+        case 20:
+        case 21:
           return `${value} %`;
         default:
           return String(value);
       }
     },
+    clauseExpires: (date) => `vence el ${date}`,
+    clauseExpiresAfter: (days) =>
+      days === 1 ? "vence 1 día después de la firma" : `vence ${format(days)} días después de la firma`,
+    clauseProfitShare: (percent, amount) => `${percent} del beneficio por encima de ${amount}`,
+    clauseWage: (amount) => `${amount} a la semana`,
     moraleTitle:
       "El juego muestra la moral como la felicidad general del jugador: satisfecho con 10, algo feliz con 11, " +
       "extremadamente feliz con 15 y 20",
