@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AttributeActions } from "./AttributeActions";
 import { ClauseList } from "./ClauseList";
@@ -13,6 +13,8 @@ import { MoveButton } from "./MoveDialog";
 import { ClubLogo, NationFlag, PersonFace, PICTURE_SIZE, WithPicture } from "./Picture";
 import { FEET, GOALKEEPING, HIDDEN, isGoalkeeper, MENTAL, PHYSICAL, TECHNICAL } from "./playerAttributes";
 import { PositionPitch, PositionRatings } from "./PositionPitch";
+import { PermanentDialog } from "./PermanentDialog";
+import { RecallDialog } from "./RecallDialog";
 import { ReleaseButton } from "./ReleaseDialog";
 import { TiesGroup } from "./TiesGroup";
 import {
@@ -29,7 +31,7 @@ import {
   WageFact,
   type RatingRow,
 } from "./ProfileParts";
-import type { ApplyReport, Concern, Contract, FmDate, PlayerDetails, PlayerSummary } from "./types";
+import type { ApplyReport, Concern, Contract, FmDate, LoanDetails, PlayerDetails, PlayerSummary } from "./types";
 import { ComparisonContext, type Comparison } from "./useComparison";
 import { EditorContext, useEditableField, useProfileEditing } from "./useProfileEditing";
 
@@ -152,7 +154,7 @@ function ProfileBody({ details }: { details: PlayerDetails }) {
   const goalkeeper = isGoalkeeper(details);
   return (
     <>
-      <AttributeActions details={details} />
+      <AttributeActions entity="player" details={details} />
 
       <div className="profile-pair">
         <div className="profile-columns">
@@ -260,6 +262,7 @@ function ContractGroup({ details, contract }: { details: PlayerDetails; contract
         </div>
         <ContractDates contract={contract} />
       </div>
+      {details.loan && <LoanFacts uid={uid} name={details.name} loan={details.loan} contract={contract} />}
       <ClauseList
         uid={uid}
         name={details.name}
@@ -269,6 +272,130 @@ function ContractGroup({ details, contract }: { details: PlayerDetails; contract
       />
       <ConcernList uid={uid} concerns={contract.concerns} />
     </section>
+  );
+}
+
+/**
+ * Where a player is on loan, from his loan contract, and the buttons that end it. Recall opens a dialog that says what
+ * the recall does and asks first (see `RecallDialog`): today becomes the last day of the loan, and the game brings him
+ * back to his club when the day is over. Make permanent opens one that keeps him where he plays, under contract with
+ * that club (see `PermanentDialog`). Once the loan ends today the Recall button gives way to a status saying his return
+ * is pending; a loan whose end has passed while he is still away gets a warning and the button again. The end date is
+ * an input while he is edited.
+ */
+function LoanFacts({ uid, name, loan, contract }: { uid: number; name: string; loan: LoanDetails; contract: Contract }) {
+  const { editable, onEdited } = useContext(EditorContext);
+  // The dialog that is up, if any.
+  const [asking, setAsking] = useState<"recall" | "permanent" | null>(null);
+  const recallButton = useRef<HTMLButtonElement>(null);
+  const permanentButton = useRef<HTMLButtonElement>(null);
+  const wasAsking = useRef<"recall" | "permanent" | null>(null);
+
+  // Once a dialog is gone, focus goes back to the button that opened it, while there is one: after a recall the
+  // status takes its place, and after Make permanent the loan is gone with both buttons.
+  useEffect(() => {
+    if (wasAsking.current !== null && asking === null) {
+      (wasAsking.current === "recall" ? recallButton : permanentButton).current?.focus();
+    }
+    wasAsking.current = asking;
+  }, [asking]);
+
+  const club = (clubUid: number | null, name: string | null) =>
+    name === null ? (
+      profileText.none
+    ) : (
+      <WithPicture inline picture={clubUid !== null && <ClubLogo uid={clubUid} name={name} size={PICTURE_SIZE.textLogo} />}>
+        {name}
+      </WithPicture>
+    );
+  const date = (value: FmDate | null) => formatDate(value) || profileText.none;
+  const yesNo = (on: boolean) => (on ? editText.yes : editText.no);
+  // An amount of nothing is no fee, as none is.
+  const fee = (pounds: number | null) => (pounds !== null && pounds > 0 ? formatMoney(pounds) : profileText.none);
+  const terms = loan.terms;
+
+  return (
+    <div className="clauses loan">
+      <div className="injuries-head">
+        <h4>{profileText.loan}</h4>
+        <div className="loan-actions">
+          {loan.ends === "today" ? (
+            <span className="tag loan loan-status" role="status" title={profileText.pendingTitle(loan.parent ?? "")}>
+              {loan.recalled ? profileText.recalledWaiting : profileText.endsTodayWaiting}
+            </span>
+          ) : (
+            <button
+              ref={recallButton}
+              type="button"
+              className="heal-toggle recall-toggle"
+              aria-haspopup="dialog"
+              disabled={!editable}
+              title={profileText.recallTitle}
+              onClick={() => setAsking("recall")}
+            >
+              {loan.ends === "passed" ? profileText.recallAgain : profileText.recall}
+            </button>
+          )}
+          <button
+            ref={permanentButton}
+            type="button"
+            className="heal-toggle permanent-toggle"
+            aria-haspopup="dialog"
+            disabled={!editable}
+            title={profileText.makePermanentTitle}
+            onClick={() => setAsking("permanent")}
+          >
+            {profileText.makePermanent}
+          </button>
+        </div>
+      </div>
+      <dl className="stats">
+        <Fact label={profileText.loanAt}>{club(loan.clubUid, loan.club)}</Fact>
+        <Fact label={profileText.loanParent}>{club(loan.parentUid, loan.parent)}</Fact>
+        <Fact label={profileText.loanFrom}>{date(loan.from)}</Fact>
+        <Fact label={profileText.loanUntil}>
+          <EditableValue field="loan.expires">{date(loan.until)}</EditableValue>
+        </Fact>
+        <Fact label={profileText.loanNumber}>{loan.squadNumber ?? profileText.none}</Fact>
+        {terms !== null && (
+          <>
+            <Fact label={profileText.loanCanRecall} title={profileText.loanCanRecallTitle}>
+              {yesNo(terms.canBeRecalled)}
+            </Fact>
+            <Fact label={profileText.loanCanTerminate}>{yesNo(terms.canBeTerminated)}</Fact>
+            <Fact label={profileText.loanCupMatches}>{yesNo(terms.cupMatches)}</Fact>
+            <Fact label={profileText.loanAgainstClub}>{yesNo(terms.againstOwnClub)}</Fact>
+            <Fact label={profileText.loanOptionFee} title={profileText.loanOptionFeeTitle}>
+              <EditableValue field="loan.option_fee">{fee(terms.optionFee)}</EditableValue>
+            </Fact>
+            <Fact label={profileText.loanMonthlyFee} title={profileText.loanMonthlyFeeTitle}>
+              {fee(terms.monthlyFee)}
+            </Fact>
+            <Fact label={profileText.loanUnusedFee} title={profileText.loanUnusedFeeTitle}>
+              {fee(terms.unusedFee)}
+            </Fact>
+          </>
+        )}
+      </dl>
+      {loan.ends === "passed" && (
+        <div className="banner move-error" role="alert">
+          {profileText.endPassed(date(loan.until))}
+        </div>
+      )}
+      {asking === "recall" && (
+        <RecallDialog uid={uid} name={name} loan={loan} onRecalled={onEdited} onClose={() => setAsking(null)} />
+      )}
+      {asking === "permanent" && (
+        <PermanentDialog
+          uid={uid}
+          name={name}
+          loan={loan}
+          contract={contract}
+          onDone={onEdited}
+          onClose={() => setAsking(null)}
+        />
+      )}
+    </div>
   );
 }
 

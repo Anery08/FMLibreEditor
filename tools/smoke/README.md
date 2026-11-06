@@ -47,6 +47,7 @@ By default nothing that changes the game. With `--writes`, the tests change the 
 | `mass` | yes | A mass edit over a club's players, applied, read back and undone as one batch |
 | `move` | yes | A transfer the app agrees to, and the undo that moves the player back |
 | `medical` | yes | Healing an injured player, and keeping a player from retiring, each undone |
+| `loan` | yes | A loan's terms, as the app and the probe read them; recalling a player on loan: the game's date becomes the loan's last day, as the probe reads it, his profile says his return is pending, the option to buy is taken away (and written back by the undo), and the dialog says what the terms would not allow in the game; a day the game has finished is refused; making the loan permanent, its fee starting as the option to buy; each undone |
 | `freeze` | yes | Frozen attributes put back after the probe changes one as the game would; unfrozen, a changed value stays |
 | `unknown` | no | The day of an update rehearsed (`FMLIBRE_IGNORE_PROFILES=1`): the build is new to the app, which finds the in-game date and the planned retirements by itself and writes nothing until Edit anyway |
 
@@ -65,11 +66,17 @@ Run them with `--writes` on both storefronts' test saves, with the release build
 A test is a module in `tests/` that exports `name`, `writes` and `run({ app, report, probe, connection, known })`, and
 is listed in `TESTS` in `run.mjs`:
 - `app` drives the app: `must(command, args)` calls one of its commands, `click`, `setInput`, `press` and `waitFor`
-  work the page, and `shot` saves a screenshot (see `lib/app.mjs`);
+  work the page, `openTab(name)` opens a masthead tab by its English name ("Players", "Staff", "Clubs", "Changes"),
+  `openClub(name)` a club's profile, and `shot` saves a screenshot (see `lib/app.mjs`);
 - `report.check(name, ok, detail)` records a check;
 - `probe.get(entity, uid, fields)` reads what the game holds, apart from the app.
 
-Undo everything a test writes, and pick its players with `lib/witness.mjs` rather than fixed UIDs. Lessons from CDP:
+Undo everything a test writes, and pick its players with `lib/witness.mjs` rather than fixed UIDs. Go by names rather
+than places on screen too: builds differ in their tabs (one with a Scouting tab has it before Changes). Lessons from
+CDP:
+- `innerText` follows the style sheet, which upper-cases the tables' headers, for one: compare `textContent`;
+- a reload cuts short the calls to the app that are out, and the console check then fails on "IPC custom protocol
+  failed" and "Couldn't find callback id": `App.start` switches to English only once the first page is done starting;
 - the list views that are not shown keep their layout under `visibility: hidden`, so look for elements that are on
   screen with `VIS` and `SHOWN`;
 - `Runtime.evaluate` cannot hand a DOM node back by value;

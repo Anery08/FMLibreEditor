@@ -122,11 +122,12 @@ export interface ExportReport {
 
 /**
  * What connecting froze again of what the app remembers as frozen in this save: the players' attributes, their energy
- * and match sharpness (`fitness`), and the clubs' money, by name, and how many it left for later, still remembered
- * (FMLibreEditor cannot write to this version of the game yet, or a check did not pass).
+ * and match sharpness (`fitness`), the attributes of staff, and the clubs' money, by name, and how many it left for
+ * later, still remembered (FMLibreEditor cannot write to this version of the game yet, or a check did not pass).
  */
 export interface Refrozen {
   players: string[];
+  staff: string[];
   clubs: string[];
   fitness: string[];
   waiting: number;
@@ -504,7 +505,59 @@ export interface PlayerDetails extends PlayerSummary {
    * allocates nothing, so a release clause can be added to few contracts.
    */
   clauseRoom: number;
+  /** Where he is on loan, from his loan contract; null when he is not on loan (or the editor cannot tell). */
+  loan: LoanDetails | null;
 }
+
+/**
+ * A player's loan, as his loan contract says: the club he is on loan to, the club he belongs to, and the days it runs
+ * from and to. `loan.expires` edits the day it ends; `recall_loan` makes it end on the game's date.
+ */
+export interface LoanDetails {
+  /** The club he is on loan to. */
+  clubUid: number | null;
+  club: string | null;
+  /** The club his own contract is with. */
+  parentUid: number | null;
+  parent: string | null;
+  from: FmDate | null;
+  /** The day the loan ends: the game brings him back then. */
+  until: FmDate | null;
+  /** His squad number at the club he is on loan to. */
+  squadNumber: number | null;
+  /** Pounds per week, as the loan contract holds it. */
+  wage: number;
+  /**
+   * Where its end stands against the game's date: `today` is its last day, after which the game brings him back (one
+   * day on); `passed` means the game has not done so when that day was over.
+   */
+  ends: LoanEnd;
+  /** Whether the editor brought its end forward this session (Recall from loan, not undone). */
+  recalled: boolean;
+  /** What the clubs agreed, as the game's Loan Club tab shows it; null where the editor cannot read it. */
+  terms: LoanTerms | null;
+}
+
+/** The terms of a loan, as the game's Loan Club tab shows them. */
+export interface LoanTerms {
+  /** His own club may recall him in the game ("Can be recalled"); the editor's recall works either way. */
+  canBeRecalled: boolean;
+  /** The loan may be ended early: false where the game says "Loan cannot be terminated". */
+  canBeTerminated: boolean;
+  /** He may play in cup matches, and against his own club. */
+  cupMatches: boolean;
+  againstOwnClub: boolean;
+  /** Pounds: the fee for which the club he is on loan to may sign him for good; null for none. */
+  optionFee: number | null;
+  /** Pounds a month that club pays his own while he plays, and while he is not used; null for none. */
+  monthlyFee: number | null;
+  unusedFee: number | null;
+  /** The flags as the game keeps them. */
+  flags: number;
+}
+
+/** Where a loan's end stands against the game's date. */
+export type LoanEnd = "later" | "today" | "passed" | "unknown";
 
 /** What ties a player to a nation or club: a secondary nationality, or a nation or club he was trained in. */
 export type TieKind = "nationality" | "trainedInNation" | "trainedAtClub";
@@ -651,6 +704,14 @@ export interface LoggedChange {
   clause?: {
     from: Clause | null;
     to: Clause | null;
+  };
+  /**
+   * Set for a recall from loan (`recall_loan`, logged as a change of `loan.expires`) that took the loan's option to buy
+   * away too, so that the game would not sell him to the club he was on loan at: the option, in pounds. Undo writes it
+   * back with the loan's end.
+   */
+  recall?: {
+    optionFee: number;
   };
   /**
    * Set for a captaincy (`set_captain`), which is logged as a change of the club's field `captain` or

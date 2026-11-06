@@ -463,6 +463,8 @@ export const en = {
     "contract.squad_status": "Squad status",
     "contract.transfer_listed": "Transfer listed",
     "contract.loan_listed": "Loan listed",
+    "loan.expires": "Loan end",
+    "loan.option_fee": "Option to buy",
     // A member of staff's job, which the change log keeps as a change of its code.
     "contract.job": "Job",
     // A player's ties, which the change log keeps as changes of the nation or club (see `ties`).
@@ -618,6 +620,37 @@ export const en = {
     moodTitle: "As FMRTE shows it, from -100 to 100; the game shows it in words",
     /** The name of a clause or bonus by its kind; a kind the app does not know yet by its number. */
     clauseName: (kind: number) => CLAUSE_NAMES_EN[kind] ?? `Clause ${kind}`,
+    /** A player's loan: where he is on loan, and the button that brings him back. */
+    loan: "Loan",
+    loanAt: "On loan at",
+    loanParent: "Belongs to",
+    loanFrom: "From",
+    loanUntil: "Until",
+    loanNumber: "Number there",
+    recall: "Recall from loan",
+    recallTitle: "Bring him back to his club: the loan ends today. Asks before anything changes",
+    recallAgain: "Recall again",
+    makePermanent: "Make permanent",
+    makePermanentTitle: "Keep him at the club he is on loan to, under contract with it. Asks before anything changes",
+    /** Where the Recall button was, once the loan ends today: recalled by the editor, or ending today anyway. */
+    recalledWaiting: "Recalled · return pending",
+    endsTodayWaiting: "Ends today · return pending",
+    pendingTitle: (parent: string) =>
+      `Today is the last day of the loan: continue one day in the game and he is back at ${parent}.`,
+    endPassed: (date: string) =>
+      `The loan was to end on ${date}, but the game has not brought him back. Recall him again, then continue one day.`,
+    /** The loan's terms, as the game's Loan Club tab shows them. */
+    loanCanRecall: "Can be recalled",
+    loanCanRecallTitle: "Whether his club may recall him in the game. Recall from loan here works either way",
+    loanCanTerminate: "Can be ended early",
+    loanCupMatches: "Plays in cup matches",
+    loanAgainstClub: "Plays against his club",
+    loanOptionFee: "Option to buy",
+    loanOptionFeeTitle: "The fee for which the club he is on loan at may sign him for good",
+    loanMonthlyFee: "Monthly fee",
+    loanMonthlyFeeTitle: "What the club he is on loan at pays his club for each month he plays",
+    loanUnusedFee: "Monthly fee if unused",
+    loanUnusedFeeTitle: "What the club he is on loan at pays his club for each month he is not used",
     /** What a clause depends on, by kind: goals, assists, league games, matches, years or a percentage. */
     clauseCondition: (kind: number, value: number) => {
       switch (kind) {
@@ -693,6 +726,12 @@ export const en = {
     freezeAttributes: "Freeze attributes",
     freezeAttributesNote:
       "While the app is open and connected, his attributes do not get worse: what the game takes is put back, and " +
+      "improvements still count. The app remembers this for this save, and freezes them again when it connects to it.",
+    /** The same for a member of staff, who has no injury proneness or dirtiness. */
+    maxStaffAttributesTitle: "Set every attribute of this member of staff to its best: 20",
+    undoMaxStaffTitle: "Write the old attributes back to the game",
+    freezeStaffAttributesNote:
+      "While the app is open and connected, their attributes do not get worse: what the game takes is put back, and " +
       "improvements still count. The app remembers this for this save, and freezes them again when it connects to it.",
     /** Freezing his energy and match sharpness, under them in the Medical group, and what that does. */
     freezeFitness: "Freeze energy and sharpness",
@@ -1039,6 +1078,7 @@ export const en = {
       waitingTitle: "What was frozen waits for now",
       /** `names` are the players' names, set apart by commas. */
       players: (names: string) => `Attributes: ${names}`,
+      staff: (names: string) => `Staff attributes: ${names}`,
       clubs: (names: string) => `Money: ${names}`,
       fitness: (names: string) => `Energy and sharpness: ${names}`,
       /** After the first few names. */
@@ -1248,6 +1288,8 @@ export const en = {
     released: (name: string) => `${name} released`,
     /** Under a transfer that had a fee: the amount, written out. */
     fee: (amount: string) => `Fee ${amount}`,
+    /** Under a recall from loan that took the loan's option to buy away, which its undo writes back. */
+    optionRemoved: (amount: string) => `Option to buy (${amount}) taken away`,
     /** What a heal changed, in the place of its values: `count` is how many injuries the player had. */
     healed: (count: number) => (count === 1 ? "Healed 1 injury" : `Healed ${format(count)} injuries`),
     /** The same for lifting bans: `count` is how many bans the player had. */
@@ -1776,6 +1818,65 @@ export const en = {
     hint: "Nothing changes in the game until you press Release.",
     release: "Release",
     releasing: "Releasing…",
+    cancel: "Cancel",
+  },
+
+  /** Making a player's loan permanent: the dialog the Make permanent button of the Loan part of his profile opens. */
+  permanent: {
+    title: "Make the loan permanent",
+    /** The club he stays at, and his own club, which he leaves. */
+    stays: "Stays at",
+    leaves: "Leaves",
+    checking: "Checking…",
+    doesHeading: "What it does",
+    /** One line each. */
+    does: [
+      "He stays where he plays, now under contract with that club from today, on the terms above",
+      "He keeps the squad number and squad status he has there",
+      "He leaves every team of his own club, and the loan ends",
+      "The game's transfer history does not list it",
+      "Listed under Changes as a transfer, where one undo puts the loan back",
+    ],
+    /** The fee, filled in from the loan's option to buy. */
+    optionFee: (money: string) => `Filled in from the loan's option to buy: ${money}`,
+    /** Nothing changes in the game until Make permanent. */
+    hint: "Nothing changes in the game until you press Make permanent.",
+    confirm: "Make permanent",
+    confirming: "Making it permanent…",
+    cancel: "Cancel",
+  },
+
+  /** Recalling a player from his loan: the dialog the Recall button of the Loan part of his profile opens. */
+  recall: {
+    title: "Recall from loan",
+    /** The club he is on loan at, and the one he goes back to. */
+    from: "On loan at",
+    to: "Goes back to",
+    doesHeading: "What the recall does",
+    /** One line each; `parent` is the club he goes back to. */
+    does: (parent: string) => [
+      "Today becomes the last day of the loan: when the day is over, the game ends the loan itself",
+      `Continue one day in the game and he is back at ${parent}`,
+      "Until then it is listed under Changes, where an undo puts the loan's old end back",
+    ],
+    /**
+     * What the loan's terms would not allow in the game, when it would not let his club recall him or end the loan
+     * early; `parent` is his club. The recall here moves the loan's last day all the same.
+     */
+    termsHeading: "In the game",
+    notRecallable: (parent: string) => `The loan does not let ${parent} recall him`,
+    notTerminable: "The loan cannot be ended early",
+    worksAnyway: "The recall here works all the same: it does not go through the game's recall, it moves the loan's last day",
+    /**
+     * A line of what the recall does, for a loan with an option to buy: `club` is the club he is on loan at. When a loan
+     * with one ends, the game may let that club sign him for it.
+     */
+    dropsOption: (club: string, amount: string) =>
+      `${club}'s option to buy him for ${amount} is taken away: else, when the loan ends, the game may sell him to ${club}`,
+    /** Nothing changes in the game until Recall. */
+    hint: "Nothing changes in the game until you press Recall.",
+    confirm: "Recall",
+    confirming: "Recalling…",
     cancel: "Cancel",
   },
 

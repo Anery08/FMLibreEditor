@@ -18,6 +18,7 @@ mod game;
 mod graphics;
 mod health;
 mod index;
+mod loans;
 mod locate;
 mod mass;
 mod medical;
@@ -49,7 +50,7 @@ pub use details::{
     ATTRIBUTE_GROUPS, Attribute, Clause, Contract, International, PERSONALITY, POSITIONS, PlayerDetails, Reputation,
     read_player_details,
 };
-pub use edit::{Change, EditError, Entity, Field, Kind, Scale, Target, fields};
+pub use edit::{Change, EditError, Entity, Field, Kind, LOAN_EXPIRES, LOAN_OPTION_FEE, Scale, Target, fields};
 pub use export::{ExportFormat, ExportHeader, Exported};
 pub use filter::{
     AttributeBound, ClubFilter, PlayerFilter, PlayerOrder, PlayerSort, StaffFilter, StaffOrder, StaffSort,
@@ -59,6 +60,7 @@ pub use game::{GAME_EXE, GAME_PLUGIN, GameInfo, Storefront};
 pub use graphics::{GraphicsCounts, GraphicsIndex, Picture};
 pub use health::{Check, CheckResult, DateEvidence, DateFit, Health, Lock, STRUCTURE};
 pub use index::{Listed, SearchIndex};
+pub use loans::{LoanDetails, LoanEnd, LoanTerms};
 pub use locate::{
     DatePlace, Found, Place, date_candidates, holds_retirement_manager, retirement_guesses, search_retirement_manager,
 };

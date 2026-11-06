@@ -12,12 +12,18 @@ export class Probe {
     return execFileSync(this.path, args.map(String), { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   }
 
-  /** The values `fmlibre-probe get` reads for fields of a player, member of staff or club, as stored. */
+  /**
+   * The values `fmlibre-probe get` reads for fields of a player, member of staff or club, as stored; a date, which it
+   * prints as 2027-06-30, as the editor writes it: 20270630.
+   */
   get(entity, uid, fields) {
     const values = {};
     for (const line of this.run(["get", entity, uid, ...fields]).split(/\r?\n/)) {
-      const match = line.match(/^\s+(\S+)\s+(-?\d+)/);
-      if (match) values[match[1]] = Number(match[2]);
+      const match = line.match(/^\s+(\S+)\s+(-?\d+)(?:-(\d{2})-(\d{2}))?(?:\s|$)/);
+      if (match) {
+        const [, field, number, month, day] = match;
+        values[field] = month ? Number(number) * 10000 + Number(month) * 100 + Number(day) : Number(number);
+      }
     }
     return values;
   }

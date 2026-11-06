@@ -286,6 +286,36 @@ slots = 0x28
 count = 26
 player_person = 0x290
 
+# A player on loan has a second contract, of its own class, with the team he is on loan to. His `record` (right after
+# his contract pointer, and shifted with it for player-coaches) points at a record of his other contracts, whose first
+# field points at the loan contract. Only he points at the record, and only the record points at the loan contract.
+# The loan contract is laid out as [contract] up to the squad number: the owner, the team he is on loan to (twice), his
+# wage, from (`signed`), until (`expires`), joined, the squad status and number at that club. Read on the Game Pass
+# save (17 September 2026): André Onana, on loan from Manchester United to Trabzonspor from 29 June 2026 to 30 June
+# 2027, number 24 there.
+# The record is 32 bytes: the loan contract, then contracts with a club's B team (`db::B_CLUB_CONTRACT`) at 0x08 and
+# 0x18, and at 0x10 a basic or full contract (a few player-coaches). Of 5,637 records, 3,598 held a loan contract and
+# 2,189 a B team's contract at 0x08. When the game ended the loans of Onana and Bayındır, whose records held nothing
+# else, it left them without a record (null at 0x338).
+[loan]
+record = 0x338
+contract = 0x00
+others = [0x08, 0x10, 0x18]
+class = "db::LOAN_CONTRACT"
+
+# The loan's terms, as the game's Loan Club tab shows them, past the fields the loan contract shares with a contract.
+# Mapped by RootTourist on the Steam build 26340721 against 17 loans in the English UI (PR #101): `flags` bit 0 "Can
+# play against own team", bit 1 "Can play in cup matches", bit 2 "Can be recalled", bit 12 "Loan cannot be terminated"
+# (bits 3, 8, 13 and 15 also occur, and the game shows nothing for them); `option_fee` the "Optional Future Fee";
+# `monthly_fee` the "Monthly playing fee", `unused_fee` the "Unused Monthly Fee". The amounts are pounds, -1 for none.
+# On the Steam save of 15 August 2027, of 371 loans 113 could not be recalled and 94 could not be terminated (71
+# neither): Anton Kade's, from FC Augsburg to Liverpool, holds flags 0x1002 and an option fee of 23,245,368.
+[loan.terms]
+flags = 0xB0
+option_fee = 0xC0
+monthly_fee = 0xCC
+unused_fee = 0xD0
+
 [team]
 club = 0x30               # club pointer
 # u8, the kind of team: on the test save 0 for the first team, 10 for the under-21s and

@@ -30,6 +30,13 @@ import type {
 /** The fields of players or of staff the editor can change, in display order. */
 export const editFields = (entity: Entity) => call<EditField[]>("edit_fields", { entity });
 
+/**
+ * Brings the player `uid` back from his loan: it now ends on the game's date, its last day, and he is back at his club
+ * the next day. Logged like a change of `loan.expires`, which Undo in Changes puts back; null when
+ * the loan ends then already.
+ */
+export const recallLoan = (uid: number) => call<LoggedChange | null>("recall_loan", { uid });
+
 /** Freezes the money of the club `club`, or unfreezes it; the clubs whose money is frozen now. */
 export const freezeMoney = (club: number, frozen: boolean) => call<number[]>("freeze_money", { club, frozen });
 
@@ -41,6 +48,13 @@ export const freezeAttributes = (uid: number, frozen: boolean) => call<number[]>
 
 /** The players whose attributes are frozen: while the app is connected, they do not get worse. */
 export const frozenPlayers = () => call<number[]>("frozen_players");
+
+/** Freezes the attributes of the member of staff `id`, or unfreezes them; the staff whose attributes are frozen now. */
+export const freezeStaffAttributes = (id: number, frozen: boolean) =>
+  call<number[]>("freeze_staff_attributes", { id, frozen });
+
+/** The members of staff whose attributes are frozen: while the app is connected, they do not get worse. */
+export const frozenStaff = () => call<number[]>("frozen_staff");
 
 /**
  * Freezes the energy and match sharpness of the player `uid`, or unfreezes them; the players whose energy and match
@@ -63,6 +77,12 @@ export const freezeTeam = (club: number, team: number, kind: FreezeKind, frozen:
  * logged as one batch, undone with `undoBatch`; `applied` counts them.
  */
 export const maxAttributes = (uid: number) => call<MassReport>("max_attributes", { uid });
+
+/**
+ * Sets every attribute of the member of staff `id` to its best: 20. The changes are logged as one batch, undone with
+ * `undoBatch`; `applied` counts them.
+ */
+export const maxStaffAttributes = (id: number) => call<MassReport>("max_staff_attributes", { id });
 
 /** The nations of the people in the lists, by name: what a nation field can be set to. */
 export const listNations = () => call<Nation[]>("list_nations");
@@ -196,6 +216,20 @@ export const planClubMove = (uid: number, club: number, terms: MoveTerms, fee?: 
  * to suggest first: neither injured nor a captain, then the weakest.
  */
 export const roomMakers = (club: number) => call<RoomMaker[]>("room_makers", { club });
+
+/**
+ * Checks that the loan of the player `uid` can be made permanent on `terms`, the club he is on loan to paying his own
+ * one `fee` pounds if given, and names the clubs (`from` his own, `to` the one he stays at). Nothing is written.
+ */
+export const planLoanPermanent = (uid: number, terms: MoveTerms, fee?: number) =>
+  call<MovePreview>("plan_loan_permanent", { uid, terms, fee });
+
+/**
+ * Makes the loan of the player `uid` permanent: he stays where he plays, now under contract with the club he was on
+ * loan to, and leaves his own. Logged as a move between the two clubs, which one undo takes back.
+ */
+export const makeLoanPermanent = (uid: number, terms: MoveTerms, fee?: number) =>
+  call<LoggedChange>("make_loan_permanent", { uid, terms, fee });
 
 /**
  * Checks that the player `uid` can be released from his club, and names it. Nothing is written; when he cannot be
