@@ -47,7 +47,7 @@ By default nothing that changes the game. With `--writes`, the tests change the 
 | `mass` | yes | A mass edit over a club's players, applied, read back and undone as one batch |
 | `move` | yes | A transfer the app agrees to, and the undo that moves the player back |
 | `medical` | yes | Healing an injured player, and keeping a player from retiring, each undone |
-| `loan` | yes | Recalling a player on loan: the game's date becomes the loan's last day, as the probe reads it, and his profile says his return is pending; a day the game has finished is refused; the undo puts the old end back |
+| `loan` | yes | A loan's terms, as the app and the probe read them; recalling a player on loan: the game's date becomes the loan's last day, as the probe reads it, his profile says his return is pending, and the dialog says what the terms would not allow in the game; a day the game has finished is refused; making the loan permanent, its fee starting as the option to buy; each undone |
 | `freeze` | yes | Frozen attributes put back after the probe changes one as the game would; unfrozen, a changed value stays |
 | `unknown` | no | The day of an update rehearsed (`FMLIBRE_IGNORE_PROFILES=1`): the build is new to the app, which finds the in-game date and the planned retirements by itself and writes nothing until Edit anyway |
 

@@ -300,6 +300,10 @@ function LoanFacts({ uid, name, loan, contract }: { uid: number; name: string; l
       </WithPicture>
     );
   const date = (value: FmDate | null) => formatDate(value) || profileText.none;
+  const yesNo = (on: boolean) => (on ? editText.yes : editText.no);
+  // An amount of nothing is no fee, as none is.
+  const fee = (pounds: number | null) => (pounds !== null && pounds > 0 ? formatMoney(pounds) : profileText.none);
+  const terms = loan.terms;
 
   return (
     <div className="clauses loan">
@@ -344,6 +348,25 @@ function LoanFacts({ uid, name, loan, contract }: { uid: number; name: string; l
           <EditableValue field="loan.expires">{date(loan.until)}</EditableValue>
         </Fact>
         <Fact label={profileText.loanNumber}>{loan.squadNumber ?? profileText.none}</Fact>
+        {terms !== null && (
+          <>
+            <Fact label={profileText.loanCanRecall} title={profileText.loanCanRecallTitle}>
+              {yesNo(terms.canBeRecalled)}
+            </Fact>
+            <Fact label={profileText.loanCanTerminate}>{yesNo(terms.canBeTerminated)}</Fact>
+            <Fact label={profileText.loanCupMatches}>{yesNo(terms.cupMatches)}</Fact>
+            <Fact label={profileText.loanAgainstClub}>{yesNo(terms.againstOwnClub)}</Fact>
+            <Fact label={profileText.loanOptionFee} title={profileText.loanOptionFeeTitle}>
+              {fee(terms.optionFee)}
+            </Fact>
+            <Fact label={profileText.loanMonthlyFee} title={profileText.loanMonthlyFeeTitle}>
+              {fee(terms.monthlyFee)}
+            </Fact>
+            <Fact label={profileText.loanUnusedFee} title={profileText.loanUnusedFeeTitle}>
+              {fee(terms.unusedFee)}
+            </Fact>
+          </>
+        )}
       </dl>
       {loan.ends === "passed" && (
         <div className="banner move-error" role="alert">

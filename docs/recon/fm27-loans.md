@@ -54,6 +54,26 @@ On the save, 3,596 players had a loan contract, and every one of them passed the
 their contract's: 3,594 of them are on loan; nearly all the rest belong to a club's second team, which the game keeps
 as a club of its own (such as "VfB Stuttgart II" or "FC Twente/Heracles Academie").
 
+## The terms
+
+Past the fields it shares with a contract, the loan contract keeps the terms the game's Loan Club tab shows. RootTourist
+mapped them on the Steam build 26340721 against 17 loans in the English UI (in a comment on PR #101); the layout places
+them as `[loan.terms]`:
+
+| Offset | Type | In the game |
+| --- | --- | --- |
+| `+0xB0` | `u16` flags | bit 0 "Can play against own team", bit 1 "Can play in cup matches", bit 2 "Can be recalled", bit 12 "Loan cannot be terminated"; bits 3, 8, 13 and 15 occur, and the game shows nothing for them |
+| `+0xC0` | `i32` pounds | "Optional Future Fee", the option to buy; -1 for none |
+| `+0xCC` | `i32` pounds | "Monthly playing fee"; -1 for none |
+| `+0xD0` | `i32` pounds | "Unused Monthly Fee"; -1 for none |
+| `+0xD4` | `i32` pounds | the wage again, as at `+0x20` (on 351 of 371 loans) |
+
+On the Steam save of 15 August 2027, 113 of 371 loans could not be recalled in the game and 94 could not be
+terminated, 71 neither. Anton Kade's, from FC Augsburg to Liverpool, holds flags `0x1002` (cup matches, no recall, not
+to be terminated), an option to buy of £23,245,368 and monthly fees of £371,665 (played) and £725,477 (unused). The
+profile lists the terms, the recall dialog says what they would not allow in the game, and Make permanent starts its
+fee from the option to buy.
+
 ## Recalling a player
 
 The editor never ends a loan itself: the game would have to take him out of one team's list and put him in another,
@@ -69,6 +89,10 @@ A day the game has finished would never be one again, and a loan whose last day 
 writes only the game's date or a later one. While a loan ends on the game's date, the profile says his return is
 pending instead of offering the recall; a loan whose end has passed while he is still away gets a warning and the
 recall again.
+
+The game's own recall needs "Can be recalled" (see [The terms](#the-terms)). The editor's does not go through it: it
+moves the loan's last day, which the game holds every loan to. Onana's and Bayındır's terms were not read when they
+were recalled; that a loan without a recall ends the same way is to be checked in the game.
 
 ## Making a loan permanent
 

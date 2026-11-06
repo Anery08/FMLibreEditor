@@ -56,6 +56,31 @@ pub struct LoanLayout {
     pub others: Vec<u64>,
     /// The class of loan contracts, as written in C++.
     pub class: String,
+    /// In the loan contract: its terms, past the fields it shares with a contract; none where they have not been read.
+    #[serde(default)]
+    pub terms: Option<LoanTermsLayout>,
+}
+
+/// Where a loan contract keeps the terms the game's Loan Club tab shows.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LoanTermsLayout {
+    /// `u16` flags: bit 0, he may play against his own club; bit 1, in cup matches; bit 2, his club may recall him;
+    /// bit 12, the loan cannot be terminated.
+    pub flags: u64,
+    /// `i32`, pounds, -1 for none: the fee for which the club he is on loan to may sign him for good.
+    pub option_fee: u64,
+    /// `i32`, pounds a month, -1 for none: what that club pays his own each month he plays for it.
+    pub monthly_fee: u64,
+    /// `i32`, pounds a month, -1 for none: what it pays each month he is not used.
+    pub unused_fee: u64,
+}
+
+impl LoanTermsLayout {
+    /// One past the last byte of the terms.
+    pub fn end(&self) -> u64 {
+        [self.flags + 2, self.option_fee + 4, self.monthly_fee + 4, self.unused_fee + 4].into_iter().max().unwrap_or(0)
+    }
 }
 
 /// What a human manager has picked for his club, as the match engine keeps it: for each of his tactics, objects of one

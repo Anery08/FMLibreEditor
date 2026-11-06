@@ -529,6 +529,26 @@ export interface LoanDetails {
   ends: LoanEnd;
   /** Whether the editor brought its end forward this session (Recall from loan, not undone). */
   recalled: boolean;
+  /** What the clubs agreed, as the game's Loan Club tab shows it; null where the editor cannot read it. */
+  terms: LoanTerms | null;
+}
+
+/** The terms of a loan, as the game's Loan Club tab shows them. */
+export interface LoanTerms {
+  /** His own club may recall him in the game ("Can be recalled"); the editor's recall works either way. */
+  canBeRecalled: boolean;
+  /** The loan may be ended early: false where the game says "Loan cannot be terminated". */
+  canBeTerminated: boolean;
+  /** He may play in cup matches, and against his own club. */
+  cupMatches: boolean;
+  againstOwnClub: boolean;
+  /** Pounds: the fee for which the club he is on loan to may sign him for good; null for none. */
+  optionFee: number | null;
+  /** Pounds a month that club pays his own while he plays, and while he is not used; null for none. */
+  monthlyFee: number | null;
+  unusedFee: number | null;
+  /** The flags as the game keeps them. */
+  flags: number;
 }
 
 /** Where a loan's end stands against the game's date. */

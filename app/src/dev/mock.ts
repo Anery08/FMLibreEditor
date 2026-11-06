@@ -330,6 +330,26 @@ function loanOf(player: PlayerSummary): LoanDetails | null {
     wage: 2_000 + (player.uid % 50) * 900,
     ends: "later",
     recalled: false,
+    terms: loanTermsOf(player.uid),
+  };
+}
+
+/**
+ * Terms for a fixture loan, as the Steam save shows them: about one loan in three cannot be recalled in the game, and
+ * those mostly cannot be terminated either and carry an option to buy and monthly fees (Anton Kade's: flags 0x1002).
+ */
+function loanTermsOf(uid: number): LoanDetails["terms"] {
+  const strict = uid % 3 === 0;
+  const flags = strict ? 0x1002 : 0x106;
+  return {
+    canBeRecalled: (flags & 0x4) !== 0,
+    canBeTerminated: (flags & 0x1000) === 0,
+    cupMatches: (flags & 0x2) !== 0,
+    againstOwnClub: (flags & 0x1) !== 0,
+    optionFee: strict ? 5_000_000 + (uid % 20) * 1_000_000 : null,
+    monthlyFee: strict ? 150_000 : null,
+    unusedFee: strict ? 200_000 : null,
+    flags,
   };
 }
 

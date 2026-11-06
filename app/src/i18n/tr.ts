@@ -620,6 +620,17 @@ export const tr: Strings = {
     pendingTitle: (parent) => `Kiralığın son günü bugün: oyunda bir gün devam edin, oyuncu ${parent} kulübüne dönmüş olacak.`,
     endPassed: (date) =>
       `Kiralığın ${date} tarihinde bitmesi gerekiyordu ama oyun oyuncuyu geri getirmedi. Tekrar geri çağırıp bir gün devam edin.`,
+    loanCanRecall: "Geri çağrılabilir",
+    loanCanRecallTitle: "Kulübünün onu oyunda geri çağırıp çağıramayacağı. Buradaki Kiralıktan geri çağır her iki durumda da çalışır",
+    loanCanTerminate: "Erken bitirilebilir",
+    loanCupMatches: "Kupa maçlarında oynar",
+    loanAgainstClub: "Kendi kulübüne karşı oynar",
+    loanOptionFee: "Satın alma opsiyonu",
+    loanOptionFeeTitle: "Kiralık olduğu kulübün onu kalıcı olarak alabileceği bonservis",
+    loanMonthlyFee: "Aylık ücret",
+    loanMonthlyFeeTitle: "Kiralık olduğu kulübün, oynadığı her ay için kulübüne ödediği tutar",
+    loanUnusedFee: "Oynamazsa aylık ücret",
+    loanUnusedFeeTitle: "Kiralık olduğu kulübün, kullanılmadığı her ay için kulübüne ödediği tutar",
     clauseCondition: (kind, value) => {
       switch (kind) {
         case 10:
@@ -1533,6 +1544,7 @@ export const tr: Strings = {
       "Oyunun transfer geçmişinde görünmez",
       "Değişiklikler bölümünde transfer olarak listelenir; tek geri alma kiralığı geri getirir",
     ],
+    optionFee: (money) => `Kiralığın satın alma opsiyonundan dolduruldu: ${money}`,
     hint: "Siz kalıcı yapmadan oyunda hiçbir şey değişmez.",
     confirm: "Kalıcı yap",
     confirming: "Kalıcı yapılıyor…",
@@ -1549,6 +1561,10 @@ export const tr: Strings = {
       `Oyunda bir gün devam ettiğinizde oyuncu ${parent} kulübüne dönmüş olur`,
       "O zamana kadar Değişiklikler bölümünde listelenir; geri alma kiralığın eski bitiş tarihini geri getirir",
     ],
+    termsHeading: "Oyunda",
+    notRecallable: (parent) => `Kiralık sözleşmesi ${parent} kulübünün onu geri çağırmasına izin vermiyor`,
+    notTerminable: "Kiralık erken bitirilemiyor",
+    worksAnyway: "Buradaki geri çağırma yine de çalışır: oyunun geri çağırmasını kullanmaz, kiralığın son gününü değiştirir",
     hint: "Siz geri çağırmadan oyunda hiçbir şey değişmez.",
     confirm: "Geri çağır",
     confirming: "Geri çağrılıyor…",

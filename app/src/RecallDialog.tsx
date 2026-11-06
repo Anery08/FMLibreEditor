@@ -66,6 +66,15 @@ export function RecallDialog({ uid, name, loan, onRecalled, onClose }: RecallDia
   };
 
   const parent = loan.parent ?? "";
+  // What the game itself would not allow, by the loan's terms: the recall here moves the loan's last day all the same.
+  const terms = loan.terms;
+  const refusals =
+    terms === null
+      ? []
+      : [
+          ...(terms.canBeRecalled ? [] : [text.notRecallable(parent)]),
+          ...(terms.canBeTerminated ? [] : [text.notTerminable]),
+        ];
   return createPortal(
     // A click beside the dialog does nothing, and keeps focus where it is.
     <div
@@ -108,6 +117,20 @@ export function RecallDialog({ uid, name, loan, onRecalled, onClose }: RecallDia
               <div className="move-club">
                 <ClubLine uid={loan.parentUid} name={loan.parent} />
               </div>
+            </section>
+          )}
+
+          {refusals.length > 0 && (
+            <section className="move-section recall-terms" aria-labelledby={id("terms")}>
+              <h3 id={id("terms")}>{text.termsHeading}</h3>
+              <ul className="move-facts">
+                {refusals.map((line) => (
+                  <li key={line} className="refused">
+                    {line}
+                  </li>
+                ))}
+                <li>{text.worksAnyway}</li>
+              </ul>
             </section>
           )}
 

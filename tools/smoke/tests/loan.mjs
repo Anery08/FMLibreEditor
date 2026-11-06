@@ -34,6 +34,20 @@ export async function run({ app, report, probe, connection }) {
   const before = probe.get("player", player.uid, [FIELD])[FIELD];
   report.check("the probe reads the loan's end the app shows", before === numberOf(loan.until), String(before));
 
+  // The loan's terms, as the game's Loan Club tab shows them: the probe reads them on its own.
+  const { terms } = loan;
+  const probed = probe.run(["loans", player.uid]).match(/recall (yes|no), terminate (yes|no),.*option fee (-|\d+)/);
+  report.check(
+    "the probe reads the loan's terms the app shows",
+    terms != null &&
+      probed != null &&
+      (probed[1] === "yes") === terms.canBeRecalled &&
+      (probed[2] === "yes") === terms.canBeTerminated &&
+      (probed[3] === "-" ? null : Number(probed[3])) === terms.optionFee,
+    terms && `recall ${terms.canBeRecalled}, terminate ${terms.canBeTerminated}, option fee ${terms.optionFee}`,
+  );
+  const limited = terms != null && (!terms.canBeRecalled || !terms.canBeTerminated);
+
   const today = numberOf(connection.gameDate);
   const recalled = await app.must("recall_loan", { uid: player.uid });
   const written = probe.get("player", player.uid, [FIELD])[FIELD];
@@ -58,7 +72,7 @@ export async function run({ app, report, probe, connection }) {
 
   // The same through his profile: the button asks first, Cancel writes nothing, Recall writes and the status replaces
   // the button.
-  await app.openTab(0);
+  await app.openTab("Players");
   await app.setInput(`${VIS}(".search input")`, String(player.uid));
   const rows = `[...document.querySelectorAll("table.grid tbody tr")].filter(${SHOWN})`;
   await app.waitFor(`${rows}.length === 1 && ${rows}[0].textContent.includes(${JSON.stringify(player.name)})`, "his row");
@@ -70,6 +84,8 @@ export async function run({ app, report, probe, connection }) {
   await app.click(button, "Recall from loan");
   await app.waitFor(dialog, "the recall dialog");
   const asked = await app.js(`${dialog}.contains(document.activeElement) && document.activeElement.textContent`);
+  const says = await app.js(`${dialog}.querySelector(".recall-terms")?.textContent ?? ""`);
+  report.check("the dialog says what the loan's terms would not allow in the game", !!says === limited, says || "nothing");
   await app.shot("loan-recall-dialog");
   await app.press("Escape");
   await app.waitFor(`!${dialog}`, "the dialog to close");
@@ -99,6 +115,14 @@ export async function run({ app, report, probe, connection }) {
   const planLine = await app.js(`${permanent}.querySelector(".move-plan").textContent`);
   const planned = await app.js(`!!${permanent}.querySelector(".move-plan.ok")`);
   report.check("the dialog plans making the loan permanent", planned, planLine);
+  // The fee is the first amount the dialog asks for: the loan's option to buy, where it has one.
+  const feeShown = await app.js(`${permanent}.querySelector("input[type=number]")?.value ?? null`);
+  const option = terms?.optionFee ?? null;
+  report.check(
+    "the fee starts as the loan's option to buy",
+    option !== null && option > 0 ? feeShown !== "" && feeShown !== null : feeShown === "",
+    `${feeShown || "empty"}, option ${option}`,
+  );
   await app.shot("loan-permanent-dialog");
   await app.press("Escape");
   await app.waitFor(`!${permanent}`, "the dialog to close");

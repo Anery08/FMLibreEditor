@@ -298,6 +298,19 @@ contract = 0x00
 others = [0x08, 0x10, 0x18]
 class = "db::LOAN_CONTRACT"
 
+# The loan's terms, as the game's Loan Club tab shows them, past the fields the loan contract shares with a contract.
+# Mapped by RootTourist on the Steam build 26340721 against 17 loans in the English UI (PR #101): `flags` bit 0 "Can
+# play against own team", bit 1 "Can play in cup matches", bit 2 "Can be recalled", bit 12 "Loan cannot be terminated"
+# (bits 3, 8, 13 and 15 also occur, and the game shows nothing for them); `option_fee` the "Optional Future Fee";
+# `monthly_fee` the "Monthly playing fee", `unused_fee` the "Unused Monthly Fee". The amounts are pounds, -1 for none.
+# On the Steam save of 15 August 2027, of 371 loans 113 could not be recalled and 94 could not be terminated (71
+# neither): Anton Kade's, from FC Augsburg to Liverpool, holds flags 0x1002 and an option fee of 23,245,368.
+[loan.terms]
+flags = 0xB0
+option_fee = 0xC0
+monthly_fee = 0xCC
+unused_fee = 0xD0
+
 [team]
 club = 0x30               # club pointer
 # u8, the kind of team: on the test save 0 for the first team, 10 for the under-21s and

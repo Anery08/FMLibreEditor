@@ -635,6 +635,17 @@ export const es: Strings = {
     pendingTitle: (parent) => `Hoy es el último día de la cesión: avanza un día en el juego y estará de vuelta en ${parent}.`,
     endPassed: (date) =>
       `La cesión debía terminar el ${date}, pero el juego no lo ha devuelto. Repéscalo de nuevo y avanza un día.`,
+    loanCanRecall: "Se puede repescar",
+    loanCanRecallTitle: "Si su club puede repescarlo en el juego. Repescar de la cesión aquí funciona en ambos casos",
+    loanCanTerminate: "Se puede rescindir",
+    loanCupMatches: "Juega en copa",
+    loanAgainstClub: "Juega contra su club",
+    loanOptionFee: "Opción de compra",
+    loanOptionFeeTitle: "El traspaso por el que el club donde está cedido puede ficharlo en propiedad",
+    loanMonthlyFee: "Cuota mensual",
+    loanMonthlyFeeTitle: "Lo que el club donde está cedido paga a su club por cada mes que juega",
+    loanUnusedFee: "Cuota mensual sin jugar",
+    loanUnusedFeeTitle: "Lo que el club donde está cedido paga a su club por cada mes que no juega",
     clauseCondition: (kind, value) => {
       switch (kind) {
         case 10:
@@ -1590,6 +1601,8 @@ export const es: Strings = {
       "El historial de traspasos del juego no lo muestra",
       "Figura en Cambios como un traspaso; deshacerlo una vez devuelve la cesión",
     ],
+    /** The fee, filled in from the loan's option to buy. */
+    optionFee: (money) => `Rellenado con la opción de compra de la cesión: ${money}`,
     hint: "Nada cambia en el juego hasta que pulsas Hacer definitiva.",
     confirm: "Hacer definitiva",
     confirming: "Haciéndola definitiva…",
@@ -1606,6 +1619,10 @@ export const es: Strings = {
       `Avanza un día en el juego y estará de vuelta en ${parent}`,
       "Hasta entonces figura en Cambios, donde deshacerlo devuelve el fin anterior de la cesión",
     ],
+    termsHeading: "En el juego",
+    notRecallable: (parent) => `La cesión no permite que ${parent} lo repesque`,
+    notTerminable: "La cesión no se puede rescindir",
+    worksAnyway: "Aquí la repesca funciona igual: no usa la del juego, cambia el último día de la cesión",
     hint: "Nada cambia en el juego hasta que pulsas Repescar.",
     confirm: "Repescar",
     confirming: "Repescando…",

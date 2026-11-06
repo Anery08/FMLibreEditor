@@ -58,7 +58,10 @@ export function PermanentDialog({ uid, name, loan, contract, onDone, onClose }: 
   const wasExpires = contract.expires ? numberFromDate(contract.expires) : null;
   const [wageText, setWageText] = useState(String(wasWageShown));
   const [expiresText, setExpiresText] = useState(wasExpires === null ? "" : isoFromNumber(wasExpires));
-  const [feeText, setFeeText] = useState("");
+  // The fee starts as the loan's option to buy, where it has one: what the game would have the club pay to keep him.
+  const optionFee = loan.terms?.optionFee ?? null;
+  const hasOption = optionFee !== null && optionFee > 0;
+  const [feeText, setFeeText] = useState(hasOption ? String(toShown(optionFee)) : "");
   const [planned, setPlanned] = useState<Planned | null>(null);
   const [making, setMaking] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -232,7 +235,7 @@ export function PermanentDialog({ uid, name, loan, contract, onDone, onClose }: 
                   />
                 </span>
                 <p id={id("fee-note")} className={feeNote ? "move-note invalid" : "move-note"}>
-                  {feeNote ? feeNote.message : moveText.feeHint}
+                  {feeNote ? feeNote.message : hasOption ? text.optionFee(formatMoney(optionFee)) : moveText.feeHint}
                 </p>
               </div>
             </div>

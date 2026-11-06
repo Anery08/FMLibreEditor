@@ -578,6 +578,18 @@ export const en = {
       `Today is the last day of the loan: continue one day in the game and he is back at ${parent}.`,
     endPassed: (date: string) =>
       `The loan was to end on ${date}, but the game has not brought him back. Recall him again, then continue one day.`,
+    /** The loan's terms, as the game's Loan Club tab shows them. */
+    loanCanRecall: "Can be recalled",
+    loanCanRecallTitle: "Whether his club may recall him in the game. Recall from loan here works either way",
+    loanCanTerminate: "Can be ended early",
+    loanCupMatches: "Plays in cup matches",
+    loanAgainstClub: "Plays against his club",
+    loanOptionFee: "Option to buy",
+    loanOptionFeeTitle: "The fee for which the club he is on loan at may sign him for good",
+    loanMonthlyFee: "Monthly fee",
+    loanMonthlyFeeTitle: "What the club he is on loan at pays his club for each month he plays",
+    loanUnusedFee: "Monthly fee if unused",
+    loanUnusedFeeTitle: "What the club he is on loan at pays his club for each month he is not used",
     /** What a clause depends on, by kind: goals, assists, matches, years or a percentage. */
     clauseCondition: (kind: number, value: number) => {
       switch (kind) {
@@ -1739,6 +1751,8 @@ export const en = {
       "The game's transfer history does not list it",
       "Listed under Changes as a transfer, where one undo puts the loan back",
     ],
+    /** The fee, filled in from the loan's option to buy. */
+    optionFee: (money: string) => `Filled in from the loan's option to buy: ${money}`,
     /** Nothing changes in the game until Make permanent. */
     hint: "Nothing changes in the game until you press Make permanent.",
     confirm: "Make permanent",
@@ -1759,6 +1773,14 @@ export const en = {
       `Continue one day in the game and he is back at ${parent}`,
       "Until then it is listed under Changes, where an undo puts the loan's old end back",
     ],
+    /**
+     * What the loan's terms would not allow in the game, when it would not let his club recall him or end the loan
+     * early; `parent` is his club. The recall here moves the loan's last day all the same.
+     */
+    termsHeading: "In the game",
+    notRecallable: (parent: string) => `The loan does not let ${parent} recall him`,
+    notTerminable: "The loan cannot be ended early",
+    worksAnyway: "The recall here works all the same: it does not go through the game's recall, it moves the loan's last day",
     /** Nothing changes in the game until Recall. */
     hint: "Nothing changes in the game until you press Recall.",
     confirm: "Recall",

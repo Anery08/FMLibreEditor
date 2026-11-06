@@ -3648,6 +3648,22 @@ fn list_loans(session: &Session, only: Option<u32>, club: Option<u32>, raw: bool
             details.squad_number.map_or("-".to_owned(), |n| n.to_string()),
             details.wage,
         );
+        if let Some(t) = details.terms {
+            let yes = |b: bool| if b { "yes" } else { "no" };
+            let amount = |a: Option<i32>| a.map_or("-".to_owned(), |a| a.to_string());
+            println!(
+                "             recall {}, terminate {}, cup matches {}, against own club {}, option fee {}, monthly fee \
+                 {} (unused {}), flags {:#06x}",
+                yes(t.can_be_recalled),
+                yes(t.can_be_terminated),
+                yes(t.cup_matches),
+                yes(t.against_own_club),
+                amount(t.option_fee),
+                amount(t.monthly_fee),
+                amount(t.unused_fee),
+                t.flags
+            );
+        }
         if raw && let Some(at) = session.loan_contract(player.address, player.shift)? {
             let bytes = process.read_bytes(at + 0x58, 0xA8)?;
             for (i, line) in bytes.chunks(16).enumerate() {
