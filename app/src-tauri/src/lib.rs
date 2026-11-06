@@ -52,7 +52,8 @@ struct Connection {
     save: Option<String>,
 }
 
-/// How often the balances of frozen clubs and the attributes, energy and sharpness of frozen players are looked at.
+/// How often the balances of frozen clubs and the attributes, energy and sharpness of frozen players and the
+/// attributes of frozen members of staff are looked at.
 const FREEZE_EVERY: Duration = Duration::from_secs(2);
 
 /// The attributes of a player that are at their best at 1, not at 20.
@@ -70,6 +71,9 @@ struct Frozen {
     /// The players whose attributes are frozen, with the worst each attribute may be, as stored: what it was when it
     /// was frozen, or better once he improved. Worse is lower, or higher where lower is better.
     attributes: BTreeMap<u32, BTreeMap<String, i64>>,
+    /// The members of staff whose attributes are frozen, with the worst each attribute may be, as stored: what it was
+    /// when it was frozen, or better once it improved. None of them is better lower.
+    staff: BTreeMap<u32, BTreeMap<String, i64>>,
     /// The players whose energy and match sharpness are frozen, with the least each may be, as stored: what it was
     /// when it was frozen, or more once he was fitter. A player frozen at full energy stays at it.
     fitness: BTreeMap<u32, BTreeMap<String, i64>>,
@@ -77,7 +81,7 @@ struct Frozen {
 
 impl Frozen {
     fn is_empty(&self) -> bool {
-        self.money.is_empty() && self.attributes.is_empty() && self.fitness.is_empty()
+        self.money.is_empty() && self.attributes.is_empty() && self.staff.is_empty() && self.fitness.is_empty()
     }
 
     /// The players frozen in the way `kind` names, with what they are held at.
@@ -95,6 +99,7 @@ impl Frozen {
         let held = match change.entity {
             Entity::Club if change.field == "finance.balance" => self.money.get_mut(&change.uid),
             Entity::Player => players.get_mut(&change.uid).and_then(|held| held.get_mut(&change.field)),
+            Entity::Staff => self.staff.get_mut(&change.uid).and_then(|held| held.get_mut(&change.field)),
             _ => None,
         };
         if let Some(held) = held {
@@ -115,6 +120,9 @@ struct Remembered {
 struct RememberedSave {
     /// The players whose attributes are frozen.
     players: BTreeSet<u32>,
+    /// The members of staff whose attributes are frozen; not in the files of versions before it.
+    #[serde(default)]
+    staff: BTreeSet<u32>,
     /// The clubs whose money is frozen.
     clubs: BTreeSet<u32>,
     /// The players whose energy and match sharpness are frozen; not in the files of versions before it.
@@ -124,7 +132,7 @@ struct RememberedSave {
 
 impl RememberedSave {
     fn is_empty(&self) -> bool {
-        self.players.is_empty() && self.clubs.is_empty() && self.fitness.is_empty()
+        self.players.is_empty() && self.staff.is_empty() && self.clubs.is_empty() && self.fitness.is_empty()
     }
 
     /// The players frozen in the way `kind` names.
@@ -178,6 +186,8 @@ struct ExportReport {
 struct Refrozen {
     /// The players whose attributes are frozen again, by name.
     players: Vec<String>,
+    /// The members of staff whose attributes are frozen again, by name.
+    staff: Vec<String>,
     /// The clubs whose money is frozen again, by name.
     clubs: Vec<String>,
     /// The players whose energy and match sharpness are frozen again, by name.
@@ -189,7 +199,11 @@ struct Refrozen {
 
 impl Refrozen {
     fn is_empty(&self) -> bool {
-        self.players.is_empty() && self.clubs.is_empty() && self.fitness.is_empty() && self.waiting == 0
+        self.players.is_empty()
+            && self.staff.is_empty()
+            && self.clubs.is_empty()
+            && self.fitness.is_empty()
+            && self.waiting == 0
     }
 }
 
@@ -203,16 +217,17 @@ fn save_of(session: &Session, humans: &[u32]) -> Option<String> {
     Some(format!("{:?}:{}", session.game.storefront, managers.join("+")))
 }
 
-/// Keeps the fields `fields` of each player in `held` from getting worse than they are held at (see
-/// `Connection::hold_frozen`): worse is lower, or higher where lower is better.
-fn hold_players(
+/// Keeps the fields `fields` of each person in `held` (players, or members of staff: `target_of` finds where one is)
+/// from getting worse than they are held at (see `Connection::hold_frozen`): worse is lower, or higher where lower is
+/// better.
+fn hold_people(
     session: &Session,
-    players: &PlayerIndex,
+    target_of: impl Fn(u32) -> Option<Target>,
     held: &mut BTreeMap<u32, BTreeMap<String, i64>>,
     fields: &[Field],
 ) {
     for (&uid, limits) in held.iter_mut() {
-        let Some(target) = players.get(uid).map(|player| player.target()) else {
+        let Some(target) = target_of(uid) else {
             continue;
         };
         let Ok(values) = session.read_fields(&target, fields) else {
@@ -274,12 +289,14 @@ impl Connection {
         let Some(entry) = remembered.saves.get_mut(&save) else {
             return refrozen;
         };
-        let count = entry.players.len() + entry.clubs.len() + entry.fitness.len();
+        let count = entry.players.len() + entry.staff.len() + entry.clubs.len() + entry.fitness.len();
         entry.players.retain(|&uid| self.players.get(uid).is_some());
+        entry.staff.retain(|&uid| self.staff.get(uid).is_some());
         entry.clubs.retain(|&uid| self.clubs.get(uid).is_some());
         entry.fitness.retain(|&uid| self.players.get(uid).is_some());
-        let (players, clubs, fitness) = (entry.players.clone(), entry.clubs.clone(), entry.fitness.clone());
-        if players.len() + clubs.len() + fitness.len() < count {
+        let (players, staff) = (entry.players.clone(), entry.staff.clone());
+        let (clubs, fitness) = (entry.clubs.clone(), entry.fitness.clone());
+        if players.len() + staff.len() + clubs.len() + fitness.len() < count {
             remembered.saves.retain(|_, save| !save.is_empty());
             let _ = remembered.write(path);
         }
@@ -287,6 +304,12 @@ impl Connection {
         for uid in players {
             match safe.then(|| self.freeze_player(uid)) {
                 Some(Ok(())) => refrozen.players.push(self.player_name(uid)),
+                _ => refrozen.waiting += 1,
+            }
+        }
+        for uid in staff {
+            match safe.then(|| self.freeze_member(uid)) {
+                Some(Ok(())) => refrozen.staff.push(self.staff_name(uid)),
                 _ => refrozen.waiting += 1,
             }
         }
@@ -320,15 +343,23 @@ impl Connection {
     /// Freezes the attributes of the player `uid` at what they are now (see `hold_frozen`). Refused while the
     /// attributes may not be written.
     fn freeze_player(&mut self, uid: u32) -> Result<(), Failure> {
-        let held = self.held_values(uid, &self.attribute_fields())?;
+        let held = self.held_values(Entity::Player, uid, &self.attribute_fields(Entity::Player))?;
         self.frozen.attributes.insert(uid, held);
+        Ok(())
+    }
+
+    /// Freezes the attributes of the member of staff `uid` at what they are now (see `hold_frozen`). Refused while the
+    /// attributes may not be written.
+    fn freeze_member(&mut self, uid: u32) -> Result<(), Failure> {
+        let held = self.held_values(Entity::Staff, uid, &self.attribute_fields(Entity::Staff))?;
+        self.frozen.staff.insert(uid, held);
         Ok(())
     }
 
     /// Freezes the energy and match sharpness of the player `uid` at what they are now (see `hold_frozen`). Refused
     /// while they may not be written.
     fn freeze_fitness(&mut self, uid: u32) -> Result<(), Failure> {
-        let held = self.held_values(uid, &self.fitness_fields()?)?;
+        let held = self.held_values(Entity::Player, uid, &self.fitness_fields()?)?;
         self.frozen.fitness.insert(uid, held);
         Ok(())
     }
@@ -344,7 +375,7 @@ impl Connection {
         frozen: bool,
     ) -> Result<TeamFreeze, Failure> {
         let fields = match kind {
-            FreezeKind::Attributes => self.attribute_fields(),
+            FreezeKind::Attributes => self.attribute_fields(Entity::Player),
             FreezeKind::Fitness => self.fitness_fields()?,
         };
         // The fields share one check, which is the same for every player.
@@ -365,7 +396,7 @@ impl Connection {
                 changed.push(uid);
                 continue;
             }
-            match self.held_values(uid, &fields) {
+            match self.held_values(Entity::Player, uid, &fields) {
                 Ok(held) => {
                     self.frozen.of(kind).insert(uid, held);
                     changed.push(uid);
@@ -388,10 +419,11 @@ impl Connection {
         Ok(TeamFreeze { changed: changed.len(), failed })
     }
 
-    /// What the fields `fields` of the player `uid` hold now, by key: what freezing them holds them at. Refused while
-    /// they may not be written; they share one check, so what holds for the first holds for all.
-    fn held_values(&self, uid: u32, fields: &[Field]) -> Result<BTreeMap<String, i64>, Failure> {
-        let target = self.players.get(uid).ok_or_else(|| not_found(Entity::Player, uid))?.target();
+    /// What the fields `fields` of the player or member of staff `uid` (as `entity` says) hold now, by key: what
+    /// freezing them holds them at. Refused while they may not be written; they share one check, so what holds for the
+    /// first holds for all.
+    fn held_values(&self, entity: Entity, uid: u32, fields: &[Field]) -> Result<BTreeMap<String, i64>, Failure> {
+        let (target, _) = self.target(entity, uid)?;
         if let Some(field) = fields.first()
             && let Some(lock) = self.session.field_lock(field)
         {
@@ -813,6 +845,10 @@ impl Connection {
         }
     }
 
+    fn staff_name(&self, uid: u32) -> String {
+        self.staff.get(uid).map_or_else(|| uid.to_string(), |member| member.name.clone())
+    }
+
     fn club_name(&self, uid: u32) -> String {
         self.clubs.get(uid).map_or_else(|| uid.to_string(), |club| club.name.clone())
     }
@@ -976,19 +1012,26 @@ impl Connection {
         .ok_or_else(|| not_found(entity, uid))
     }
 
-    /// Keeps the balance of every frozen club and the attributes, energy and match sharpness of every frozen player
-    /// from getting worse: what the game took is put back, and what it gave raises what they are held at. These writes
-    /// are not logged; unfreezing ends them.
+    /// Keeps the balance of every frozen club, the attributes, energy and match sharpness of every frozen player and
+    /// the attributes of every frozen member of staff from getting worse: what the game took is put back, and what it
+    /// gave raises what they are held at. These writes are not logged; unfreezing ends them.
     fn hold_frozen(&mut self) {
         self.hold_money();
         if !self.frozen.attributes.is_empty() {
-            let fields = self.attribute_fields();
-            hold_players(&self.session, &self.players, &mut self.frozen.attributes, &fields);
+            let fields = self.attribute_fields(Entity::Player);
+            let target_of = |uid| self.players.get(uid).map(|player| player.target());
+            hold_people(&self.session, target_of, &mut self.frozen.attributes, &fields);
+        }
+        if !self.frozen.staff.is_empty() {
+            let fields = self.attribute_fields(Entity::Staff);
+            let target_of = |uid| self.staff.get(uid).map(|member| member.target());
+            hold_people(&self.session, target_of, &mut self.frozen.staff, &fields);
         }
         if !self.frozen.fitness.is_empty()
             && let Ok(fields) = self.fitness_fields()
         {
-            hold_players(&self.session, &self.players, &mut self.frozen.fitness, &fields);
+            let target_of = |uid| self.players.get(uid).map(|player| player.target());
+            hold_people(&self.session, target_of, &mut self.frozen.fitness, &fields);
         }
     }
 
@@ -1011,9 +1054,9 @@ impl Connection {
         }
     }
 
-    /// The attributes of players the editor can change.
-    fn attribute_fields(&self) -> Vec<Field> {
-        let fields = self.session.fields(Entity::Player).into_iter();
+    /// The attributes of players or of staff (as `entity` says) the editor can change.
+    fn attribute_fields(&self, entity: Entity) -> Vec<Field> {
+        let fields = self.session.fields(entity).into_iter();
         fields.filter(|field| field.key.starts_with("attribute.")).collect()
     }
 
@@ -1022,9 +1065,10 @@ impl Connection {
         FITNESS.iter().map(|key| self.session.field(Entity::Player, key)).collect()
     }
 
-    /// Every attribute of a player at its best: 20, or 1 where lower is better.
-    fn best_attributes(&self) -> Vec<(Field, Operation)> {
-        self.attribute_fields()
+    /// Every attribute of a player or of a member of staff (as `entity` says) at its best: 20, or 1 where lower is
+    /// better, which no attribute of staff is.
+    fn best_attributes(&self, entity: Entity) -> Vec<(Field, Operation)> {
+        self.attribute_fields(entity)
             .into_iter()
             .map(|field| {
                 let best = if LOWER_IS_BETTER.contains(&field.key.as_str()) { 1 } else { 20 };
@@ -1995,6 +2039,41 @@ fn frozen_players(state: State<'_, AppState>) -> Result<Vec<u32>, Failure> {
     Ok(guard.as_ref().map(|connection| connection.frozen.attributes.keys().copied().collect()).unwrap_or_default())
 }
 
+/// Freezes the attributes of the member of staff `id`, or unfreezes them: while the app is connected, a frozen member
+/// of staff's attributes do not get worse. Refused while the attributes may not be written. The app remembers it for
+/// this save, and freezes them again when it connects to the save another time. Returns the members of staff frozen
+/// now.
+#[tauri::command]
+fn freeze_staff_attributes(
+    state: State<'_, AppState>,
+    file: State<'_, FrozenFile>,
+    id: u32,
+    frozen: bool,
+) -> Result<Vec<u32>, Failure> {
+    let mut guard = state.0.lock()?;
+    let connection = guard.as_mut().ok_or_else(not_connected)?;
+    if frozen {
+        connection.freeze_member(id)?;
+    } else {
+        connection.frozen.staff.remove(&id);
+    }
+    connection.remember(file.0.as_deref(), |save| {
+        if frozen {
+            save.staff.insert(id);
+        } else {
+            save.staff.remove(&id);
+        }
+    });
+    Ok(connection.frozen.staff.keys().copied().collect())
+}
+
+/// The members of staff whose attributes are frozen.
+#[tauri::command]
+fn frozen_staff(state: State<'_, AppState>) -> Result<Vec<u32>, Failure> {
+    let guard = state.0.lock()?;
+    Ok(guard.as_ref().map(|connection| connection.frozen.staff.keys().copied().collect()).unwrap_or_default())
+}
+
 /// Freezes the energy and match sharpness of the player `uid`, or unfreezes them: while the app is connected, they do
 /// not go down, and a player frozen at full energy stays at it. Refused while they may not be written. The app
 /// remembers it for this save, and freezes them again when it connects to the save another time. Returns the players
@@ -2624,7 +2703,7 @@ fn team_action(state: State<'_, AppState>, club: u32, team: usize, action: TeamA
         .map(|player| (player.target(), player.name.clone()))
         .collect();
     let operations = if action == TeamAction::MaxAttributes {
-        connection.best_attributes()
+        connection.best_attributes(Entity::Player)
     } else {
         values
             .iter()
@@ -2643,10 +2722,31 @@ fn max_attributes(state: State<'_, AppState>, uid: u32) -> Result<MassReport, Fa
     let connection = guard.as_mut().ok_or_else(not_connected)?;
     let player = connection.players.get(uid).ok_or_else(|| not_found(Entity::Player, uid))?;
     let targets = [(player.target(), player.name.clone())];
-    let plan = connection.session.plan_mass_edit(&targets, &connection.best_attributes())?;
+    let plan = connection.session.plan_mass_edit(&targets, &connection.best_attributes(Entity::Player))?;
     let batch = connection.fresh_id();
     let mut report = connection.write_planned(Entity::Player, plan.planned, batch);
     // An attribute that could not be read is said, not passed over: it is one player, not a team.
+    report.failed.extend(plan.skipped.into_iter().map(|skipped| MassFailure {
+        uid: skipped.uid,
+        name: skipped.name,
+        field: skipped.field,
+        error: Failure { code: skipped.code, params: skipped.params, message: skipped.reason },
+    }));
+    Ok(report)
+}
+
+/// Sets every attribute of the member of staff `id` to its best (20), as `max_attributes` does for a player. The
+/// changes are logged as one batch, which `undo_batch` undoes.
+#[tauri::command]
+fn max_staff_attributes(state: State<'_, AppState>, id: u32) -> Result<MassReport, Failure> {
+    let mut guard = state.0.lock()?;
+    let connection = guard.as_mut().ok_or_else(not_connected)?;
+    let member = connection.staff.get(id).ok_or_else(|| not_found(Entity::Staff, id))?;
+    let targets = [(member.target(), member.name.clone())];
+    let plan = connection.session.plan_mass_edit(&targets, &connection.best_attributes(Entity::Staff))?;
+    let batch = connection.fresh_id();
+    let mut report = connection.write_planned(Entity::Staff, plan.planned, batch);
+    // An attribute that could not be read is said, not passed over: it is one member of staff, not a team.
     report.failed.extend(plan.skipped.into_iter().map(|skipped| MassFailure {
         uid: skipped.uid,
         name: skipped.name,
@@ -2816,6 +2916,9 @@ pub fn run() {
             frozen_clubs,
             freeze_attributes,
             frozen_players,
+            freeze_staff_attributes,
+            frozen_staff,
+            max_staff_attributes,
             freeze_fitness,
             frozen_fitness,
             freeze_team,
@@ -2874,6 +2977,26 @@ mod tests {
         let remembered: Remembered = serde_json::from_str(file).expect("an earlier file");
         let save = &remembered.saves["Steam:1000"];
         assert!(save.players.contains(&28122642) && save.clubs.contains(&602) && save.fitness.is_empty());
+    }
+
+    #[test]
+    fn frozen_files_without_staff_are_read() {
+        // As 0.4.3 wrote it, before the attributes of staff could be frozen.
+        let file = r#"{ "saves": { "Steam:1000": { "players": [1], "clubs": [], "fitness": [] } } }"#;
+        let remembered: Remembered = serde_json::from_str(file).expect("an earlier file");
+        assert!(remembered.saves["Steam:1000"].staff.is_empty());
+    }
+
+    #[test]
+    fn remembered_staff_keep_a_save_from_being_empty() {
+        let mut save = RememberedSave::default();
+        assert!(save.is_empty());
+        save.staff.insert(5);
+        assert!(!save.is_empty());
+        let mut frozen = Frozen::default();
+        assert!(frozen.is_empty());
+        frozen.staff.insert(5, BTreeMap::new());
+        assert!(!frozen.is_empty());
     }
 
     #[test]

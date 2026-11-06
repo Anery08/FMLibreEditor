@@ -152,7 +152,7 @@ function ProfileBody({ details }: { details: PlayerDetails }) {
   const goalkeeper = isGoalkeeper(details);
   return (
     <>
-      <AttributeActions details={details} />
+      <AttributeActions entity="player" details={details} />
 
       <div className="profile-pair">
         <div className="profile-columns">

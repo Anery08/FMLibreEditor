@@ -42,6 +42,13 @@ export const freezeAttributes = (uid: number, frozen: boolean) => call<number[]>
 /** The players whose attributes are frozen: while the app is connected, they do not get worse. */
 export const frozenPlayers = () => call<number[]>("frozen_players");
 
+/** Freezes the attributes of the member of staff `id`, or unfreezes them; the staff whose attributes are frozen now. */
+export const freezeStaffAttributes = (id: number, frozen: boolean) =>
+  call<number[]>("freeze_staff_attributes", { id, frozen });
+
+/** The members of staff whose attributes are frozen: while the app is connected, they do not get worse. */
+export const frozenStaff = () => call<number[]>("frozen_staff");
+
 /**
  * Freezes the energy and match sharpness of the player `uid`, or unfreezes them; the players whose energy and match
  * sharpness are frozen now.
@@ -63,6 +70,12 @@ export const freezeTeam = (club: number, team: number, kind: FreezeKind, frozen:
  * logged as one batch, undone with `undoBatch`; `applied` counts them.
  */
 export const maxAttributes = (uid: number) => call<MassReport>("max_attributes", { uid });
+
+/**
+ * Sets every attribute of the member of staff `id` to its best: 20. The changes are logged as one batch, undone with
+ * `undoBatch`; `applied` counts them.
+ */
+export const maxStaffAttributes = (id: number) => call<MassReport>("max_staff_attributes", { id });
 
 /** The nations of the people in the lists, by name: what a nation field can be set to. */
 export const listNations = () => call<Nation[]>("list_nations");

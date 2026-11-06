@@ -1,12 +1,21 @@
-// Above a player's attributes while his profile is read: Max attributes, which sets every one of them to its best at
-// once, and the box that freezes them.
+// Above the attributes of a player or a member of staff while the profile is read: Max attributes, which sets every one
+// of them to its best at once, and the box that freezes them.
 
 import { useContext, useEffect, useRef, useState } from "react";
-import { changeLog, freezeAttributes, frozenPlayers, maxAttributes, undoBatch } from "./editing";
+import {
+  changeLog,
+  freezeAttributes,
+  freezeStaffAttributes,
+  frozenPlayers,
+  frozenStaff,
+  maxAttributes,
+  maxStaffAttributes,
+  undoBatch,
+} from "./editing";
 import { describeError } from "./format";
 import { fieldLabel, massEditText, profileText } from "./labels";
 import { undoFailureLines } from "./massDraft";
-import type { PlayerDetails } from "./types";
+import type { PlayerDetails, StaffDetails } from "./types";
 import { EditorContext, useEditSession } from "./useProfileEditing";
 
 /** What the last Max attributes, or the undo of it, came to. */
@@ -25,11 +34,16 @@ const PROBLEMS_SHOWN = 5;
 
 /**
  * Max attributes, with what it wrote and the button that takes it back, and Freeze attributes, with what freezing does
- * while it is on. Both wait while the game cannot be written to, and say why. Not there while the player is edited:
- * the inputs hold his attributes then.
+ * while it is on. Both wait while the game cannot be written to, and say why. Not there while the profile is edited:
+ * the inputs hold the attributes then. For a player, or for a member of staff, none of whose attributes is better
+ * lower.
  */
-export function AttributeActions({ details }: { details: PlayerDetails }) {
+export function AttributeActions({
+  entity,
+  details,
+}: { entity: "player"; details: PlayerDetails } | { entity: "staff"; details: StaffDetails }) {
   const uid = details.uid;
+  const staff = entity === "staff";
   const { editable, readOnlyNote, onEdited } = useContext(EditorContext);
   const editing = useEditSession() !== null;
   const [busy, setBusy] = useState(false);
@@ -58,17 +72,19 @@ export function AttributeActions({ details }: { details: PlayerDetails }) {
   // Asked again whenever the profile is read again: the squad tab of his club may have frozen him meanwhile.
   useEffect(() => {
     let current = true;
-    frozenPlayers()
-      .then((players) => current && setFrozen(players.includes(uid)))
+    (staff ? frozenStaff() : frozenPlayers())
+      .then((frozenUids) => current && setFrozen(frozenUids.includes(uid)))
       .catch(() => current && setFrozen(false));
     return () => {
       current = false;
     };
-  }, [uid, details]);
+  }, [uid, details, staff]);
 
   if (editing) {
     return null;
   }
+
+  const freezeNote = staff ? profileText.freezeStaffAttributesNote : profileText.freezeAttributesNote;
 
   /** Writes with `task`; the button that started it is only dimmed meanwhile (aria-disabled), so it keeps focus. */
   const write = async (task: () => Promise<Outcome>) => {
@@ -96,10 +112,10 @@ export function AttributeActions({ details }: { details: PlayerDetails }) {
 
   const max = () =>
     write(async () => {
-      const report = await maxAttributes(uid);
+      const report = await (staff ? maxStaffAttributes(uid) : maxAttributes(uid));
       const lines = report.failed
         .slice(0, PROBLEMS_SHOWN)
-        .map(({ field, error }) => `${fieldLabel("player", field)}: ${describeError(error)}`);
+        .map(({ field, error }) => `${fieldLabel(entity, field)}: ${describeError(error)}`);
       const more = report.failed.length - PROBLEMS_SHOWN;
       return {
         message: profileText.maxAttributesDone(report.applied),
@@ -125,9 +141,9 @@ export function AttributeActions({ details }: { details: PlayerDetails }) {
   const freeze = async (on: boolean) => {
     setFreezeError(null);
     try {
-      const players = await freezeAttributes(uid, on);
+      const frozenUids = await (staff ? freezeStaffAttributes(uid, on) : freezeAttributes(uid, on));
       if (alive.current) {
-        setFrozen(players.includes(uid));
+        setFrozen(frozenUids.includes(uid));
       }
       // Nothing in the game has changed, but the squad tab of his club says who is frozen: it reads again.
       onEdited();
@@ -147,13 +163,13 @@ export function AttributeActions({ details }: { details: PlayerDetails }) {
           disabled={!editable}
           aria-disabled={busy || undefined}
           aria-busy={busy || undefined}
-          title={editable ? profileText.maxAttributesTitle : readOnlyNote}
+          title={editable ? (staff ? profileText.maxStaffAttributesTitle : profileText.maxAttributesTitle) : readOnlyNote}
           onClick={() => void max()}
         >
           {profileText.maxAttributes}
         </button>
         {frozen !== null && (
-          <label className="freeze-toggle" title={editable ? profileText.freezeAttributesNote : readOnlyNote}>
+          <label className="freeze-toggle" title={editable ? freezeNote : readOnlyNote}>
             <input
               type="checkbox"
               checked={frozen}
@@ -175,7 +191,7 @@ export function AttributeActions({ details }: { details: PlayerDetails }) {
                   type="button"
                   className="max-toggle"
                   aria-disabled={busy || undefined}
-                  title={profileText.undoMaxTitle}
+                  title={staff ? profileText.undoMaxStaffTitle : profileText.undoMaxTitle}
                   onClick={() => outcome.batch !== null && void undo(outcome.batch)}
                 >
                   {profileText.undoMax}
@@ -192,7 +208,7 @@ export function AttributeActions({ details }: { details: PlayerDetails }) {
           </>
         )}
       </div>
-      {frozen && <p className="note">{profileText.freezeAttributesNote}</p>}
+      {frozen && <p className="note">{freezeNote}</p>}
       {freezeError && (
         <p className="note error" role="alert">
           {freezeError}

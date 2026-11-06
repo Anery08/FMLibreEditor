@@ -1832,19 +1832,30 @@ const bestAttribute = (key: string): [string, number] => [
   key === "injury_proneness" || key === "dirtiness" ? 5 : 100,
 ];
 
-/** Writes `values` (field, value as stored) to the player, each logged in the batch of `report`, which counts them. */
-function setValues(player: { uid: number; name: string }, values: [string, number][], report: MassReport): void {
-  const now = currentValues("player", player.uid);
+/** A staff attribute at its best as Max attributes writes it: 20 for the two stored as shown, else 20 stored as 100. */
+const bestStaffAttribute = (key: string): [string, number] => [
+  `attribute.${key}`,
+  STAFF_RATINGS.includes(key) ? 20 : 100,
+];
+
+/** Writes `values` (field, value as stored) to the person, each logged in the batch of `report`, which counts them. */
+function setValues(
+  player: { uid: number; name: string },
+  values: [string, number][],
+  report: MassReport,
+  entity: Entity = "player",
+): void {
+  const now = currentValues(entity, player.uid);
   for (const [field, value] of values) {
     if (now[field] === value) {
       continue;
     }
-    writeValue("player", player.uid, field, value);
+    writeValue(entity, player.uid, field, value);
     const logged: LoggedChange = {
       id: changes.length + 1,
       at: Date.now(),
       name: player.name,
-      entity: "player",
+      entity,
       uid: player.uid,
       field,
       old: now[field],
@@ -2181,6 +2192,9 @@ const frozenMoney = new Set<number>();
 /** The players whose attributes are frozen in this page, likewise. */
 const frozenAttributes = new Set<number>();
 
+/** The members of staff whose attributes are frozen in this page, likewise. */
+const frozenStaff = new Set<number>();
+
 /** The players whose energy and match sharpness are frozen in this page, likewise. */
 const frozenFitness = new Set<number>();
 
@@ -2311,8 +2325,12 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         frozenFitness.add(player.uid);
       }
       frozenMoney.add(clubs[0].uid);
+      for (const member of staff.slice(0, 2)) {
+        frozenStaff.add(member.uid);
+      }
       const again: Refrozen = {
         players: players.slice(0, 2).map((p) => p.name),
+        staff: staff.slice(0, 2).map((s) => s.name),
         clubs: [clubs[0].name],
         fitness: players.slice(0, 7).map((p) => p.name),
         waiting: 1,
@@ -2436,6 +2454,17 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
     }
     case "frozen_players":
       return [...frozenAttributes] as T;
+    case "freeze_staff_attributes": {
+      const id = Number(args?.id);
+      if (args?.frozen) {
+        frozenStaff.add(id);
+      } else {
+        frozenStaff.delete(id);
+      }
+      return [...frozenStaff] as T;
+    }
+    case "frozen_staff":
+      return [...frozenStaff] as T;
     case "freeze_fitness": {
       const uid = Number(args?.uid);
       if (args?.frozen) {
@@ -2472,6 +2501,16 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       }
       const report: MassReport = { batch: nextMassId++, applied: 0, failed: [] };
       setValues(player, ATTRIBUTES.map(bestAttribute), report);
+      return report as T;
+    }
+    case "max_staff_attributes": {
+      const id = Number(args?.id);
+      const member = staff.find((s) => s.uid === id);
+      if (!member) {
+        throw notFound("staff", id);
+      }
+      const report: MassReport = { batch: nextMassId++, applied: 0, failed: [] };
+      setValues(member, STAFF_ATTRIBUTE_ORDER.map(bestStaffAttribute), report, "staff");
       return report as T;
     }
     case "list_nations": {

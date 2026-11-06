@@ -642,6 +642,11 @@ export const tr: Strings = {
     freezeAttributesNote:
       "Uygulama açık ve oyuna bağlıyken özellikleri düşmez: oyunun düşürdüğü geri konur, gelişmeler yine sayılır. " +
       "Uygulama bunu bu kayıt için hatırlar ve kayda yeniden bağlandığında onları yine dondurur.",
+    maxStaffAttributesTitle: "Bu personelin bütün özelliklerini en iyiye çıkar: 20",
+    undoMaxStaffTitle: "Eski özellikleri oyuna geri yaz",
+    freezeStaffAttributesNote:
+      "Uygulama açık ve oyuna bağlıyken özellikleri düşmez: oyunun düşürdüğü geri konur, gelişmeler yine sayılır. " +
+      "Uygulama bunu bu kayıt için hatırlar ve kayda yeniden bağlandığında onları yine dondurur.",
     freezeFitness: "Enerji ve maç kondisyonunu dondur",
     freezeFitnessNote:
       "Uygulama açık ve oyuna bağlıyken enerjisi ve maç kondisyonu düşmez: oyunun düşürdüğü geri konur, artışlar " +
@@ -917,6 +922,7 @@ export const tr: Strings = {
       title: "Geçen seferden yeniden donduruldu",
       waitingTitle: "Dondurulanlar şimdilik bekliyor",
       players: (names) => `Özellikler: ${names}`,
+      staff: (names) => `Personel özellikleri: ${names}`,
       clubs: (names) => `Para: ${names}`,
       fitness: (names) => `Enerji ve maç kondisyonu: ${names}`,
       more: (count) => `ve ${format(count)} tane daha`,

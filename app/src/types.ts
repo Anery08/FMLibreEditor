@@ -122,11 +122,12 @@ export interface ExportReport {
 
 /**
  * What connecting froze again of what the app remembers as frozen in this save: the players' attributes, their energy
- * and match sharpness (`fitness`), and the clubs' money, by name, and how many it left for later, still remembered
- * (FMLibreEditor cannot write to this version of the game yet, or a check did not pass).
+ * and match sharpness (`fitness`), the attributes of staff, and the clubs' money, by name, and how many it left for
+ * later, still remembered (FMLibreEditor cannot write to this version of the game yet, or a check did not pass).
  */
 export interface Refrozen {
   players: string[];
+  staff: string[];
   clubs: string[];
   fitness: string[];
   waiting: number;
