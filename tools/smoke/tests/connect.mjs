@@ -24,7 +24,7 @@ export async function run({ app, report, connection: c }) {
   report.check("no notice about the build or the checks", !(await app.js(`!!document.querySelector(".compatibility-notice")`)));
 
   // The players' list and a profile.
-  await app.openTab(0);
+  await app.openTab("Players");
   const rows = `[...document.querySelectorAll("table.grid tbody tr")].filter(${SHOWN})`;
   await app.waitFor(`${rows}.length > 0`, "the players' rows");
   await app.click(`${rows}[0]`, "the first player");
@@ -38,7 +38,7 @@ export async function run({ app, report, connection: c }) {
   await sleep(300);
 
   // Staff and clubs.
-  await app.openTab(1);
+  await app.openTab("Staff");
   await app.waitFor(`${rows}.length > 0`, "the staff's rows");
   report.check("the staff list fills", true, `${await app.js(`${rows}.length`)} rows shown`);
   const [club] = await topClubs(app, 1);

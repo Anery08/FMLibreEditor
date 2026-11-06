@@ -689,6 +689,12 @@ export const es: Strings = {
       "Mientras la aplicación esté abierta y conectada, sus atributos no empeoran: lo que el juego quita se devuelve, " +
       "y las mejoras siguen contando. La aplicación lo recuerda para esta partida y vuelve a congelarlos al " +
       "conectarse a ella.",
+    maxStaffAttributesTitle: "Poner cada atributo de este miembro del personal en su mejor valor: 20",
+    undoMaxStaffTitle: "Volver a escribir en el juego los atributos anteriores",
+    freezeStaffAttributesNote:
+      "Mientras la aplicación esté abierta y conectada, sus atributos no empeoran: lo que el juego quita se devuelve, " +
+      "y las mejoras siguen contando. La aplicación lo recuerda para esta partida y vuelve a congelarlos al " +
+      "conectarse a ella.",
     freezeFitness: "Congelar energía y ritmo",
     freezeFitnessNote:
       "Mientras la aplicación esté abierta y conectada, su energía y su ritmo de competición no bajan: lo que el " +
@@ -969,6 +975,7 @@ export const es: Strings = {
       title: "Congelado de nuevo desde la última vez",
       waitingTitle: "Lo congelado espera por ahora",
       players: (names) => `Atributos: ${names}`,
+      staff: (names) => `Atributos del personal: ${names}`,
       clubs: (names) => `Dinero: ${names}`,
       fitness: (names) => `Energía y ritmo: ${names}`,
       more: (count) => `y ${format(count)} más`,

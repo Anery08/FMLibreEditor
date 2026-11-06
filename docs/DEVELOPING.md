@@ -46,8 +46,12 @@ For a build without one, or where a place a profile names does not check out, th
   - nine in ten of the current injuries began on or before it and are not over by then.
 
   Contracts alone cannot rule out a later date the game keeps for something else: 22 September and 11 October 2027
-  on that save. The injuries can, as only 12 and 3 of 110 fitted those. When values that fit read as several dates,
-  none is used.
+  on that save. The injuries can, as only 12 and 3 of 110 fitted those. Neither can rule out the day before on a day
+  on which no contract was signed and no injury began: the game keeps a value for it too (on the Game Pass save of 23
+  September 2026, `game_plugin.dll+0x56546f8` held the 22nd, which fitted as well as the date). When values that fit
+  read as several dates, the latest is used if the field beside the arrays holds it: that is where the builds before
+  November 2026 kept the date, and later builds keep the date there too once the game has moved on a day after a load.
+  Otherwise none is used, as right after a load, until the game has moved on a day and the data is read again.
 - **The retirement manager's static** where other builds keep it, as far from the players' array, checked by the
   name of the class its object has. Otherwise the plugin's writable data is searched for a pointer to an object of
   the class `RETIREMENT_MANAGER`, which takes about half a second.
@@ -77,7 +81,9 @@ read-only until `profiles/fm27/layout.toml` is fixed.
 #### On the day of an update
 
 1. Load a save in the updated game. Right after a load is best: then the field beside the arrays is unset, and the
-   date's own variable is the only place that holds the date.
+   date's own variable is the only place that holds the date. If the probe then finds two dates a day apart (the
+   value the game keeps for the day before), continue one day in the game and run it again: the field beside the
+   arrays is set by then, and tells which is the date.
 2. `fmlibre-probe profile --out profiles/fm27/<storefront>-<version>.toml` looks for everything as for a build
    without a profile, runs the checks with what it found, and writes the profile. It lists the values that read as a
    plausible date, and whether the guessed and the searched place of the retirement manager agree.

@@ -18,6 +18,27 @@ export const SHOWN = `((e) => e.getClientRects().length > 0 && getComputedStyle(
 /** In the page: the first element for a selector that is on screen. */
 export const VIS = `((sel, root = document) => [...root.querySelectorAll(sel)].find(${SHOWN}))`;
 
+/**
+ * In the page: a masthead tab's own name, without the number of changes the Changes tab adds in a `<small>`. From its
+ * text nodes rather than `innerText`, which follows the style sheet.
+ */
+const TAB_NAME = `((b) => [...b.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join("").trim())`;
+
+/** In the page: whether it has loaded, with Tauri's interface in it. */
+const LOADED = `(document.readyState === "complete" && "__TAURI_INTERNALS__" in window)`;
+
+/**
+ * In the page: whether the app is done starting. It asks for the connection it may have, then looks for the game; both
+ * calls are over once its connect panel (or, connected, its lists) is up with nothing busy in the masthead.
+ */
+const STARTED = `(!!document.querySelector(".connect, .views") && !document.querySelector(".masthead .busy"))`;
+
+/**
+ * In the page: how many calls to the app are out. Tauri 2 keeps their callbacks in `__TAURI_INTERNALS__.callbacks` until
+ * the answer comes back; an event listened to would keep one there too, but the app listens to none.
+ */
+const CALLS_OUT = `(window.__TAURI_INTERNALS__.callbacks?.size ?? 0)`;
+
 const KEYS = { Escape: 27, Tab: 9, Enter: 13 };
 
 /** The CDP address of the app's page, once its WebView2 is up. */
@@ -55,11 +76,18 @@ export class App {
     const app = new App(child, folder);
     try {
       await app.attach(await pageUrl(port, child));
-      await app.waitFor(`document.readyState === "complete" && "__TAURI_INTERNALS__" in window`, "the page", 60000);
-      await app.js(`localStorage.setItem("fmlibre.locale", "en"); true`);
+      await app.waitFor(LOADED, "the page", 60000);
+      // The language is read as the page loads, so it is saved and the page loaded again; not before the first page is
+      // done starting, though. A reload cuts short the calls the page has out: it logs "IPC custom protocol failed ...
+      // Failed to fetch", and the new page "[TAURI] Couldn't find callback id" when the answer comes back to it. Looking
+      // for the game (`detect_game`) can take seconds while the machine is busy. Its quick calls (its version, the
+      // graphics packs) get five seconds at most, as an event listened to would keep a callback there for good: the
+      // console check tells of a call cut short.
+      await app.waitFor(STARTED, "the app to look for the game", 90000);
+      await app.waitFor(`${CALLS_OUT} === 0`, "the app's calls to come back", 5000).catch(() => {});
+      await app.js(`localStorage.setItem("fmlibre.locale", "en"); window.smokeOldPage = true`);
       await app.send("Page.reload");
-      await sleep(1500);
-      await app.waitFor(`document.readyState === "complete" && "__TAURI_INTERNALS__" in window`, "the page", 60000);
+      await app.waitFor(`!window.smokeOldPage && ${LOADED}`, "the page in English", 60000);
     } catch (err) {
       app.close();
       throw err;
@@ -224,16 +252,23 @@ export class App {
     return this.must("current_connection");
   }
 
-  /** Opens one of the masthead's tabs: 0 Players, 1 Staff, 2 Clubs, 3 Changes. */
-  async openTab(index) {
-    await this.click(`document.querySelectorAll("nav.tabs button")[${index}]`, `tab ${index}`);
-    await this.waitFor(`document.querySelectorAll("nav.tabs button")[${index}].classList.contains("active")`, `tab ${index}`);
+  /**
+   * Opens one of the masthead's tabs by its English name: "Players", "Staff", "Clubs" or "Changes". By name, as builds
+   * differ in their tabs: one with a Scouting tab has it before Changes.
+   */
+  async openTab(name) {
+    const tabs = `[...document.querySelectorAll("nav.tabs button")]`;
+    const names = await this.js(`${tabs}.map(${TAB_NAME})`);
+    if (!names.includes(name)) throw new Error(`no ${name} tab: the tabs are ${names.join(", ")}`);
+    const tab = `${tabs}.find((b) => ${TAB_NAME}(b) === ${JSON.stringify(name)})`;
+    await this.click(tab, `the ${name} tab`);
+    await this.waitFor(`${tab}.classList.contains("active")`, `the ${name} tab`);
     await sleep(400);
   }
 
   /** Opens a club's profile from the Clubs tab, by its exact name. */
   async openClub(name) {
-    await this.openTab(2);
+    await this.openTab("Clubs");
     await this.waitFor(`${VIS}(".search input")`, "the clubs' search");
     await this.setInput(`${VIS}(".search input")`, name);
     const rows = `[...document.querySelectorAll("table.grid tbody tr")].filter(${SHOWN})`;

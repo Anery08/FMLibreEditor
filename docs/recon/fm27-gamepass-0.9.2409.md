@@ -105,3 +105,14 @@ other witnesses instead:
 - the jadedness FMRTE showed in July has changed;
 - Fulham have nobody banned;
 - every list is full, as above.
+
+## The day before, beside the date
+
+On the save of 23 September 2026, three values in the plugin's writable data fitted the contracts and the current
+injuries: the date's own variable (`game_plugin.dll+0x56257c8`) and the field beside the arrays (`+0x5684608`), both
+on the 23rd, and `+0x56546f8` on the 22nd. No contract had been signed and no injury had begun on the 23rd, so the day
+before fitted as well as the date, and a search without the profile used neither. The search now takes the latest of
+the dates that fit when the field beside the arrays holds it (see `pick_date` in `crates/fmlibre-core/src/health.rs`):
+with `FMLIBRE_IGNORE_PROFILES=1`, `fmlibre-probe health` read the 23rd at `+0x56257c8`, and the smoke test `unknown`
+passed. Both date values sit in the `.data` section among the compiler's type descriptors, not inside an object, so
+their places tell nothing about which is the date.
