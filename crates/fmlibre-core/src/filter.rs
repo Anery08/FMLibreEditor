@@ -304,6 +304,7 @@ mod tests {
             attributes: vec![10; PLAYER_ATTRIBUTES.len()],
             transfer_listed: false,
             loan_listed: false,
+            transfer_value: None,
             woman: Some(false),
             address: 0,
             shift: 0,

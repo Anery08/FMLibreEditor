@@ -24,6 +24,12 @@ know the player fully: the range starts at the stored value.
 300,000,000 marks a player who is not for sale (Messi; Saka and Mbappé read it too). Colpani's and Mota's single
 values sit below the conversion (0.80 of it): how the game rounds a fully known value is not worked out.
 
+**On the Mac** (Steam build 26340721, Apple silicon) the value sits 8 bytes earlier, at **`player +0x22C`**, like the
+player's other own fields, right before the asking price (`+0x230`). On the Arsenal save of 4 July 2027, 1,017 players
+read 300,000,000 (Lamine Yamal, Alexia Putellas), Phil Foden 144,244,816, Cole Palmer 154,739,659 and Florian Wirtz
+122,385,266. 335 players read `-1`, nearly all from that summer's youth intake (16 on average): the game has not
+valued them yet.
+
 ## Where a club's tactic is
 
 The match engine's selections (`simatch::PREPARED_TACTICS_CREATOR_ARRAY`, see `fm27-transfers.md`) keep a list at
@@ -40,8 +46,8 @@ was in memory 39 times with Monza's exact eleven slots.
 | `+0x000` | 11 records of 16 bytes, one per slot, and a 12th at `+0xB0`: they follow the style template, not the roles (team and player instruction settings, not decoded) |
 | `+0x0E0` | 10 bytes of flags that change with the template |
 | `+0x100` | `u32` style tag, as text backwards: `CONT` (Control Possession), `TIKI` (Tiki-Taka), `DIRE` (Direct) |
-| `+0x158` | 11 in-possession slot entries, `0x48` bytes each |
-| `+0x478` | 11 out-of-possession slot entries, `0x48` bytes each |
+| `+0x148` | 11 in-possession slot entries, `0x48` bytes each (their role masks at `+0x158`, `+0x1A0`, …) |
+| `+0x468` | 11 out-of-possession slot entries, `0x48` bytes each (role masks from `+0x478`) |
 | `+0x798` | bytes `00 01 … 0a` after `1b`: a one-to-one slot table, probably in-possession to out-of-possession |
 | `+0x7D0` | a second copy of the records and entries (its slot entries changed with the first) |
 
@@ -83,6 +89,22 @@ Out of possession:
 The out-of-possession roles run in pitch order (goalkeepers, centre-backs, full-backs, wing-backs, defensive
 midfielders, midfielders, attacking midfielders, wingers, forwards), which leaves the gaps for the roles not seen
 yet. A role seen in two slots or moved between slots kept its mask (PFB, PCM, TW, OAM, CB).
+
+**On Game Pass** (0.9.2409.0, save of 17 September 2026, human club Manchester United) the block reads the same:
+three selections pointed at copies of one Gegenpress block (`GEGE`), whose eleven slots came out as BGK / SK, WB / FB,
+BCB / CB, CB / CB, FB / FB, AM / ?, DM / DM, ? / PDM, ? / ?, IF / ?, CFD / CFD with Lammens, Dalot, Yoro, Martínez,
+Shaw, Güler, Tielemans, Baleba, Mbeumo, Rashford and Šeško in them. Four masks there are not named yet:
+in possession `0x408000` (bit 15 / 22) and `0x2000000400000` (bit 49 / 22), out of possession `0x40400000`
+(bit 30 / 22) and `0x800400000` (bit 35 / 22, in two slots).
+
+**On the Mac** (Steam build 26340721, Apple silicon, the Arsenal save of 4 July 2027) the block is laid out alike up
+to the style tag (`+0x100`, `VERT` here), but the slot entries sit 8 bytes later: the in-possession role masks from
+`+0x160`, the out-of-possession ones from `+0x480`, `0x48` apart. Each of the manager's three selections pointed at
+two blocks of `0x800` bytes, one after the other (`+0x104` read `03 04` in the first and `03 05` in the second). The
+second matched the eleven of the selection: BGK Raya, NCB Konsa, BCB Saliba and Gabriel, CFD Haaland, DM Guimarães,
+PW Saka, AM Ødegaard, W Musiala, DLF Kane. The first held other roles (IWB, IFB, AP, WFD). Which block the game plays
+was not checked against the tactics screen, so the Mac layout has no `[tactic]` section yet and the probe's
+`scout --tactics` says it cannot read the tactics there. The Scouting tab does not read them.
 
 ### Not found yet
 

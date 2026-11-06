@@ -57,6 +57,10 @@ traits = 0x348
 # starts with the list (begin, end, capacity) of his current injuries; a player who has got
 # over his injuries keeps the record with an empty list.
 injuries = 0xF8
+# i32, pounds: the transfer value. The game shows it in euros (about 1.166 a pound), as a range starting at it while
+# the club's scouts do not know him well; 300,000,000 is "Not for Sale". Read on the Steam save (15 August 2027):
+# Haaland 226,496,256 (€264M - €287M), Pinto Pedrosa 21,647,602 (€25M - €30M), Pizzignacco 6,355 (€2.5K - €12K).
+transfer_value = 0x234
 asking_price = 0x238      # i32, pounds; -1 when not set
 home_reputation = 0x25E   # u16
 current_reputation = 0x260
@@ -285,6 +289,18 @@ list = 0x08
 slots = 0x28
 count = 26
 player_person = 0x290
+
+# The tactic block the first entry of a selection's list points at (see docs/recon/fm27-tactics-and-value.md). Read
+# on the Steam save (15 August 2027) with Monza's tactic, against the game's tactics screen in three formations and
+# role sets: the eleven in-possession slots, then the eleven out-of-possession ones, in the selection's order, each
+# 0x48 bytes with the role's mask at +0x10. The game rewrites the block, or builds a new one, when the manager leaves
+# the tactics screen.
+[tactic]
+in_possession = 0x148
+out_of_possession = 0x468
+slot_size = 0x48
+role = 0x10               # in a slot: the u64 role mask
+style = 0x100
 
 # A player on loan has a second contract, of its own class, with the team he is on loan to. His `record` (right after
 # his contract pointer, and shifted with it for player-coaches) points at a record of his other contracts, whose first

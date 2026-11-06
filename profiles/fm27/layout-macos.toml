@@ -48,6 +48,10 @@ morale = 0x264            # u8, 1..20
 # u64, in the person, 0x40 earlier as on Windows: Messi reads bits 7 10 16 17 19 20 49 51, as FMRTE shows them.
 traits = 0x308
 injuries = 0xF0           # pointer to the injury record; null for a player who was never injured
+# i32, pounds: the transfer value, 8 bytes earlier than on Windows, right before the asking price. On the Arsenal save
+# (4 July 2027) 1,017 players read 300,000,000, "Not for Sale" (Lamine Yamal, Alexia Putellas); Phil Foden reads
+# 144,244,816, Cole Palmer 154,739,659, Florian Wirtz 122,385,266; 335 young players read -1.
+transfer_value = 0x22C
 asking_price = 0x230      # i32, pounds; -1 when not set
 home_reputation = 0x256   # u16
 current_reputation = 0x258

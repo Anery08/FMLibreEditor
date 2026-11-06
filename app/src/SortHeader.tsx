@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 /** How a table is sorted: by one of its columns, one way or the other. */
 export interface ColumnOrder<Sort extends string> {
   by: Sort;
@@ -14,13 +16,23 @@ interface SortHeaderProps<Sort extends string> {
   label: string;
   title: string;
   className?: string;
+  /** Shown after the button, such as a note on what the column means. */
+  children?: ReactNode;
 }
 
 /**
  * A column header that sorts a table, in the player and staff lists and a club's squad: the sorted column shows an
  * arrow and says which way in `aria-sort`.
  */
-export function SortHeader<Sort extends string>({ by, order, onSort, label, title, className }: SortHeaderProps<Sort>) {
+export function SortHeader<Sort extends string>({
+  by,
+  order,
+  onSort,
+  label,
+  title,
+  className,
+  children,
+}: SortHeaderProps<Sort>) {
   const direction = order.by !== by ? undefined : order.ascending ? "ascending" : "descending";
   return (
     <th className={className} aria-sort={direction}>
@@ -30,6 +42,7 @@ export function SortHeader<Sort extends string>({ by, order, onSort, label, titl
           <path d="M5 8.5v-7M2 4.5l3-3 3 3" />
         </svg>
       </button>
+      {children}
     </th>
   );
 }

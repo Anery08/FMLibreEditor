@@ -6,13 +6,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use fmlibre_core::{
-    ArraySource, CaptainRole, CaptainSet, Change, Clause, ClauseSet, ClubDetails, ClubFilter, ClubIndex, ClubMove,
-    Coded, EditError, Entity, EntityArrays, ExportFormat, ExportHeader, FeePlan, Field, FmDate, GAME_EXE, GAME_PLUGIN,
-    GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind, LOAN_EXPIRES, LOAN_OPTION_FEE,
-    Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation, Operation, Paid, Picture, Planned, PlayerDetails,
-    PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary, RelationSet, RetirementSet, STAFF_JOBS, SearchIndex,
-    Session, SessionError, Skipped, StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffOrder, StaffPlan, Target,
-    Tie, TieTarget, find_game, nations, sort_players, sort_staff,
+    ArraySource, Buyer, CaptainRole, CaptainSet, Change, Clause, ClauseSet, ClubDetails, ClubFilter, ClubIndex,
+    ClubMove, ClubSummary, Coded, EditError, Entity, EntityArrays, ExportFormat, ExportHeader, FeePlan, Field, FmDate,
+    GAME_EXE, GAME_PLUGIN, GameInfo, GraphicsCounts, GraphicsIndex, HOMEGROWN_RULES, Healed, Health, Kind,
+    LOAN_EXPIRES, LOAN_OPTION_FEE, Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation, Operation, Paid,
+    Picture, Planned, PlayerDetails, PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary, ROLES, RelationSet,
+    RetirementSet, Role, SCOUT_POSITIONS, STAFF_JOBS, ScoutError, ScoutPosition, ScoutRequest, Scouted, SearchIndex,
+    Session, SessionError, Skipped, SquadReport, StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffOrder,
+    StaffPlan, Target, Tie, TieTarget, find_game, nations, sort_players, sort_staff,
 };
 use fmlibre_mem::{Process, find_processes, is_current_process_elevated, list_modules};
 use serde::{Deserialize, Serialize};
@@ -1698,7 +1699,7 @@ macro_rules! coded_failures {
     )*};
 }
 
-coded_failures!(EditError, MoveError, SessionError, fmlibre_mem::Error);
+coded_failures!(EditError, MoveError, ScoutError, SessionError, fmlibre_mem::Error);
 
 impl<T> From<std::sync::PoisonError<T>> for Failure {
     fn from(err: std::sync::PoisonError<T>) -> Self {
@@ -2712,6 +2713,72 @@ fn homegrown_rules() -> Vec<u8> {
     HOMEGROWN_RULES.to_vec()
 }
 
+/// What the Scouting tab starts from: the human manager's club, its money, its senior squad line by line with the
+/// players a scout would let go, and the positions and roles a recommendation can be asked for.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScoutingOverview {
+    club: ClubSummary,
+    /// Pounds; a week for the wages.
+    transfer_budget: Option<i64>,
+    wage_budget: Option<i64>,
+    /// What the club can still add to its wage bill a week.
+    wage_room: Option<i64>,
+    report: SquadReport,
+    positions: &'static [ScoutPosition],
+    roles: &'static [Role],
+}
+
+/// The human manager's club for scouting: the first club a human manager runs.
+fn scouting_club(connection: &Connection) -> Result<&ClubSummary, Failure> {
+    let uid = connection
+        .human_clubs
+        .first()
+        .copied()
+        .ok_or_else(|| Failure::new("scout.noClub", "Your manager has no club to scout for"))?;
+    connection.clubs.get(uid).ok_or_else(|| not_found(Entity::Club, uid))
+}
+
+/// The club as a buyer: its transfer budget and wage budget, pounds, when its finances can be read.
+fn scouting_buyer<'a>(connection: &'a Connection, club: &'a ClubSummary) -> Result<Buyer<'a>, Failure> {
+    let finances = connection.session.club_details(club)?.and_then(|details| details.finances);
+    Ok(Buyer {
+        club,
+        transfer_budget: finances.map(|f| i64::from(f.transfer_budget)),
+        wage_budget: finances.map(|f| i64::from(f.wage_budget)),
+    })
+}
+
+/// The Scouting tab's overview, read now. Only reads memory, in well under a second.
+#[tauri::command]
+fn scouting_overview(state: State<'_, AppState>) -> Result<ScoutingOverview, Failure> {
+    let guard = state.0.lock()?;
+    let connection = guard.as_ref().ok_or_else(not_connected)?;
+    let club = scouting_club(connection)?;
+    let buyer = scouting_buyer(connection, club)?;
+    let report = connection.session.squad_report(club, &connection.players)?;
+    Ok(ScoutingOverview {
+        club: club.clone(),
+        transfer_budget: buyer.transfer_budget,
+        wage_budget: buyer.wage_budget,
+        wage_room: connection.session.wage_room(&buyer, &connection.players),
+        report,
+        positions: SCOUT_POSITIONS,
+        roles: ROLES,
+    })
+}
+
+/// Players a scout would recommend for the position `request` describes, for the human manager's club. Only reads
+/// memory.
+#[tauri::command]
+fn scouting_suggest(state: State<'_, AppState>, request: ScoutRequest) -> Result<Scouted, Failure> {
+    let guard = state.0.lock()?;
+    let connection = guard.as_ref().ok_or_else(not_connected)?;
+    let club = scouting_club(connection)?;
+    let buyer = scouting_buyer(connection, club)?;
+    Ok(connection.session.scout(&request, &buyer, &connection.players, &connection.clubs, &connection.human_clubs)?)
+}
+
 /// The teams of the club `uid`, the senior team first, with their players: each one's list
 /// row and the live values a squad screen shows, read now.
 #[tauri::command]
@@ -3109,6 +3176,8 @@ pub fn run() {
             add_release_clause,
             homegrown_rules,
             club_squads,
+            scouting_overview,
+            scouting_suggest,
             set_captain,
             team_action,
             max_attributes,

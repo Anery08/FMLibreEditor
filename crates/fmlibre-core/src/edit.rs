@@ -1272,6 +1272,7 @@ mod tests {
             attributes: vec![10; crate::ATTRIBUTE_GROUPS.iter().map(|(_, keys)| keys.len()).sum()],
             transfer_listed: false,
             loan_listed: false,
+            transfer_value: None,
             woman: None,
             address: 0,
             shift: 0,

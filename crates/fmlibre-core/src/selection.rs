@@ -36,7 +36,7 @@ impl Session {
         !self.selection_vtables().is_empty()
     }
 
-    fn selection_vtables(&self) -> &[u64] {
+    pub(crate) fn selection_vtables(&self) -> &[u64] {
         self.selection_class.get_or_init(|| match &self.layout.selection {
             Some(selection) => rtti::vtables(&self.process, &self.plugin, &selection.class),
             None => Vec::new(),

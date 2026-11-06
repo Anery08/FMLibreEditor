@@ -3,6 +3,7 @@
 
 import { dateFromNumber, numberFromDate } from "../editing";
 import { fold } from "../format";
+import { scoutingOverview, scoutingSuggest } from "./mockScouting";
 import type {
   ApplyReport,
   AttributeBound,
@@ -12,6 +13,7 @@ import type {
   BridgeInfo,
   CaptainRole,
   ClubTeam,
+  ScoutRequest,
   SquadPlayer,
   TeamAction,
   TeamFreeze,
@@ -2800,6 +2802,10 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       return addTie(Number(args?.uid), args?.tie as TieKind, Number(args?.target), args?.rule as number | undefined) as T;
     case "homegrown_rules":
       return [...HOMEGROWN_RULES] as T;
+    case "scouting_overview":
+      return scoutingOverview({ players, clubs, ratings, women }) as T;
+    case "scouting_suggest":
+      return scoutingSuggest({ players, clubs, ratings, women }, (args?.request ?? {}) as ScoutRequest) as T;
     case "club_squads":
       return clubSquads(Number(args?.uid)) as T;
     case "set_captain":

@@ -9,9 +9,10 @@ import { describeError, describeGame, formatDate } from "./format";
 import { FrozenNotice } from "./FrozenNotice";
 import { GraphicsStatus } from "./GraphicsStatus";
 import { SettingsMenu } from "./SettingsMenu";
-import { appText, changesText, clubListText, playerListText, staffListText } from "./labels";
+import { appText, changesText, clubListText, playerListText, scoutingText, staffListText } from "./labels";
 import { PlayerBrowser } from "./PlayerBrowser";
 import { restored, useSnapshot } from "./restore";
+import { ScoutingBrowser } from "./ScoutingBrowser";
 import { StaffBrowser } from "./StaffBrowser";
 import type { BridgeInfo, ConnectionInfo, Detection, Refrozen, ReloadInfo } from "./types";
 import { useUpdateCheck } from "./update";
@@ -20,12 +21,13 @@ import { ComparisonContext, useComparison } from "./useComparison";
 import { askToLeave, EditorContext } from "./useProfileEditing";
 import "./App.css";
 
-type View = "players" | "staff" | "clubs" | "changes";
+type View = "players" | "staff" | "clubs" | "scouting" | "changes";
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "players", label: playerListText.nav },
   { id: "staff", label: staffListText.nav },
   { id: "clubs", label: clubListText.nav },
+  { id: "scouting", label: scoutingText.nav },
   { id: "changes", label: changesText.nav },
 ];
 
@@ -260,6 +262,7 @@ function App() {
                 />
                 <StaffBrowser version={dataVersion} active={view === "staff"} genderKnown={connection.genderKnown} />
                 <ClubBrowser version={dataVersion} active={view === "clubs"} />
+                <ScoutingBrowser version={dataVersion} active={view === "scouting"} />
                 {view === "changes" && <ChangesView log={log} error={logError} reload={reloadLog} onUndone={edited} />}
               </div>
             </ComparisonContext.Provider>
