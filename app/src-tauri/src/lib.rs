@@ -2759,7 +2759,8 @@ fn stadium_name(state: State<'_, AppState>, club: u32) -> Result<StadiumName, Fa
     Ok(connection.session.stadium_name(found)?)
 }
 
-/// Renames the stadium the club `club` plays at to `name`, in the block the game gave its name (see `StadiumName`).
+/// Renames the stadium the club `club` plays at to `name`: over the old name where it fits its block, in a string of the
+/// editor's own otherwise (see `stadium_name.rs`).
 /// Logged and undone like any change.
 #[tauri::command]
 fn rename_stadium(state: State<'_, AppState>, club: u32, name: String) -> Result<LoggedChange, Failure> {
@@ -2767,8 +2768,8 @@ fn rename_stadium(state: State<'_, AppState>, club: u32, name: String) -> Result
     let connection = guard.as_mut().ok_or_else(not_connected)?;
     let found = connection.clubs.get(club).ok_or_else(|| not_found(Entity::Club, club))?;
     let plan = connection.session.plan_stadium_rename(found, &name)?;
-    connection.session.apply_stadium_rename(&plan)?;
-    Ok(connection.log_stadium(plan))
+    let done = connection.session.apply_stadium_rename(&plan)?;
+    Ok(connection.log_stadium(done))
 }
 
 /// Gives the contract of the player `uid`, which has none, a release clause of `amount` pounds, where its list has

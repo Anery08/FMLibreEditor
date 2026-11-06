@@ -147,6 +147,9 @@ pub struct Session {
     /// The vtables of loan contracts, found by their class name the first time they are needed: none when the layout
     /// does not place loans or the game does not name that class.
     pub(crate) loan_class: OnceLock<Vec<u64>>,
+    /// The memory the editor took in the game for strings longer than the blocks the game gave them (see
+    /// `stadium_name.rs`): the region, its length and how much of it is handed out.
+    pub(crate) string_pool: Mutex<Option<(u64, u64, u64)>>,
     /// What the checks found: worked out the first time it is needed, and again by [`Session::recheck`].
     health: Mutex<Option<Arc<Health>>>,
     /// Whether editing a build without a profile was allowed.
@@ -186,6 +189,7 @@ impl Session {
             retirement_place: Mutex::new(None),
             selection_class: OnceLock::new(),
             loan_class: OnceLock::new(),
+            string_pool: Mutex::new(None),
             health: Mutex::new(None),
             unknown_build_allowed: AtomicBool::new(false),
             search_all: source == ArraySource::ScanOnly,

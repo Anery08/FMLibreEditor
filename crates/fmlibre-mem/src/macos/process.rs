@@ -181,6 +181,15 @@ impl Process {
         if !self.writable {
             return Err(Error::ReadOnly);
         }
+        self.write_checked(addr, data)
+    }
+
+    /// The editor takes no memory in the game on macOS: it changes only what is there (`KERN_NOT_SUPPORTED`).
+    pub fn allocate(&self, _len: usize) -> Result<u64> {
+        Err(Error::Mach { op: "allocate", code: 46 })
+    }
+
+    fn write_checked(&self, addr: u64, data: &[u8]) -> Result<()> {
         if data.is_empty() {
             return Ok(());
         }

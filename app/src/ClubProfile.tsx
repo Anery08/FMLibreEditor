@@ -362,8 +362,9 @@ const utf8Length = (value: string) => new TextEncoder().encode(value).length;
 
 /**
  * A stadium's name, with Rename while the game can be written to: under it, an input, Save and Cancel, and a note of
- * the lengths it may take. The new name goes into the block the game gave the old one, so it must take as many bytes
- * as `stadium_name` allows; a name other things in the game share is not offered. Written at once, and logged.
+ * its length. Any name of 1 to 80 bytes on Windows (see `stadium_name`): written over the old one where it fits, given a
+ * string of its own otherwise. Where the editor cannot rename it (macOS, a shared name), a note says so. Written at
+ * once, and logged.
  */
 function StadiumNameRow({ club, name }: { club: number; name: string | null }) {
   const { editable, onEdited } = useContext(EditorContext);
@@ -395,7 +396,8 @@ function StadiumNameRow({ club, name }: { club: number; name: string | null }) {
     }
   }, [renamingNow]);
 
-  const shared = room !== null && room.holders > 1;
+  // Where the editor cannot rename it (on macOS, a name other things share), the note says why instead.
+  const shared = room !== null && !room.renamable;
   const row = (
     <dl className="stats">
       <Fact label={text.stadiumName}>

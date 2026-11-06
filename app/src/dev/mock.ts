@@ -613,34 +613,27 @@ function stadiumNameOf(club: ClubSummary): string {
 const utf8Bytes = (text: string) => new TextEncoder().encode(text).length;
 
 /**
- * `stadium_name`: as the real command, the lengths that keep the name's block (16-byte steps, 17 bytes besides the
- * text), and one club in eleven whose name other things share.
+ * `stadium_name`: as the real command on Windows, any name up to 80 bytes; one club in eleven has a name other things
+ * share, which the real command renames all the same, by giving the stadium a string of its own.
  */
 function stadiumNameRoom(uid: number): StadiumName {
   const club = clubs.find((c) => c.uid === uid);
   if (!club) {
     throw notFound("club", uid);
   }
-  const name = stadiumNameOf(club);
-  const size = Math.ceil((utf8Bytes(name) + 17) / 16) * 16;
-  return { name, holders: uid % 11 === 3 ? 3 : 1, minBytes: size <= 32 ? 1 : size - 32, maxBytes: size - 17 };
+  return { name: stadiumNameOf(club), holders: uid % 11 === 3 ? 3 : 1, renamable: true, minBytes: 1, maxBytes: 80 };
 }
 
 /** `rename_stadium`: checked as the real command, and logged with the names; its undo puts the old one back. */
 function renameStadium(uid: number, name: string): LoggedChange {
   const room = stadiumNameRoom(uid);
-  if (room.holders > 1) {
-    throw failure("stadium.shared", `${room.holders} things in the game share this stadium's name`, {
-      holders: String(room.holders),
-    });
-  }
   // eslint-disable-next-line no-control-regex
   if (name === "" || name.trim() !== name || /[\u0000-\u001f\u007f]/.test(name)) {
     throw failure("stadium.badName", "a stadium's name cannot be empty, start or end with a space, or hold control characters");
   }
   const bytes = utf8Bytes(name);
   if (bytes < room.minBytes || bytes > room.maxBytes) {
-    throw failure("stadium.nameLength", "the new name does not fit where the game keeps the old one", {
+    throw failure("stadium.nameLength", "a new name for this stadium must take 1 to 80 bytes", {
       min: String(room.minBytes),
       max: String(room.maxBytes),
       bytes: String(bytes),
