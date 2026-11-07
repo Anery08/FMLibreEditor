@@ -372,8 +372,22 @@ reputation = 0xA8         # u16, 0..10000; the club's reputation lives on its se
 # the smallest of these blocks that holds 8 * n bytes, and the bytes after its end up to
 # the block's end are zero. Only sizes from just above the first value to the last one
 # are relied on; smaller and larger lists were not measured well enough.
+#
+# Strings are not read here yet. On the Mac their blocks come in steps of 8 bytes (see
+# layout-macos.toml); 8 is the safe choice whatever the steps are here: a block of steps
+# of 8 always lies within the block of steps of 16 it falls in, so a name written over an
+# old one of the same block of 8 never runs past the game's block. With steps of 16 the
+# editor would write a name of 24 to 31 bytes over one of 16 to 23 if the game's block
+# were one of 40, into the next string's header. Probe `allocators` shows the steps.
+#
+# The largest block the game's allocator hands out was read on the Mac (4,096 bytes; it
+# gets larger ones from the system and gives them back to free()); it runs the same code
+# here. A list is grown into memory of the editor's own up to it, in a block of its class,
+# or past the classes above, of the next power of two, which holds the class whatever it is.
 [heap]
 block_sizes = [144, 160, 192, 224, 256, 288, 320, 384, 448, 512]
+largest_block = 4096
+string_step = 8
 
 # Checked on Tottenham Hotspur (UID 728) in the Game Pass build, against values
 # fm-editor witnessed on Steam (founded 1882, 50,000 season tickets, 6.8M social

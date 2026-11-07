@@ -61,11 +61,7 @@ impl Session {
     /// gives a buffer of that capacity. None where the game would let go of such a buffer through the system's
     /// allocator (past `[heap] largest_block`): such a list is not grown.
     pub(crate) fn grown_block_size(&self, bytes: u64) -> Option<u64> {
-        let heap = &self.layout.heap;
-        if heap.largest_block.is_some_and(|largest| bytes > largest) {
-            return None;
-        }
-        Some(heap.block_size(bytes).unwrap_or(bytes))
+        self.layout.heap.grown_block(bytes)
     }
 
     /// Takes the memory `growth` needs, writes what the list is to hold into it, and returns the write that points the
