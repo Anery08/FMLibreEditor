@@ -7,9 +7,9 @@
 //! new job changes his contract's job code, and moves him between his club's departments as the job needs.
 //!
 //! A department list with no room for him in its block is grown into memory of the editor's own (see
-//! `own_memory.rs`), where the editor can take memory (Windows); elsewhere the move is refused. Only staff whom neither
-//! the club nor its teams point at directly are moved or given a new job: a team's manager, for one, is held by his
-//! team, and is left to the game.
+//! `own_memory.rs`), where the editor can grow it (see `Session::growth`); elsewhere the move is refused. Only staff
+//! whom neither the club nor its teams point at directly are moved or given a new job: a team's manager, for one, is
+//! held by his team, and is left to the game.
 //!
 //! [`ClubLayout`]: crate::ClubLayout
 
