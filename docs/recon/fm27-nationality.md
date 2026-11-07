@@ -29,9 +29,25 @@ The relations that matter here:
 | 9 | nation | 100, then 80 | a secondary nationality |
 | 70 | nation | the rule | Nation Eligibility: trained in the nation |
 | 72 | club | the rule | Club Eligibility: trained at the club |
+| 109 | nation | 0 (level 255; the count is the days it has left) | no work permit needed there |
 
 The others include favoured clubs (3), disliked clubs (4), people (1, 2) and time spent in a
 nation (124).
+
+Relation 109 is how the game lets players of the European Union who were in the United Kingdom
+before Brexit play there without a work permit. On the Game Pass save of July 2027, 72 players
+had it for England and 2 for Scotland (Youri Tielemans, Timothy Castagne, Daniel Bachmann;
+Kristoffer Ajer for Scotland), all with a count of 514 or 515, which goes down by one a day: it
+read 835 and 836 on the save of September 2026. Players with an ordinary work permit, such as
+Lisandro Martínez at Manchester United, have nothing of the kind in their list; the game names a
+class `db::WORK_PERMIT_EXEMPTION_INFO`, of which the save had no object. The editor gives the
+relation as the game does (value 0, level 255), with the count of the first player of the save
+who has one, so that it ends with theirs, or ten years where no one has it.
+
+On the Mac (Steam build 26340721, the Arsenal save of 5 July 2027) it is the same: 117 players
+have it for England (Daniel Bachmann, Thomas Kaminski, Timothy Castagne) and 4 for Scotland
+(Kristoffer Ajer), with counts of 543 to 545 at `+0x08`. Rodri (Spain, Barcelona), whose list was
+full, was given England (543 days left), grown, and put back with the probe.
 
 Homegrown rules, by the game's code, as the eligibility page names them:
 

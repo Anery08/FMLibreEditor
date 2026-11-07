@@ -238,7 +238,8 @@ matches = 0x1C            # u8, matches left to miss
 [relation]
 target = 0x00             # pointer to the nation, club, person or competition
 target_kind = 0x0A        # u8: 1 a club, 3 a person, 7 a competition, 8 a nation
-relation = 0x0B           # u8: 9 a nationality, 70 trained in a nation, 72 trained at a club
+relation = 0x0B           # u8: 9 a nationality, 70 trained in a nation, 72 trained at a club, 109 no work permit needed
+count = 0x08              # u16: a count some relations use; of 109, the days it has left
 value = 0x0C              # u8: of a training, the homegrown rule it meets
 size = 0x10
 

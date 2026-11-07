@@ -475,6 +475,7 @@ export const en = {
     "tie.nationality": "Secondary nationality",
     "tie.trainedInNation": "Trained in nation",
     "tie.trainedAtClub": "Trained at club",
+    "tie.workPermit": "No work permit needed in",
     // A move to another club, which the change log keeps as a change of the player's club.
     club: "Club",
     // Healing a player, which the change log keeps as a change of his injuries.
@@ -1767,6 +1768,8 @@ export const en = {
     nationalities: "Secondary nationalities",
     trainedInNation: "Trained in nation",
     trainedAtClub: "Trained at club",
+    /** A nation he needs no work permit in, as the game lets players of the EU who were in the UK before Brexit. */
+    workPermit: "No work permit needed in",
     none: "None",
     /** The game's names of its homegrown rules, by code; `rule` names one it has no name for here. */
     rules: {
@@ -1794,6 +1797,14 @@ export const en = {
     /** The rows that add a tie, where the list has room. */
     addNationality: "Add a nationality…",
     addNation: "Add a nation…",
+    addPermit: "Add a country with no permit needed…",
+    /** After a nation he needs no work permit in. */
+    daysLeft: (days: number) => `${format(days)} days left`,
+    permitInfoLabel: "What does this do?",
+    permitInfo:
+      "The game lets players of the European Union who were in England or Scotland before Brexit play there without " +
+      "a work permit, for a number of days. A player given this needs no work permit to play in that country either, " +
+      "for as many days as theirs have left (ten years where no one in the save has it).",
     newRule: "Homegrown rule of the new nation",
     add: "Add",
     /** A club he was trained at: the button that points it at another club, and the search it opens. */

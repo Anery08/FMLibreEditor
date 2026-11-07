@@ -176,8 +176,11 @@ pub struct RelationLayout {
     pub target: u64,
     /// `u8`: 1 for a club, 3 for a person, 8 for a nation.
     pub target_kind: u64,
-    /// `u8`: 9 for a nationality, 70 for a nation he was trained in, 72 for a club he was trained at.
+    /// `u8`: 9 for a nationality, 70 for a nation he was trained in, 72 for a club he was trained at, 109 for a nation
+    /// he needs no work permit in.
     pub relation: u64,
+    /// `u16`: a count some relations use; for one he needs no work permit for, the days it has left.
+    pub count: u64,
     /// `u8`: for a training, the homegrown rule it meets.
     pub value: u64,
     /// Bytes per entry.

@@ -287,6 +287,9 @@ changes many at once, and undo.
     The game sizes each list to what it holds, so a full list (all of them after a load) is grown into memory the
     editor takes in the game, and the undo points it back at its old buffer. The probe's `tie-add`,
     `relation-kinds` (room) and `relation-blocks` (how the allocator places the buffers).
+  - [x] No work permit needed: England or Scotland as a nation a player needs no work permit in, the relation (109)
+    the game gives players of the EU who were in the United Kingdom before Brexit, for as many days as theirs have
+    left. In the same dialog, with an (i). Ordinary work permits are kept elsewhere, not yet found.
   - [ ] Place of birth: a pointer to a city record (`+0x2C8` on macOS), whose nation the game shows.
   - [ ] Appearance. FM27 keeps a person's looks as dozens of 3D face values for the match engine
     (`MATCH_PERSON_APPEARANCE_INPUT`: skin tone, hair and eye colours, face shape); set aside.

@@ -83,6 +83,35 @@ export async function run({ app, report, probe }) {
     report.check("the undo gives him his list as it was", JSON.stringify(back) === JSON.stringify(was), JSON.stringify(back));
   }
 
+  // A nation he needs no work permit in: England, given for as many days as the save's players of the EU have left.
+  const ENGLAND = 765;
+  const outsider = await findPlayer(
+    app,
+    (details) => details.nationUid !== ENGLAND && !details.ties.some((t) => t.tie === "workPermit" || t.targetUid === ENGLAND),
+  );
+  if (!outsider) {
+    report.skip("gives a player no work permit needed in England", "no player from outside England among the best known clubs");
+  } else {
+    const { player } = outsider;
+    report.note(`witness: ${player.name} (${player.uid}), ${player.nation}`);
+    const permits = () =>
+      [...probe.run(["ties", player.uid]).matchAll(/no work permit in\s+(.+?) \(UID (\d+)\), (\d+) days left/g)].map((m) => ({
+        nation: Number(m[2]),
+        days: Number(m[3]),
+      }));
+    const given = await app.must("add_tie", { uid: player.uid, tie: "workPermit", target: ENGLAND });
+    const read = permits();
+    report.check(
+      "gives him no work permit needed in England, as the probe reads it",
+      read.length === 1 && read[0].nation === ENGLAND && read[0].days > 0,
+      JSON.stringify(read),
+    );
+    const own = (await app.invoke("add_tie", { uid: player.uid, tie: "workPermit", target: ENGLAND }));
+    report.check("refuses it twice", !own.ok && own.error.code === "relation.same", own.ok ? "added" : own.error.code);
+    await app.must("undo_change", { id: given.id });
+    report.check("the undo takes it away", permits().length === 0, JSON.stringify(permits()));
+  }
+
   // The same through the dialog: Change club, the search, Enter on the club found.
   if (!trained) return;
   const { player } = trained;

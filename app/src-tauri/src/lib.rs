@@ -884,13 +884,15 @@ impl Connection {
     }
 
     /// Logs a change to a player's ties just written, as a change of his field `tie.nationality`,
-    /// `tie.trainedInNation` or `tie.trainedAtClub` from one nation's or club's UID to the other's (0 for none).
+    /// `tie.trainedInNation`, `tie.trainedAtClub` or `tie.workPermit` from one nation's or club's UID to the other's
+    /// (0 for none).
     fn log_tie(&mut self, done: RelationSet) -> LoggedChange {
         let tie = done.before.as_ref().or(done.after.as_ref()).map_or(Tie::Nationality, |relation| relation.tie);
         let field = match tie {
             Tie::Nationality => "tie.nationality",
             Tie::TrainedInNation => "tie.trainedInNation",
             Tie::TrainedAtClub => "tie.trainedAtClub",
+            Tie::WorkPermit => "tie.workPermit",
         };
         let end = |relation: &Option<fmlibre_core::Relation>| {
             relation.as_ref().map(|relation| TieEnd {

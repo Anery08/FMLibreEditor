@@ -540,6 +540,7 @@ export const tr: Strings = {
     "tie.nationality": "İkinci uyruk",
     "tie.trainedInNation": "Yetiştiği ülke",
     "tie.trainedAtClub": "Yetiştiği kulüp",
+    "tie.workPermit": "Çalışma izni gerekmeyen ülke",
     club: "Kulüp",
     injuries: "Sakatlıklar",
     bans: "Cezalar",
@@ -1567,6 +1568,7 @@ export const tr: Strings = {
     nationalities: "İkinci uyruklar",
     trainedInNation: "Yetiştiği ülke",
     trainedAtClub: "Yetiştiği kulüp",
+    workPermit: "Çalışma izni gerekmeyen ülke",
     none: "Yok",
     rules: {
       1: "Yerli 15-21",
@@ -1590,6 +1592,13 @@ export const tr: Strings = {
     removeTitle: (name) => `${name} kaydını kaldır`,
     addNationality: "Uyruk ekle…",
     addNation: "Ülke ekle…",
+    addPermit: "İzin gerekmeyen ülke ekle…",
+    daysLeft: (days) => `${format(days)} gün kaldı`,
+    permitInfoLabel: "Bu ne işe yarar?",
+    permitInfo:
+      "Oyun, Brexit'ten önce İngiltere ya da İskoçya'da bulunan Avrupa Birliği oyuncularının orada belli bir süre " +
+      "çalışma izni olmadan oynamasına izin verir. Bunu verdiğiniz oyuncunun da o ülkede oynamak için çalışma iznine " +
+      "ihtiyacı olmaz; süresi o oyuncularınkiyle aynı gün dolar (kayıtta kimsede yoksa on yıl).",
     newRule: "Yeni ülkenin yerli kuralı",
     add: "Ekle",
     changeClub: "Kulübü değiştir",

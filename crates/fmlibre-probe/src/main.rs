@@ -816,6 +816,8 @@ enum TieArg {
     Nation,
     /// A club he was trained at.
     Club,
+    /// A nation he needs no work permit in (England, Scotland).
+    Permit,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -1041,6 +1043,7 @@ fn run(cli: Cli) -> Result<()> {
                 TieArg::Nationality => (Tie::Nationality, TieUid::Nation(target)),
                 TieArg::Nation => (Tie::TrainedInNation, TieUid::Nation(target)),
                 TieArg::Club => (Tie::TrainedAtClub, TieUid::Club(target)),
+                TieArg::Permit => (Tie::WorkPermit, TieUid::Nation(target)),
             };
             tie_change(&session, uid, Some(TieAction::Add { tie, target, rule }), restore)
         }
@@ -4201,15 +4204,20 @@ fn tie_change(session: &Session, uid: u32, action: Option<TieAction>, restore: R
         println!("{} (UID {uid}) {label}: {} tie(s), room for {room} more", player.name, ties.len());
         for tie in ties {
             let (kind, name) = match tie.tie {
-                Tie::Nationality | Tie::TrainedInNation => {
+                Tie::Nationality | Tie::TrainedInNation | Tie::WorkPermit => {
                     let nation = known.iter().find(|n| n.address == tie.target).map(|n| n.name.as_str());
-                    let kind = if tie.tie == Tie::Nationality { "nationality" } else { "trained in nation" };
+                    let kind = match tie.tie {
+                        Tie::Nationality => "nationality",
+                        Tie::TrainedInNation => "trained in nation",
+                        _ => "no work permit in",
+                    };
                     (kind, nation.unwrap_or("?"))
                 }
                 Tie::TrainedAtClub => ("trained at club", clubs.get(tie.target_uid).map_or("?", |c| c.name.as_str())),
             };
             let rule = tie.rule.map_or(String::new(), |rule| format!(", homegrown rule {rule}"));
-            println!("  #{:<3} {kind:<18} {name} (UID {}){rule}", tie.index, tie.target_uid);
+            let days = tie.days.map_or(String::new(), |days| format!(", {days} days left"));
+            println!("  #{:<3} {kind:<18} {name} (UID {}){rule}{days}", tie.index, tie.target_uid);
         }
         Ok(())
     };

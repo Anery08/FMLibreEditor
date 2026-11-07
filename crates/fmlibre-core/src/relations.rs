@@ -5,9 +5,10 @@
 //! (see [`RelationLayout`]): 16-byte entries that each point at a nation, club, person or competition and say how he
 //! is tied to it. A secondary nationality is a tie of kind 9 to a nation; a training is one of kind 70 to a nation or
 //! 72 to a club, whose value is the homegrown rule it meets. His first nationality is not among them: it is the
-//! player's `nation` field.
+//! player's `nation` field. A tie of kind 109 to a nation says he needs no work permit there: the game gives it to
+//! players of the European Union who were in England or Scotland before Brexit, with a count of the days it has left.
 //!
-//! The editor reads those three kinds of tie. It points one at another nation or club, gives a training another
+//! The editor reads those four kinds of tie. It points one at another nation or club, gives a training another
 //! rule, takes one out, or adds one. The game makes each list as long as what it holds: after a save is loaded, none
 //! has room past its length. A tie is added where the list's block has room (see [`HeapLayout`]); otherwise the list is
 //! grown into memory of the editor's own (see `own_memory.rs`): its entries and the new one, with room for a few more,
@@ -33,6 +34,10 @@ const MOST_RELATIONS: u64 = 256;
 const CLUB: u8 = 1;
 const NATION: u8 = 8;
 
+/// The days a nation he needs no work permit in is given for, where no player of the save has one to take them from:
+/// ten years.
+const PERMIT_DAYS: u16 = 3650;
+
 /// The room a list grown by the editor has past its new entry: so that the game, adding one of its own, finds room for
 /// it where it is.
 const GROWN_ROOM: u64 = 3;
@@ -51,10 +56,12 @@ pub enum Tie {
     TrainedInNation,
     /// A club he was trained at.
     TrainedAtClub,
+    /// A nation he needs no work permit in.
+    WorkPermit,
 }
 
 impl Tie {
-    const ALL: [Tie; 3] = [Tie::Nationality, Tie::TrainedInNation, Tie::TrainedAtClub];
+    const ALL: [Tie; 4] = [Tie::Nationality, Tie::TrainedInNation, Tie::TrainedAtClub, Tie::WorkPermit];
 
     /// The kind of target and the kind of relation the game codes it with.
     fn codes(self) -> (u8, u8) {
@@ -62,12 +69,13 @@ impl Tie {
             Tie::Nationality => (NATION, 9),
             Tie::TrainedInNation => (NATION, 70),
             Tie::TrainedAtClub => (CLUB, 72),
+            Tie::WorkPermit => (NATION, 109),
         }
     }
 
     /// Whether its value is a homegrown rule.
     fn is_training(self) -> bool {
-        self != Tie::Nationality
+        matches!(self, Tie::TrainedInNation | Tie::TrainedAtClub)
     }
 }
 
@@ -110,6 +118,8 @@ pub struct Relation {
     pub name: Option<String>,
     /// For a training, the homegrown rule it meets.
     pub rule: Option<u8>,
+    /// For a nation he needs no work permit in, the days that has left.
+    pub days: Option<u16>,
 }
 
 /// A change to a player's ties, worked out from the game as it is now and ready to be written.
@@ -344,6 +354,7 @@ impl Session {
             (false, None) => None,
             (_, rule) => return Err(MoveError::UnknownRule { rule: rule.unwrap_or(0) }),
         };
+        let days = (tie == Tie::WorkPermit).then(|| self.permit_days());
         let tie = Relation {
             index,
             tie,
@@ -351,6 +362,7 @@ impl Session {
             target_uid: target.uid(),
             name: Some(target.name()),
             rule,
+            days,
         };
         if self.relations(player)?.iter().any(|known| same(known, &tie)) {
             return Err(MoveError::SameRelation);
@@ -368,10 +380,14 @@ impl Session {
         entry[r.target_kind as usize] = kind;
         entry[r.relation as usize] = relation;
         let value = r.value as usize;
-        (entry[value], entry[value + 1]) = match tie.rule {
-            Some(rule) => (rule, 0xFF),
-            None => (0x64, 0x50),
+        (entry[value], entry[value + 1]) = match (tie.tie, tie.rule) {
+            (_, Some(rule)) => (rule, 0xFF),
+            (Tie::WorkPermit, None) => (0, 0xFF),
+            (_, None) => (0x64, 0x50),
         };
+        if let Some(days) = tie.days {
+            entry[r.count as usize..r.count as usize + 2].copy_from_slice(&days.to_le_bytes());
+        }
         entry[r.size as usize - 1] = 0xFF;
         entry
     }
@@ -428,7 +444,23 @@ impl Session {
         };
         let target_uid = self.process.read_u32(target + target_uid).ok()?;
         let rule = tie.is_training().then_some(entry[r.value as usize]);
-        Some(Relation { index, tie, target, target_uid, name, rule })
+        let count = r.count as usize;
+        let days = (tie == Tie::WorkPermit).then(|| u16::from_le_bytes([entry[count], entry[count + 1]]));
+        Some(Relation { index, tie, target, target_uid, name, rule, days })
+    }
+
+    /// The days a nation he needs no work permit in is given for: those of the first player of the save who has one,
+    /// so that it ends with theirs; ten years where no one has one.
+    fn permit_days(&self) -> u16 {
+        let r = &self.layout.relation;
+        let (permit, count) = (Tie::WorkPermit.codes(), r.count as usize);
+        let players = self.players().unwrap_or_default();
+        let days = players.iter().find_map(|player| {
+            let list = self.relation_list(player).ok()??;
+            let entry = list.entries.iter().find(|e| (e[r.target_kind as usize], e[r.relation as usize]) == permit)?;
+            Some(u16::from_le_bytes([entry[count], entry[count + 1]]))
+        });
+        days.filter(|&days| days > 0).unwrap_or(PERMIT_DAYS)
     }
 
     /// How many more entries the block of `list` holds: up to its capacity, or to the end of the allocator's block
@@ -452,7 +484,7 @@ impl Session {
     fn tie_target(&self, player: &PlayerSummary, tie: Tie, target: TieTarget) -> Result<u64, MoveError> {
         let p = &self.layout.player;
         match (tie, target) {
-            (Tie::Nationality | Tie::TrainedInNation, TieTarget::Nation(nation)) => {
+            (Tie::Nationality | Tie::TrainedInNation | Tie::WorkPermit, TieTarget::Nation(nation)) => {
                 let first = self.process.read_u64(player.address + p.at(p.nation, player.shift))?;
                 let same_class = is_user_pointer(first)
                     && is_user_pointer(nation.address)
@@ -461,7 +493,8 @@ impl Session {
                 if !same_class || Some(uid) != nation.uid {
                     return Err(MoveError::WrongTarget);
                 }
-                if tie == Tie::Nationality && nation.address == first {
+                // His own nation he neither takes again nor needs a permit for.
+                if matches!(tie, Tie::Nationality | Tie::WorkPermit) && nation.address == first {
                     return Err(MoveError::SameRelation);
                 }
                 Ok(nation.address)
