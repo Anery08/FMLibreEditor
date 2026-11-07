@@ -44,6 +44,11 @@ class `db::WORK_PERMIT_EXEMPTION_INFO`, of which the save had no object. The edi
 relation as the game does (value 0, level 255), with the count of the first player of the save
 who has one, so that it ends with theirs, or ten years where no one has it.
 
+On the Mac (Steam build 26340721, the Arsenal save of 5 July 2027) it is the same: 117 players
+have it for England (Daniel Bachmann, Thomas Kaminski, Timothy Castagne) and 4 for Scotland
+(Kristoffer Ajer), with counts of 543 to 545 at `+0x08`. Rodri (Spain, Barcelona), whose list was
+full, was given England (543 days left), grown, and put back with the probe.
+
 Homegrown rules, by the game's code, as the eligibility page names them:
 
 | Code | Rule |
