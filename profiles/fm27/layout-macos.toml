@@ -267,6 +267,24 @@ slots = 0x28
 count = 26
 player_person = 0x390
 
+# As on Windows, right after the contract pointer (+0x2F0 here, +0x330 there): a record of the player's other
+# contracts, whose first slot points at his loan contract (db::LOAN_CONTRACT), laid out as a contract up to the squad
+# number. On the Arsenal save (5 July 2027), 92 players had one, all passing the class and owner checks (Maxim De
+# Cuyper, Brighton to Olympique Lyonnais until 29 June 2028); the records' other slots held 1,370 contracts with B
+# teams. The terms sit where Windows has them: De Cuyper's flags 0x1006 (cup matches, recall, not to be terminated),
+# an option to buy of 32,394,208 and a monthly fee of 52,761.
+[loan]
+record = 0x2F8
+contract = 0x00
+others = [0x08, 0x10, 0x18]
+class = "db::LOAN_CONTRACT"
+
+[loan.terms]
+flags = 0xB0
+option_fee = 0xC0
+monthly_fee = 0xCC
+unused_fee = 0xD0
+
 [team]
 club = 0x30
 kind = 0x28
