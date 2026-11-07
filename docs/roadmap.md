@@ -293,7 +293,8 @@ changes many at once, and undo.
     block is written over it, for a name the stadium alone holds; any other goes into memory the editor takes in the
     game, as a string the game never lets go, and the stadium is pointed at it (also for the 2,293 shared names of the
     Game Pass save, such as the Maracanã's). On the Mac the game's strings come in blocks of steps of 8 bytes, not 16
-    (`[heap] string_step`), so the Emirates Stadium takes 16 to 23 bytes in place there. See `stadium_name.rs`; the
+    (`[heap] string_step`), so the Emirates Stadium takes 16 to 23 bytes in place there; both layouts take 8, which is
+    safe whatever the steps are on Windows. See `stadium_name.rs`; the
     probe's `stadium-name`. The game keeps no stadium names in its saves: it gives every stadium the name in its
     database (`lang_db.dat`) whenever it loads one, and an `.lnc` in the editor data folder does not reach a save
     already started. So the app remembers each new name for the save, in `frozen.json` beside what is frozen, and
