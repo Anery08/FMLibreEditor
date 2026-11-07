@@ -633,6 +633,10 @@ pub struct HeapLayout {
     /// Block sizes in bytes, ascending. A buffer of more than the first size and up to the last one sits in
     /// the smallest block at least as large as it; outside that span the block size is not known.
     pub block_sizes: Vec<u64>,
+    /// The steps, in bytes, in which the game's allocator sizes the blocks of its strings (a header of 8 bytes, a
+    /// count of holders, the length, the text and a NUL), for the names the editor writes (see `stadium_name.rs`).
+    /// 16 when not given.
+    pub string_step: Option<u64>,
 }
 
 impl HeapLayout {
