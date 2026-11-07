@@ -158,7 +158,7 @@ const errors: ErrorTexts = {
     "Kulüp ya da takımlarından biri bu personele doğrudan işaret ediyor (bir takımın teknik direktörü gibi); onu oyun kendisi taşır.",
   "staff.notListed": () => "Kulübün personel listeleri onu olması gereken yerde tutmuyor.",
   "staff.noRoom": (p) =>
-    `Kulübün ${STAFF_DEPARTMENTS[p.department] ?? p.department} listesinde bir kişiye daha yer yok (şu an ${p.staff}) ve düzenleyici listeyi büyütemez.`,
+    `Kulübün ${STAFF_DEPARTMENTS[p.department] ?? p.department} listesinde bir kişiye daha yer yok (şu an ${p.staff}) ve düzenleyici bu sistemde listeyi büyütemez.`,
   "stadium.none": () => "Kulübün A takımının oynadığı stadyum okunamıyor.",
   "stadium.shared": (p) => `Bu adı oyunda ${p.holders} şey paylaşıyor; yalnızca bu stadyum için değiştirilemez.`,
   "stadium.nameLength": (p) =>
@@ -486,6 +486,7 @@ export const tr: Strings = {
     2: "Antrenör",
     4: "Başkan",
     6: "Yönetici",
+    10: "Futbol Direktörü",
     12: "Fizyoterapist",
     14: "Gözlemci",
     16: "Teknik Direktör",

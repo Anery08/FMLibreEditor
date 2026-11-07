@@ -418,6 +418,7 @@ export const en = {
     2: "Coach",
     4: "Chairperson",
     6: "Director",
+    10: "Director of Football",
     12: "Physio",
     14: "Scout",
     16: "Manager",
