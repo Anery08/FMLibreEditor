@@ -129,16 +129,18 @@ export function PlayerProfile({ player, version, onClose, comparison, modal }: P
       modal={modal}
       actions={
         <>
-          {/* Only while the profile is read, not edited, and for a player who has a club to leave. The Transfer dialog
-              starts from his contract, so its button waits for the details. */}
-          {editing.editable && editing.stage === "view" && info.club !== null && (
+          {/* Only while the profile is read, not edited. The Transfer dialog starts from his contract, so its button
+              waits for the details; for a free agent it signs him for a club. Release is for a player with a club. */}
+          {editing.editable && editing.stage === "view" && (
             <div className="move-actions">
               <MoveButton
                 player={{ uid: info.uid, name: info.name, club: info.club, clubUid: info.clubUid }}
                 contract={details?.contract ?? null}
                 ready={details !== undefined}
               />
-              <ReleaseButton player={{ uid: info.uid, name: info.name, club: info.club, clubUid: info.clubUid }} />
+              {info.club !== null && (
+                <ReleaseButton player={{ uid: info.uid, name: info.name, club: info.club, clubUid: info.clubUid }} />
+              )}
             </div>
           )}
           {comparison && <CompareToggle comparison={comparison} player={{ uid: info.uid, name: info.name }} />}

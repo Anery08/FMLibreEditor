@@ -6,13 +6,16 @@
 //! club's senior team, adds the player to that team's list and takes him out of his old
 //! club's lists.
 //!
-//! The editor allocates nothing in the game, so the senior team's list must have room in
-//! the block it already has: below its capacity, or up to the end of the allocator's block
-//! (see [`HeapLayout`]). Only players with simple ties move: under contract with the club
-//! they play for (no loans), and not player-coaches.
+//! The player goes into the senior team's list where its block has room: below its capacity,
+//! or up to the end of the allocator's block (see [`HeapLayout`]). After a load every list is
+//! full; a full list is then grown into memory of the editor's own, as the lists of ties are
+//! (see `own_memory.rs`). Where the editor cannot grow it, a full list is no obstacle only when
+//! one of the team's players is released in the same move: the player who joins takes his
+//! slot, as in a swap (see [`Session::plan_club_move_releasing`]). Only players with simple
+//! ties move: under contract with the club they play for (no loans), and not player-coaches.
 //!
-//! A full list is no obstacle when one of the team's players is released in the same move: the
-//! player who joins takes his slot, as in a swap (see [`Session::plan_club_move_releasing`]).
+//! A free agent, who has no club and no contract, joins a club under a contract the editor makes
+//! for him (see `signing.rs`).
 //!
 //! A player who leaves a club gives up the captaincies he holds in its teams: they are left
 //! empty, as a youth team's often are, for the club to fill. One who leaves a club a human
@@ -37,20 +40,22 @@ use crate::coded::Coded;
 use crate::date::FmDate;
 use crate::edit::{EditError, Entity, Field, Kind, Target};
 use crate::health::Lock;
+use crate::own_memory::Growth;
 use crate::players::{PlayerIndex, PlayerSummary};
 use crate::profile::HeapLayout;
 use crate::selection::Leaver;
 use crate::session::Session;
+use crate::signing::NewContract;
 use crate::staff::job_name;
 
 /// The job code of a player's contract.
-const PLAYER_JOB: u8 = 1;
+pub(crate) const PLAYER_JOB: u8 = 1;
 
 /// The squad number of a player without one.
-const NO_SQUAD_NUMBER: u8 = 255;
+pub(crate) const NO_SQUAD_NUMBER: u8 = 255;
 
 /// The listing bits of a contract: on the transfer list and on the loan list.
-const LISTED: u8 = 0b11;
+pub(crate) const LISTED: u8 = 0b11;
 
 /// The longest list the editor reads; no squad comes near it.
 const LONGEST_LIST: u64 = 2_000;
@@ -73,10 +78,12 @@ pub struct MoveTerms {
 }
 
 /// A move worked out from the game as it is now, ready to be written: one player to
-/// another club, two players swapping clubs, or a player released from his club.
+/// another club, two players swapping clubs, a player released from his club, or a free agent
+/// signed.
 #[derive(Debug, Clone)]
 pub struct MovePlan {
     pub player: u32,
+    /// The club he leaves; 0 for a free agent, who has none.
     pub from_club: u32,
     /// The club he joins; 0 for a release, after which he has none.
     pub to_club: u32,
@@ -85,16 +92,26 @@ pub struct MovePlan {
     /// The player of the club he joins who is released to make room for him, if any.
     pub released: Option<u32>,
     /// The writes, in the order they are made.
-    patches: Vec<Patch>,
+    pub(crate) patches: Vec<Patch>,
     /// Those who leave a club a human manager runs: their places in its selections are emptied too, found as the move
     /// is written (see [`crate::selection`]).
-    leavers: Vec<Leaver>,
+    pub(crate) leavers: Vec<Leaver>,
+    /// The squad lists that have no room for him, grown into memory of the editor's own as the move is written (see
+    /// `own_memory.rs`).
+    pub(crate) grow: Vec<Growth>,
+    /// For a free agent, the contract the editor makes for him (see `signing.rs`).
+    pub contract: Option<NewContract>,
 }
 
 impl MovePlan {
     /// How many writes the move takes, besides those to selections.
     pub fn writes(&self) -> usize {
-        self.patches.len()
+        self.patches.len() + self.grow.len()
+    }
+
+    /// How many squad lists the move grows.
+    pub fn grows(&self) -> usize {
+        self.grow.len()
     }
 
     /// Whether the move takes a player out of a club a human manager runs, which takes a few seconds more to write.
@@ -114,6 +131,8 @@ pub struct ClubMove {
     pub other: Option<u32>,
     /// The player released to make room for him, if any.
     pub released: Option<u32>,
+    /// How many squad lists it grew into memory of the editor's own.
+    pub grew: usize,
     patches: Vec<Patch>,
     /// The selections of a club a human manager runs whose slots the move emptied, one write each.
     selections: Vec<Patch>,
@@ -255,6 +274,20 @@ pub enum MoveError {
     UnusualJob {
         job: u8,
     },
+    /// The club's senior team plays at no stadium the editor can read.
+    NoStadium,
+    /// Other objects of the game hold the stadium's name too: changed in place, it would change for them as well.
+    SharedName {
+        holders: u32,
+    },
+    /// The new name does not fit the block the game gave the old one: it must take `min` to `max` bytes of UTF-8.
+    NameLength {
+        min: usize,
+        max: usize,
+        bytes: usize,
+    },
+    /// The new name is empty, has spaces at its ends, or holds a control character.
+    BadName,
     /// The editor cannot find the retirements the game has planned in this build, or they do not check out.
     NoRetirements,
     /// Keeping a player from retiring asked for one the game has not planned to retire who already has the traits.
@@ -273,6 +306,15 @@ pub enum MoveError {
     SameClause,
     /// The contract's list of clauses has no room for another.
     ClausesFull,
+    /// The editor cannot find the game's pool of contracts in this build, or it does not check out (see
+    /// `object_pool.rs`).
+    NoPool,
+    /// The game's pool of contracts has no free slot: the game takes more room only when it makes a contract itself.
+    PoolFull,
+    /// The club has no player under a plain contract with its senior team whose contract a new one can be modelled on.
+    NoModel,
+    /// The editor cannot read the in-game date, which a new contract starts on.
+    NoDate,
     /// The editor does not make this change to this game: see [`Lock`].
     Locked(Lock),
     Memory(fmlibre_mem::Error),
@@ -285,7 +327,7 @@ impl fmt::Display for MoveError {
                 write!(f, "the player with UID {uid} has moved in the game's memory; reload and try again")
             }
             MoveError::NotAClub { uid } => write!(f, "the club with UID {uid} has no senior team to join"),
-            MoveError::FreeAgent => f.write_str("the player has no club; free agents cannot be moved yet"),
+            MoveError::FreeAgent => f.write_str("the player is a free agent, with no club to leave or swap"),
             MoveError::SameClub => f.write_str("the player is at this club already"),
             MoveError::OnLoan => f.write_str(
                 "the player is on loan: recall him from his loan first, or make the loan permanent, in the Loan part of \n                 his profile",
@@ -302,7 +344,7 @@ impl fmt::Display for MoveError {
             MoveError::NoRoom { players } => write!(
                 f,
                 "the club's squad list has no room for another player ({players} now), and the editor cannot \
-                 make it bigger"
+                 make it bigger here"
             ),
             MoveError::NotInjured => f.write_str("the player has no injury to heal"),
             MoveError::NotBanned => f.write_str("the player has no ban to lift"),
@@ -311,7 +353,7 @@ impl fmt::Display for MoveError {
             }
             MoveError::RelationsFull => f.write_str(
                 "the player's list of nationalities and ties has no room for another, and the editor cannot make it \
-                 bigger; change one of them instead",
+                 bigger here; change one of them instead",
             ),
             MoveError::WrongTarget => {
                 f.write_str("that is not a nation or club of the game, of the kind this tie takes")
@@ -337,12 +379,25 @@ impl fmt::Display for MoveError {
             MoveError::DepartmentFull { department, staff } => write!(
                 f,
                 "the club's {department} staff list has no room for another ({staff} now), and the editor cannot \
-                 make it bigger"
+                 make it bigger here"
             ),
             MoveError::UnusualJob { job } => match job_name(*job) {
                 Some(name) => write!(f, "the editor does not yet move staff whose job is {name}, or give that job"),
                 None => write!(f, "the editor does not yet move staff whose job is {job}, or give that job"),
             },
+            MoveError::NoStadium => f.write_str("the club's first team plays at no stadium the editor can read"),
+            MoveError::SharedName { holders } => write!(
+                f,
+                "{holders} things in the game share this stadium's name, so it cannot be changed for the stadium alone"
+            ),
+            MoveError::NameLength { min, max, bytes } => write!(
+                f,
+                "a new name for this stadium must take {min} to {max} bytes, to fit where the game keeps its name; \
+                 this one takes {bytes}"
+            ),
+            MoveError::BadName => {
+                f.write_str("a stadium's name cannot be empty, start or end with a space, or hold control characters")
+            }
             MoveError::NoRetirements => {
                 f.write_str("the editor cannot find the retirements the game has planned in this version of the game")
             }
@@ -360,6 +415,18 @@ impl fmt::Display for MoveError {
             MoveError::ClausesFull => f.write_str(
                 "the contract's list of clauses has no room for another, and the editor cannot make it bigger",
             ),
+            MoveError::NoPool => f.write_str(
+                "the editor cannot find where the game keeps its contracts in this version of the game, so it cannot \
+                 give a free agent one",
+            ),
+            MoveError::PoolFull => f.write_str(
+                "the game has no room for another contract until it makes one itself, as it does when the days go \
+                 by: continue in the game for a day, then try again",
+            ),
+            MoveError::NoModel => f.write_str(
+                "the club has no player under a plain contract with its first team to model the new contract on",
+            ),
+            MoveError::NoDate => f.write_str("the editor cannot read the in-game date, which a new contract starts on"),
             MoveError::Locked(lock) => write!(f, "nothing was changed: {lock}"),
             MoveError::Memory(err) => write!(f, "{err}"),
         }
@@ -401,6 +468,10 @@ impl Coded for MoveError {
             MoveError::NotInDepartment => "staff.notListed",
             MoveError::DepartmentFull { .. } => "staff.noRoom",
             MoveError::UnusualJob { .. } => "staff.job",
+            MoveError::NoStadium => "stadium.none",
+            MoveError::SharedName { .. } => "stadium.shared",
+            MoveError::NameLength { .. } => "stadium.nameLength",
+            MoveError::BadName => "stadium.badName",
             MoveError::NoRetirements => "retirement.unknown",
             MoveError::NotRetiring => "retirement.none",
             MoveError::NoContract => "clause.noContract",
@@ -408,6 +479,10 @@ impl Coded for MoveError {
             MoveError::NotInClause { .. } => "clause.notInClause",
             MoveError::SameClause => "clause.same",
             MoveError::ClausesFull => "clause.noRoom",
+            MoveError::NoPool => "sign.noPool",
+            MoveError::PoolFull => "sign.poolFull",
+            MoveError::NoModel => "sign.noModel",
+            MoveError::NoDate => "sign.noDate",
             MoveError::Locked(lock) => lock.code(),
             MoveError::Memory(err) => err.code(),
         }
@@ -431,6 +506,10 @@ impl Coded for MoveError {
                 vec![("department", (*department).to_owned()), ("staff", staff.to_string())]
             }
             MoveError::UnusualJob { job } => vec![("job", job.to_string())],
+            MoveError::SharedName { holders } => vec![("holders", holders.to_string())],
+            MoveError::NameLength { min, max, bytes } => {
+                vec![("min", min.to_string()), ("max", max.to_string()), ("bytes", bytes.to_string())]
+            }
             MoveError::NoRelation { index } | MoveError::NoClause { index } => vec![("index", index.to_string())],
             MoveError::NotInClause { field } => vec![("field", (*field).to_owned())],
             MoveError::UnknownRule { rule } => vec![("rule", rule.to_string())],
@@ -462,6 +541,14 @@ impl PointerList {
         Self::read_up_to(process, header, LONGEST_LIST)
     }
 
+    /// [`PointerList::read`], where a header of three zeros is a list with nothing in it and no buffer yet.
+    pub(crate) fn read_or_empty(process: &Process, header: u64) -> Result<Option<Self>, MoveError> {
+        if process.read_bytes(header, 24)?.iter().all(|&b| b == 0) {
+            return Ok(Some(Self { header, begin: 0, end: 0, capacity: 0 }));
+        }
+        Self::read(process, header)
+    }
+
     /// [`PointerList::read`] for a list whose block may hold up to `longest` pointers.
     pub(crate) fn read_up_to(process: &Process, header: u64, longest: u64) -> Result<Option<Self>, MoveError> {
         let bytes = process.read_bytes(header, 24)?;
@@ -485,7 +572,19 @@ impl PointerList {
         self.begin
     }
 
+    /// Where it keeps its begin, end and capacity, and what they are.
+    pub(crate) fn header(&self) -> u64 {
+        self.header
+    }
+
+    pub(crate) fn words(&self) -> [u64; 3] {
+        [self.begin, self.end, self.capacity]
+    }
+
     pub(crate) fn elements(&self, process: &Process) -> Result<Vec<u64>, MoveError> {
+        if self.end == self.begin {
+            return Ok(Vec::new());
+        }
         let bytes = process.read_bytes(self.begin, (self.end - self.begin) as usize)?;
         Ok(bytes.as_chunks::<8>().0.iter().map(|word| u64::from_le_bytes(*word)).collect())
     }
@@ -493,6 +592,9 @@ impl PointerList {
     /// How many pointers its block holds: the capacity, or the whole block of the
     /// allocator when its size is known and nothing has been written past the capacity.
     pub(crate) fn room(&self, process: &Process, heap: &HeapLayout) -> Result<u64, MoveError> {
+        if self.begin == 0 {
+            return Ok(0);
+        }
         let capacity = (self.capacity - self.begin) / 8;
         let Some(block) = heap.block_size(self.capacity - self.begin) else {
             return Ok(capacity);
@@ -536,7 +638,8 @@ fn suggestion_order(mut found: Vec<(RoomMaker, u16)>) -> Vec<RoomMaker> {
 impl Session {
     /// Works out moving `player` to the senior team of `club` from the game as it is now,
     /// under the contract `terms`. `human_clubs` are the UIDs of the clubs human managers
-    /// run: a player who leaves one also leaves its selections. Nothing is written.
+    /// run: a player who leaves one also leaves its selections. A free agent is signed under
+    /// a contract the editor makes (see [`Session::plan_signing`]). Nothing is written.
     pub fn plan_club_move(
         &self,
         player: &PlayerSummary,
@@ -544,18 +647,18 @@ impl Session {
         terms: MoveTerms,
         human_clubs: &[u32],
     ) -> Result<MovePlan, MoveError> {
+        if self.is_free_agent(player)? {
+            return self.plan_signing(player, club, terms);
+        }
         self.check_terms(terms, self.game_date())?;
         let leaving = self.departure(player, human_clubs)?;
         if self.process.read_u32(club.address + self.layout.club.uid)? != club.uid {
             return Err(MoveError::NotAClub { uid: club.uid });
         }
         let joining = self.arrival(club.address, &leaving)?;
-        if joining.list.len() + 1 > joining.list.room(&self.process, &self.layout.heap)? {
-            return Err(MoveError::NoRoom { players: joining.list.len() });
-        }
 
         let mut patches = Patches::default();
-        self.append_patches(&joining.list, leaving.object, &mut patches)?;
+        let grow = self.join_squad(&joining.list, &joining.elements, leaving.object, &mut patches)?;
         self.contract_patches(&leaving, joining.senior, terms, &mut patches);
         self.captaincy_patches(&leaving, &mut patches)?;
         for (_, list, index, elements) in &leaving.leaving {
@@ -569,7 +672,28 @@ impl Session {
             released: None,
             patches: patches.0,
             leavers: self.leavers(&[&leaving])?,
+            grow: grow.into_iter().collect(),
+            contract: None,
         })
+    }
+
+    /// The player `object` joins `list`, which holds `elements`: in its first free slot where its block has room,
+    /// or else in a list grown into memory of the editor's own (see `own_memory.rs`), returned for the plan to take.
+    /// Where the editor cannot grow it (see [`Session::growth`]), a full list is refused.
+    pub(crate) fn join_squad(
+        &self,
+        list: &PointerList,
+        elements: &[u64],
+        object: u64,
+        patches: &mut Patches,
+    ) -> Result<Option<Growth>, MoveError> {
+        if list.len() < list.room(&self.process, &self.layout.heap)? {
+            self.append_patches(list, object, patches)?;
+            return Ok(None);
+        }
+        let bytes = elements.iter().chain([&object]).flat_map(|element| element.to_le_bytes()).collect();
+        let growth = self.growth(list.header(), list.words(), bytes, 8);
+        growth.map(Some).ok_or(MoveError::NoRoom { players: list.len() })
     }
 
     /// Works out moving `player` to the senior team of `club` under the contract `terms`, and
@@ -624,6 +748,8 @@ impl Session {
             released: Some(released.uid),
             patches: patches.0,
             leavers: self.leavers(&[&leaving, &released])?,
+            grow: Vec::new(),
+            contract: None,
         })
     }
 
@@ -677,6 +803,8 @@ impl Session {
             released: None,
             patches: patches.0,
             leavers: self.leavers(&[&leaving])?,
+            grow: Vec::new(),
+            contract: None,
         })
     }
 
@@ -838,6 +966,8 @@ impl Session {
             released: None,
             patches: patches.0,
             leavers,
+            grow: Vec::new(),
+            contract: None,
         })
     }
 
@@ -863,9 +993,10 @@ impl Session {
         let into_first = self.arrival(first.club, &second)?;
 
         let mut patches = Patches::default();
-        // Each joins his new senior team in the slot of the player he swaps with, or in a free one. The list whose
-        // slot changes hands is left out of the leaver's removals below.
+        // Each joins his new senior team in the slot of the player he swaps with, or in a free one, or a list grown
+        // for him. The list whose slot changes hands is left out of the leaver's removals below.
         let mut kept: Vec<u64> = Vec::new();
+        let mut grow = Vec::new();
         for (joining, joiner, leaver) in [(&into_second, &first, &second), (&into_first, &second, &first)] {
             match joining.elements.iter().position(|&e| e == leaver.object) {
                 Some(index) => {
@@ -873,12 +1004,7 @@ impl Session {
                     patches.push(slot, leaver.object.to_le_bytes(), joiner.object.to_le_bytes());
                     kept.push(joining.list.header);
                 }
-                None => {
-                    if joining.list.len() + 1 > joining.list.room(&self.process, &self.layout.heap)? {
-                        return Err(MoveError::NoRoom { players: joining.list.len() });
-                    }
-                    self.append_patches(&joining.list, joiner.object, &mut patches)?;
-                }
+                None => grow.extend(self.join_squad(&joining.list, &joining.elements, joiner.object, &mut patches)?),
             }
         }
         self.contract_patches(&first, into_second.senior, MoveTerms::default(), &mut patches);
@@ -899,6 +1025,8 @@ impl Session {
             released: None,
             patches: patches.0,
             leavers: self.leavers(&[&first, &second])?,
+            grow,
+            contract: None,
         })
     }
 
@@ -1028,7 +1156,7 @@ impl Session {
     }
 
     /// The senior team of the club at `club`, which must point back at it, and its list, if it has one.
-    fn senior_team(&self, club: u64, club_uid: u32) -> Result<(u64, Option<PointerList>), MoveError> {
+    pub(crate) fn senior_team(&self, club: u64, club_uid: u32) -> Result<(u64, Option<PointerList>), MoveError> {
         let (process, layout) = (&self.process, &self.layout);
         let senior = match PointerList::read(process, club + layout.club.teams)? {
             Some(teams) if teams.len() > 0 => process.read_u64(teams.begin)?,
@@ -1107,10 +1235,16 @@ impl Session {
         for leaver in &plan.leavers {
             selections.extend(self.selection_patches(leaver)?);
         }
-        let all: Vec<Patch> = selections.iter().chain(&plan.patches).cloned().collect();
+        // A list grown for him points at its new buffer first: he is in it already.
+        let mut patches = Vec::new();
+        for growth in &plan.grow {
+            patches.push(self.grown_list(growth)?);
+        }
+        patches.extend(plan.patches.iter().cloned());
+        let all: Vec<Patch> = selections.iter().chain(&patches).cloned().collect();
         self.apply_patches(&all)?;
-        let MovePlan { player, from_club, to_club, other, released, ref patches, .. } = *plan;
-        Ok(ClubMove { player, from_club, to_club, other, released, patches: patches.clone(), selections })
+        let MovePlan { player, from_club, to_club, other, released, .. } = *plan;
+        Ok(ClubMove { player, from_club, to_club, other, released, grew: plan.grow.len(), patches, selections })
     }
 
     /// Moves the player back as he was, provided memory still holds everything the move
@@ -1167,7 +1301,7 @@ impl Session {
 
     /// Checks contract terms against the ranges the editor writes for those fields; an
     /// end date must also come after `today`.
-    fn check_terms(&self, terms: MoveTerms, today: Option<FmDate>) -> Result<(), MoveError> {
+    pub(crate) fn check_terms(&self, terms: MoveTerms, today: Option<FmDate>) -> Result<(), MoveError> {
         let check = |key: &'static str, value: Option<i64>, after: i64| -> Result<(), MoveError> {
             let Some(value) = value else {
                 return Ok(());
@@ -1187,9 +1321,14 @@ impl Session {
     /// Writes `bytes` over `expected`, and reads them back; on a mismatch `expected` goes back.
     pub(crate) fn write_patch(&self, address: u64, expected: &[u8], bytes: &[u8]) -> Result<(), MoveError> {
         self.expect(address, expected)?;
-        self.process.write_bytes(address, bytes)?;
+        // The statics of a pool of the game's the editor took a slot of are the plugin's data; the rest is heap.
+        let write = |bytes: &[u8]| match self.is_pool_static(address, bytes.len()) {
+            true => self.process.write_static(address, bytes),
+            false => self.process.write_bytes(address, bytes),
+        };
+        write(bytes)?;
         if self.process.read_bytes(address, bytes.len())? != bytes {
-            let _ = self.process.write_bytes(address, expected);
+            let _ = write(expected);
             return Err(MoveError::NotApplied { address });
         }
         Ok(())

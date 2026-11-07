@@ -1,5 +1,5 @@
 // A transfer: a player moved to another club's senior team through the app's commands, then moved back with an undo.
-// The pair is the first the app itself agrees to (no free agents, loans, human clubs or full lists).
+// The pair is the first the app itself agrees to (no loans or human clubs; a full list the app grows on Windows).
 import { clubPlayers, topClubs } from "../lib/witness.mjs";
 
 export const name = "move";

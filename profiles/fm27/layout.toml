@@ -167,6 +167,24 @@ unhappiness = 0x30
 # players: 23,506 full-time, 4,472 youth, 1,820 part-time, 1,043 amateur, 932 non-contract (see
 # docs/recon/fm27-contracts.md).
 contract_type = 0xC3
+# Contracts (db::FULL_CONTRACT) take 200 bytes, packed one after another in the slots of the game's pool of them (see
+# [pool]). Across the 12,824 of the Game Pass save of August 2027: +0x28 is zero in 11,392 and holds a pointer in 159,
+# +0x98 one in 204 and +0xA0 one in 43; a contract the editor makes for a free agent has none there.
+size = 0xC8
+cleared = [0x28, 0x98, 0xA0]
+
+# The game keeps the objects of many classes, contracts among them, in pools: statics of game_plugin.dll that hand out
+# slots of one size from chunks (see crates/fmlibre-core/src/object_pool.rs). Offsets from the pool's list of chunks.
+# Read on Game Pass 0.9.2409.0, where 67 pools sat in 128 KiB of the plugin's data and the contracts' had 12,810 +
+# 1,024 slots: 12,824 used, as many as memory held contracts, and 1,010 free, chained from the first free one.
+[pool]
+chunks = 0x00             # (begin, end, capacity) of pointers to the chunks
+first_free = 0x18         # pointer to the first free slot, null for none; a free slot's first 8 bytes point at the next
+free = 0x20               # u32 slots free
+used = 0x24               # u32 slots holding an object
+slot_size = 0x28          # u32 bytes per slot
+first_chunk = 0x2C        # u32 slots of the first chunk, as many as the save loaded needed
+later_chunks = 0x30       # u32 slots of each later chunk
 
 # Static data in game_plugin.dll next to the entity arrays. Offsets are relative to
 # the players (begin, end) pair: the cluster moves as one block between builds.
@@ -248,7 +266,8 @@ kind_name = 0x18
 [relation]
 target = 0x00             # pointer to the nation, club, person or competition
 target_kind = 0x0A        # u8: 1 a club, 3 a person, 7 a competition, 8 a nation
-relation = 0x0B           # u8: 9 a nationality, 70 trained in a nation, 72 trained at a club
+relation = 0x0B           # u8: 9 a nationality, 70 trained in a nation, 72 trained at a club, 109 no work permit needed
+count = 0x08              # u16: a count some relations use; of 109, the days it has left
 value = 0x0C              # u8: of a training, the homegrown rule it meets
 size = 0x10
 
@@ -353,8 +372,22 @@ reputation = 0xA8         # u16, 0..10000; the club's reputation lives on its se
 # the smallest of these blocks that holds 8 * n bytes, and the bytes after its end up to
 # the block's end are zero. Only sizes from just above the first value to the last one
 # are relied on; smaller and larger lists were not measured well enough.
+#
+# Strings are not read here yet. On the Mac their blocks come in steps of 8 bytes (see
+# layout-macos.toml); 8 is the safe choice whatever the steps are here: a block of steps
+# of 8 always lies within the block of steps of 16 it falls in, so a name written over an
+# old one of the same block of 8 never runs past the game's block. With steps of 16 the
+# editor would write a name of 24 to 31 bytes over one of 16 to 23 if the game's block
+# were one of 40, into the next string's header. Probe `allocators` shows the steps.
+#
+# The largest block the game's allocator hands out was read on the Mac (4,096 bytes; it
+# gets larger ones from the system and gives them back to free()); it runs the same code
+# here. A list is grown into memory of the editor's own up to it, in a block of its class,
+# or past the classes above, of the next power of two, which holds the class whatever it is.
 [heap]
 block_sizes = [144, 160, 192, 224, 256, 288, 320, 384, 448, 512]
+largest_block = 4096
+string_step = 8
 
 # Checked on Tottenham Hotspur (UID 728) in the Game Pass build, against values
 # fm-editor witnessed on Steam (founded 1882, 50,000 season tickets, 6.8M social

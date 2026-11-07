@@ -247,7 +247,7 @@ const errors: ErrorTexts = {
     `${field(p.field)} vale ahora ${p.found}, no ${p.expected}: el juego lo ha cambiado desde entonces.`,
   "move.moved": () => `El jugador ha cambiado de sitio en la memoria del juego; ${reload}.`,
   "move.notAClub": () => "Este club no tiene un primer equipo al que pueda unirse el jugador.",
-  "move.freeAgent": () => "El jugador no tiene club; los agentes libres aún no se pueden traspasar.",
+  "move.freeAgent": () => "El jugador es agente libre: no tiene un club que dejar ni con el que intercambiar.",
   "move.sameClub": () => "El jugador ya está en este club.",
   "move.onLoan": () =>
     "El jugador está cedido: repéscalo primero o haz la cesión definitiva, en la parte Cesión de su perfil.",
@@ -261,7 +261,16 @@ const errors: ErrorTexts = {
   "move.notListed": () => "Las listas de la plantilla no tienen al jugador donde deberían.",
   "move.noRoom": (p) =>
     `La lista de la plantilla del club no tiene sitio para otro jugador (ahora ${p.players}) y el editor no puede ` +
-    "ampliarla.",
+    "ampliarla en este sistema.",
+  "sign.noPool": () =>
+    "El editor no encuentra dónde guarda el juego sus contratos en esta versión, así que no puede darle uno a un " +
+    "agente libre.",
+  "sign.poolFull": () =>
+    "El juego no tiene sitio para otro contrato hasta que haga uno él mismo, como hace al pasar los días: avanza un " +
+    "día en el juego y vuelve a intentarlo.",
+  "sign.noModel": () =>
+    "El club no tiene en su primer equipo ningún jugador con un contrato corriente en el que basar el nuevo.",
+  "sign.noDate": () => "El editor no puede leer la fecha del juego, que es cuando empieza el nuevo contrato.",
   "move.outOfRange": (p) => `${p.value} no es un valor válido para ${field(p.field)}: admite de ${p.min} a ${p.max}.`,
   "move.changed": () => `El juego ha cambiado esa memoria desde entonces; ${reload}.`,
   "move.notApplied": () => "Se escribió en la memoria, pero al releerla dio otra cosa.",
@@ -281,7 +290,12 @@ const errors: ErrorTexts = {
   "staff.notListed": () => "Las listas de personal del club no lo tienen donde deberían.",
   "staff.noRoom": (p) =>
     `La lista ${STAFF_DEPARTMENTS[p.department] ?? `de ${p.department}`} del club no tiene sitio para nadie más ` +
-    `(ahora ${p.staff}) y el editor no puede ampliarla.`,
+    `(ahora ${p.staff}) y el editor no puede ampliarla aquí.`,
+  "stadium.none": () => "No se puede leer el estadio en el que juega el primer equipo del club.",
+  "stadium.shared": (p) => `${p.holders} cosas del juego comparten este nombre; no se puede cambiar solo para el estadio.`,
+  "stadium.nameLength": (p) =>
+    `El nuevo nombre de este estadio debe ocupar de ${p.min} a ${p.max} bytes para caber donde el juego lo guarda; este ocupa ${p.bytes}.`,
+  "stadium.badName": () => "El nombre de un estadio no puede estar vacío, empezar o acabar con un espacio ni tener caracteres de control.",
   "staff.job": (p) => `El editor todavía no mueve al personal con el puesto de ${jobName(p.job)} ni da ese puesto.`,
   "squad.noTeam": () => `El club no tiene ese equipo o no supera la comprobación; ${reload}.`,
   "captain.notInTeam": () =>
@@ -495,6 +509,7 @@ export const es: Strings = {
     2: "Entrenador",
     4: "Presidente",
     6: "Directivo",
+    10: "Director de fútbol",
     12: "Fisioterapeuta",
     14: "Ojeador",
     16: "Mánager",
@@ -548,6 +563,7 @@ export const es: Strings = {
     "tie.nationality": "Nacionalidad secundaria",
     "tie.trainedInNation": "Formado en el país",
     "tie.trainedAtClub": "Formado en el club",
+    "tie.workPermit": "Sin permiso de trabajo en",
     club: "Club",
     injuries: "Lesiones",
     bans: "Sanciones",
@@ -568,6 +584,7 @@ export const es: Strings = {
     "finance.wage_budget": "Presupuesto salarial",
     "finance.total_wage_budget": "Presupuesto salarial total",
     "stadium.capacity": "Aforo del estadio",
+    "stadium.name": "Nombre del estadio",
     "stadium.seating": "Aforo con asientos",
     "stadium.used": "Aforo en uso",
     "stadium.expansion": "Aforo ampliable",
@@ -965,7 +982,7 @@ export const es: Strings = {
     reputationTitle: "Reputación",
 
     tabsLabel: "Secciones del club",
-    tabs: { overview: "Resumen", squad: "Plantilla" },
+    tabs: { overview: "Resumen", squad: "Plantilla", stadium: "Estadio" },
     squadLocked: "Termina de editar para abrir la plantilla",
 
     facilities: "Instalaciones",
@@ -1001,6 +1018,25 @@ export const es: Strings = {
       "todo",
     expansion: "Ampliable hasta",
     noStadium: "No se ha podido leer el estadio de este club.",
+    stadiumName: "Nombre",
+    rename: "Cambiar nombre",
+    renameTitle: "Da al estadio otro nombre; se escribe en el acto y Cambios puede deshacerlo",
+    renameInfoLabel: "¿Cómo funciona el cambio de nombre?",
+    renameInfo:
+      "El juego no guarda los nombres de los estadios en las partidas: los toma de su base de datos cada vez que carga " +
+      "una. Por eso FMLibreEditor recuerda el nuevo nombre para esta partida y lo vuelve a poner en pocos segundos " +
+      "cada vez que el juego la carga, mientras la aplicación esté abierta y conectada. Si el juego carga la partida " +
+      "con la aplicación cerrada, muestra su propio nombre hasta que la aplicación vuelva a conectarse. Para volver al " +
+      "nombre anterior, deshaz el cambio en Cambios o vuelve a ponérselo al estadio.",
+    saveName: "Guardar",
+    renaming: "Guardando…",
+    cancelRename: "Cancelar",
+    nameLength: (bytes, min, max) =>
+      min <= 1
+        ? `${bytes} de ${max} caracteres como mucho (una letra con tilde cuenta como dos)`
+        : `${bytes} caracteres: de ${min} a ${max}, para que quepa donde el juego guarda el nombre (una letra con tilde cuenta como dos)`,
+    nameShared: (holders) =>
+      `${holders} cosas del juego comparten este nombre, así que no se puede cambiar solo para el estadio`,
 
     // Datos del club
     info: "Datos del club",
@@ -1071,11 +1107,20 @@ export const es: Strings = {
       clubs: (names) => `Dinero: ${names}`,
       fitness: (names) => `Energía y ritmo: ${names}`,
       positions: (names) => `Posiciones: ${names}`,
+      stadiums: (names) => `Nombres de estadio: ${names}`,
       more: (count) => `y ${format(count)} más`,
       waiting: (count) =>
         `${count === 1 ? "1 sigue recordado" : `${format(count)} siguen recordados`}, pero no se congelan ahora: ` +
         "FMLibreEditor aún no puede escribir en esta versión del juego.",
       dismiss: "Cerrar",
+    },
+
+    freezeInfo: {
+      label: "¿Cómo funciona congelar?",
+      note:
+        "Congelar no cambia el juego para siempre: cada 2 segundos, FMLibreEditor devuelve lo que el juego quitó. Por " +
+        "eso solo funciona mientras la aplicación está abierta y conectada; si la cierras, el juego vuelve a cambiarlos. " +
+        "La aplicación recuerda lo congelado en esta partida y lo vuelve a congelar la próxima vez que se conecte a ella.",
     },
 
     connect: {
@@ -1520,8 +1565,8 @@ export const es: Strings = {
     noRoom: (club) => `${club} no tiene sitio en su plantilla.`,
     noRoomInfoLabel: "¿Por qué?",
     noRoomInfo:
-      "El editor no puede ampliar la lista de la plantilla sin poner el juego en riesgo. Por ahora, hacer sitio es " +
-      "una solución temporal pero segura; se está trabajando en una forma de ampliar la lista.",
+      "El editor amplía una lista de plantilla llena donde puede, pero esta no puede ampliarla: tiene que salir un " +
+      "jugador para hacer sitio.",
     noRoomNeed: (player) => `Para que llegue ${player}, tiene que salir un jugador de la plantilla.`,
     releaseChoice: "Rescindir:",
     releasePickLabel: "Jugador cuyo contrato se rescinde",
@@ -1580,6 +1625,30 @@ export const es: Strings = {
       "Aparece en Cambios como un solo cambio, que deshace los dos movimientos",
     ],
 
+    // Fichar a un agente libre
+    signButtonTitle: "Fichar a este agente libre por un club en el juego",
+    signTitle: "Fichar a un agente libre",
+    signChooseClub: "Elige el club por el que fichará el jugador.",
+    signChecking: "Comprobando el fichaje…",
+    signTerms:
+      "Si los dejas vacíos, el salario es el del jugador del club con la habilidad más cercana a la suya, y el " +
+      "contrato dura hasta el final de la próxima temporada.",
+    signRoute: (to) => `Agente libre → ${to}`,
+    signContract: (wage, expires, status) => `Nuevo contrato: ${wage} a la semana hasta el ${expires}, ${status}`,
+    signDoesHeading: "Qué hace el fichaje",
+    signDoes: [
+      "Se une al primer equipo del club; una lista de plantilla llena se amplía",
+      "Un contrato nuevo con fecha del día del juego, en uno de los huecos libres de contrato del propio juego, como los hace el juego",
+      "Basado en el contrato del jugador del club con la habilidad más cercana: el mismo tipo de contrato y estatus",
+      "Tu salario y fin de contrato, o el salario de ese jugador y el final de la próxima temporada",
+      "Sin dorsal, prima de fidelidad, cláusulas ni primas",
+      "El historial de traspasos del juego aún no lo recoge",
+      "Aparece en Cambios, donde deshacerlo lo revierte todo",
+    ],
+    signHint: "Nada cambia en el juego hasta que pulsas Fichar.",
+    sign: "Fichar",
+    signing: "Fichando…",
+
     // El pie
     hint: "Nada cambia en el juego hasta que pulsas Traspasar.",
     move: "Traspasar",
@@ -1595,6 +1664,7 @@ export const es: Strings = {
     nationalities: "Nacionalidades secundarias",
     trainedInNation: "Formado en el país",
     trainedAtClub: "Formado en el club",
+    workPermit: "Sin permiso de trabajo en",
     none: "Ninguna",
     rules: {
       1: "Formado localmente 15-21",
@@ -1618,9 +1688,25 @@ export const es: Strings = {
     removeTitle: (name) => `Quitar ${name}`,
     addNationality: "Añadir una nacionalidad…",
     addNation: "Añadir un país…",
+    addPermit: "Añadir un país sin permiso…",
+    daysLeft: (days) => `quedan ${format(days)} días`,
+    permitInfoLabel: "¿Para qué sirve?",
+    permitInfo:
+      "El juego deja a los jugadores de la Unión Europea que estaban en Inglaterra o Escocia antes del Brexit jugar " +
+      "allí sin permiso de trabajo durante un número de días. Un jugador al que se lo des tampoco necesita permiso de " +
+      "trabajo para jugar en ese país, durante los mismos días que les quedan a ellos (diez años si nadie en la partida " +
+      "lo tiene).",
     newRule: "Regla de formación local del nuevo país",
     add: "Añadir",
-    clubNote: "A un club se le puede dar otra regla o quitarlo; los clubes los añade el propio juego.",
+    changeClub: "Cambiar club",
+    changeClubTitle: (name) => `Que se haya formado en otro club en lugar de ${name}`,
+    clubInsteadOf: (name) => `Club en lugar de ${name}`,
+    addClub: "Añadir un club…",
+    addClubTitle: "Que se haya formado en un club más",
+    newClub: "Nuevo club",
+    pickAnother: "Elegir otro",
+    newClubRule: "Regla de formación local del nuevo club",
+    cancel: "Cancelar",
     working: "Escribiendo en el juego…",
     close: "Cerrar",
   },

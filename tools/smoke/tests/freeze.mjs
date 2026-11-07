@@ -45,10 +45,15 @@ export async function run({ app, report, probe }) {
     report.skip("freezes a member of staff's attributes", "no member of staff at a club");
     return;
   }
-  const key = "attribute.tactical";
-  const was = probe.get("staff", member.uid, [key])[key];
-  const worse = was > 20 ? was - 10 : was + 10;
-  report.note(`witness: ${member.name} (${member.uid}), tactical ${was}`);
+  // The attribute he is best at, which the probe lowers as the game would: one at its lowest cannot get worse (a
+  // director of football has 1 for tactics).
+  const fields = (await app.must("edit_fields", { entity: "staff" })).filter((f) => f.key.startsWith("attribute."));
+  const keys = fields.map((f) => f.key);
+  const before = probe.get("staff", member.uid, keys);
+  const key = keys.reduce((best, k) => (before[k] > before[best] ? k : best));
+  const was = before[key];
+  const worse = Math.max(1, was - 10);
+  report.note(`witness: ${member.name} (${member.uid}), ${key} ${was}`);
   try {
     const frozen = await app.must("freeze_staff_attributes", { id: member.uid, frozen: true });
     report.check("freezes a member of staff's attributes", frozen.includes(member.uid));
@@ -61,13 +66,10 @@ export async function run({ app, report, probe }) {
   } finally {
     await app.invoke("freeze_staff_attributes", { id: member.uid, frozen: false });
     probe.set("staff", member.uid, key, was);
-    report.check("his tactical written back", probe.get("staff", member.uid, [key])[key] === was);
+    report.check(`his ${key} written back`, probe.get("staff", member.uid, [key])[key] === was);
   }
 
   // Max attributes for him, read back by the probe, and its batch undone.
-  const fields = (await app.must("edit_fields", { entity: "staff" })).filter((f) => f.key.startsWith("attribute."));
-  const keys = fields.map((f) => f.key);
-  const before = probe.get("staff", member.uid, keys);
   const maxed = await app.must("max_staff_attributes", { id: member.uid });
   const best = probe.get("staff", member.uid, keys);
   const atBest = fields.every((f) => best[f.key] === (f.scale === "attribute" ? 100 : 20) || best[f.key] === before[f.key]);

@@ -418,6 +418,7 @@ export const en = {
     2: "Coach",
     4: "Chairperson",
     6: "Director",
+    10: "Director of Football",
     12: "Physio",
     14: "Scout",
     16: "Manager",
@@ -475,6 +476,7 @@ export const en = {
     "tie.nationality": "Secondary nationality",
     "tie.trainedInNation": "Trained in nation",
     "tie.trainedAtClub": "Trained at club",
+    "tie.workPermit": "No work permit needed in",
     // A move to another club, which the change log keeps as a change of the player's club.
     club: "Club",
     // Healing a player, which the change log keeps as a change of his injuries.
@@ -503,6 +505,7 @@ export const en = {
     "finance.wage_budget": "Wage budget",
     "finance.total_wage_budget": "Total wage budget",
     "stadium.capacity": "Stadium capacity",
+    "stadium.name": "Stadium name",
     "stadium.seating": "Seated capacity",
     "stadium.used": "Capacity in use",
     "stadium.expansion": "Expansion capacity",
@@ -960,7 +963,7 @@ export const en = {
     // The tabs under the header: what the club has, and its squad (see `squad`).
     /** The name of the tabs for assistive technology. */
     tabsLabel: "Club sections",
-    tabs: { overview: "Overview", squad: "Squad" },
+    tabs: { overview: "Overview", squad: "Squad", stadium: "Stadium" },
     /** Hover text of the Squad tab while the club is edited: its values are on the Overview. */
     squadLocked: "Finish editing to open the squad",
 
@@ -1002,6 +1005,29 @@ export const en = {
     expansion: "Can grow to",
     /** When the layout of this build does not know where the stadium is, or the club's stadium did not check out. */
     noStadium: "The stadium could not be read for this club.",
+    /** Its name, which can be changed in place: in the block the game gave the old one. */
+    stadiumName: "Name",
+    rename: "Rename",
+    renameTitle: "Give the stadium another name; it is written at once, and Changes can undo it",
+    /** The (i) beside the name: how a new name lasts, and that the app has to stay open for it. */
+    renameInfoLabel: "How does renaming work?",
+    renameInfo:
+      "The game keeps no stadium names in its saves: it takes them from its database each time it loads a save. So " +
+      "FMLibreEditor remembers the new name for this save, and gives it back within seconds each time the game loads " +
+      "it, as long as the app is open and connected. If the game loads the save while the app is closed, it shows its " +
+      "own name until the app connects again. To go back to the old name, undo the rename in Changes, or rename the " +
+      "stadium back.",
+    saveName: "Save",
+    renaming: "Saving…",
+    cancelRename: "Cancel",
+    /** How long the name being typed is, in bytes of UTF-8, and how long it may be. */
+    nameLength: (bytes: number, min: number, max: number) =>
+      min <= 1
+        ? `${bytes} of at most ${max} characters (an accented letter counts as two)`
+        : `${bytes} characters: from ${min} to ${max}, to fit where the game keeps the name (an accented letter counts as two)`,
+    /** Instead of Rename, when other things in the game hold the same name. */
+    nameShared: (holders: number) =>
+      `${holders} things in the game share this name, so it cannot be changed for the stadium alone`,
 
     // Club info
     info: "Club info",
@@ -1090,6 +1116,8 @@ export const en = {
       clubs: (names: string) => `Money: ${names}`,
       fitness: (names: string) => `Energy and sharpness: ${names}`,
       positions: (names: string) => `Positions: ${names}`,
+      /** `names` are the stadiums' new names, given again. */
+      stadiums: (names: string) => `Stadium names: ${names}`,
       /** After the first few names. */
       more: (count: number) => `and ${format(count)} more`,
       /** What was left for later: an update of the game, say. */
@@ -1097,6 +1125,15 @@ export const en = {
         `${count === 1 ? "1 is" : `${format(count)} are`} remembered but not frozen now: FMLibreEditor cannot write ` +
         "to this version of the game yet.",
       dismiss: "Dismiss",
+    },
+
+    /** The (i) beside every box that freezes something: how freezing works, and that the app has to stay open. */
+    freezeInfo: {
+      label: "How does freezing work?",
+      note:
+        "Freezing does not change the game for good: every 2 seconds, FMLibreEditor puts back what the game took. So it " +
+        "works only while the app is open and connected; close it, and the game changes them again. The app remembers " +
+        "what is frozen in this save, and freezes it again the next time it connects to it.",
     },
 
     /** The panel shown while not connected. */
@@ -1641,8 +1678,8 @@ export const en = {
     /** The name of the (i) button after the first line, for assistive technology, and the note it shows. */
     noRoomInfoLabel: "Why?",
     noRoomInfo:
-      "The editor cannot grow a squad list without putting the game at risk. Making room is a temporary but safe " +
-      "solution for now; a way to grow the list is being worked on.",
+      "The editor makes a full squad list bigger where it can, but it cannot make this one bigger: a player has to " +
+      "leave to make room.",
     /** The second line, which also names the choices under it; `player` is the player transferred. */
     noRoomNeed: (player: string, club: string) => `For ${player} to join, a player has to leave ${club}.`,
     /** The first choice: a player of the club picked from a list, who becomes a free agent. */
@@ -1716,6 +1753,34 @@ export const en = {
       "Listed under Changes as one change, which undoes both moves",
     ],
 
+    // Signing a free agent, who has no club: the same dialog with no fee and no swap, and a contract the editor makes.
+    signButtonTitle: "Sign this free agent for a club in the game",
+    signTitle: "Sign a free agent",
+    signChooseClub: "Choose the club to sign the player for.",
+    signChecking: "Checking the signing…",
+    /** Under the contract's inputs. */
+    signTerms:
+      "Leave them empty for the wage of the club's player nearest his ability, and a contract to the end of next " +
+      "season.",
+    /** The signing can be made: `to` is the club. */
+    signRoute: (to: string) => `Free agent → ${to}`,
+    /** The contract the editor makes: `wage` and `expires` written out, `status` the squad status's name. */
+    signContract: (wage: string, expires: string, status: string) =>
+      `New contract: ${wage} a week until ${expires}, ${status}`,
+    signDoesHeading: "What the signing does",
+    signDoes: [
+      "Joins the senior team of the club; a full squad list is made bigger",
+      "A new contract from the game's date, in one of the game's own free contract slots, as the game makes one",
+      "Modelled on the contract of the club's player nearest his ability: the same kind of contract and squad status",
+      "Your wage and contract end, or that player's wage and the end of next season",
+      "No squad number, loyalty bonus, clauses or bonuses",
+      "The game's transfer history does not list it yet",
+      "Listed under Changes, where one undo takes it all back",
+    ],
+    signHint: "Nothing changes in the game until you press Sign.",
+    sign: "Sign",
+    signing: "Signing…",
+
     // The foot
     /** Nothing changes in the game until Transfer, or Swap. */
     hint: "Nothing changes in the game until you press Transfer.",
@@ -1737,6 +1802,8 @@ export const en = {
     nationalities: "Secondary nationalities",
     trainedInNation: "Trained in nation",
     trainedAtClub: "Trained at club",
+    /** A nation he needs no work permit in, as the game lets players of the EU who were in the UK before Brexit. */
+    workPermit: "No work permit needed in",
     none: "None",
     /** The game's names of its homegrown rules, by code; `rule` names one it has no name for here. */
     rules: {
@@ -1764,10 +1831,27 @@ export const en = {
     /** The rows that add a tie, where the list has room. */
     addNationality: "Add a nationality…",
     addNation: "Add a nation…",
+    addPermit: "Add a country with no permit needed…",
+    /** After a nation he needs no work permit in. */
+    daysLeft: (days: number) => `${format(days)} days left`,
+    permitInfoLabel: "What does this do?",
+    permitInfo:
+      "The game lets players of the European Union who were in England or Scotland before Brexit play there without " +
+      "a work permit, for a number of days. A player given this needs no work permit to play in that country either, " +
+      "for as many days as theirs have left (ten years where no one in the save has it).",
     newRule: "Homegrown rule of the new nation",
     add: "Add",
-    /** Under the clubs: what the dialog cannot do with them. */
-    clubNote: "A club can be given another rule or removed; the game itself adds clubs.",
+    /** A club he was trained at: the button that points it at another club, and the search it opens. */
+    changeClub: "Change club",
+    changeClubTitle: (name: string) => `Make him trained at another club instead of ${name}`,
+    clubInsteadOf: (name: string) => `Club instead of ${name}`,
+    /** The button that adds a club he was trained at, and what it opens. */
+    addClub: "Add a club…",
+    addClubTitle: "Make him trained at one more club",
+    newClub: "New club",
+    pickAnother: "Pick another",
+    newClubRule: "Homegrown rule of the new club",
+    cancel: "Cancel",
     working: "Writing to the game…",
     close: "Close",
   },

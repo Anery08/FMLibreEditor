@@ -5,12 +5,14 @@
 //! (see [`RelationLayout`]): 16-byte entries that each point at a nation, club, person or competition and say how he
 //! is tied to it. A secondary nationality is a tie of kind 9 to a nation; a training is one of kind 70 to a nation or
 //! 72 to a club, whose value is the homegrown rule it meets. His first nationality is not among them: it is the
-//! player's `nation` field.
+//! player's `nation` field. A tie of kind 109 to a nation says he needs no work permit there: the game gives it to
+//! players of the European Union who were in England or Scotland before Brexit, with a count of the days it has left.
 //!
-//! The editor reads those three kinds of tie. It points one at another nation or club, gives a training another
-//! rule, takes one out, or adds one. Like the squad lists, the list is as long as the game made it and the editor
-//! allocates nothing: a tie is added only where the list's block has room (see [`HeapLayout`]), which most players'
-//! lists lack, so changing one of his ties is the way to give him another.
+//! The editor reads those four kinds of tie. It points one at another nation or club, gives a training another
+//! rule, takes one out, or adds one. The game makes each list as long as what it holds: after a save is loaded, none
+//! has room past its length. A tie is added where the list's block has room (see [`HeapLayout`]); otherwise the list is
+//! grown into memory of the editor's own (see `own_memory.rs`): its entries and the new one, with room for a few more,
+//! and the list pointed at them. The old buffer stays as it was, for the undo, which points the list back at it.
 //!
 //! [`HeapLayout`]: crate::profile::HeapLayout
 //! [`RelationLayout`]: crate::profile::RelationLayout
@@ -19,6 +21,7 @@ use fmlibre_mem::is_user_pointer;
 use serde::{Deserialize, Serialize};
 
 use crate::clubs::ClubSummary;
+use crate::own_memory::{CAN_ALLOCATE, Growth};
 use crate::players::{Nation, PlayerSummary, nation_name};
 use crate::session::Session;
 use crate::text::read_fm_string;
@@ -30,6 +33,10 @@ const MOST_RELATIONS: u64 = 256;
 /// The game's codes for the kinds of target.
 const CLUB: u8 = 1;
 const NATION: u8 = 8;
+
+/// The days a nation he needs no work permit in is given for, where no player of the save has one to take them from:
+/// ten years.
+const PERMIT_DAYS: u16 = 3650;
 
 /// The homegrown rules the editor writes, by the game's code: 15–21, 0–21, 15–21 excluding loans, and 0–19 for a
 /// year. The game has others, which the editor shows but does not write.
@@ -45,10 +52,12 @@ pub enum Tie {
     TrainedInNation,
     /// A club he was trained at.
     TrainedAtClub,
+    /// A nation he needs no work permit in.
+    WorkPermit,
 }
 
 impl Tie {
-    const ALL: [Tie; 3] = [Tie::Nationality, Tie::TrainedInNation, Tie::TrainedAtClub];
+    const ALL: [Tie; 4] = [Tie::Nationality, Tie::TrainedInNation, Tie::TrainedAtClub, Tie::WorkPermit];
 
     /// The kind of target and the kind of relation the game codes it with.
     fn codes(self) -> (u8, u8) {
@@ -56,12 +65,13 @@ impl Tie {
             Tie::Nationality => (NATION, 9),
             Tie::TrainedInNation => (NATION, 70),
             Tie::TrainedAtClub => (CLUB, 72),
+            Tie::WorkPermit => (NATION, 109),
         }
     }
 
     /// Whether its value is a homegrown rule.
     fn is_training(self) -> bool {
-        self != Tie::Nationality
+        matches!(self, Tie::TrainedInNation | Tie::TrainedAtClub)
     }
 }
 
@@ -104,6 +114,8 @@ pub struct Relation {
     pub name: Option<String>,
     /// For a training, the homegrown rule it meets.
     pub rule: Option<u8>,
+    /// For a nation he needs no work permit in, the days that has left.
+    pub days: Option<u16>,
 }
 
 /// A change to a player's ties, worked out from the game as it is now and ready to be written.
@@ -113,7 +125,17 @@ pub struct RelationPlan {
     /// The tie before and after: none before for one added, none after for one taken out.
     pub before: Option<Relation>,
     pub after: Option<Relation>,
+    /// Whether a tie added grows the list into memory of the editor's own, its block having no room.
+    pub grows: bool,
     patches: Vec<Patch>,
+    grow: Option<Growth>,
+}
+
+impl RelationPlan {
+    /// A change that writes `patches`, for the caller to say more of.
+    fn new(patches: Patches) -> Self {
+        Self { player: 0, before: None, after: None, grows: false, patches: patches.0, grow: None }
+    }
 }
 
 /// A change to a player's ties that was written: what undoing it takes.
@@ -122,6 +144,8 @@ pub struct RelationSet {
     pub player: u32,
     pub before: Option<Relation>,
     pub after: Option<Relation>,
+    /// Whether the list was grown into memory of the editor's own.
+    pub grew: bool,
     patches: Vec<Patch>,
 }
 
@@ -150,12 +174,33 @@ impl Session {
         Ok(self.relation_list(player)?.map(|list| list.entries.into_iter().enumerate().collect()).unwrap_or_default())
     }
 
+    /// Where the buffer of the list of `player` begins, and its capacity in bytes; `None` for a player without a list
+    /// or with an empty one, or one that does not check out.
+    pub fn relation_buffer(&self, player: &PlayerSummary) -> Option<(u64, u64)> {
+        let list = self.relation_list(player).ok()??;
+        (list.begin != 0).then_some((list.begin, list.capacity - list.begin))
+    }
+
+    /// How many entries the list of `player` holds, and how many its capacity says it has room for; `None` for a
+    /// player without a list, or one that does not check out.
+    pub fn relation_capacity(&self, player: &PlayerSummary) -> Option<(u64, u64)> {
+        let size = self.layout.relation.size;
+        let list = self.relation_list(player).ok()??;
+        Some(((list.end - list.begin) / size, (list.capacity - list.begin) / size))
+    }
+
     /// How many more ties the list of `player` has room for.
     pub fn relation_room(&self, player: &PlayerSummary) -> Result<usize, MoveError> {
         match self.relation_list(player)? {
             Some(list) => self.room(&list),
             None => Ok(0),
         }
+    }
+
+    /// Whether a tie can be added to the list of `player` though its block has no room: the editor grows it (see
+    /// `plan_relation_add`). Not where it cannot take memory in the game, or for a player without a record of ties.
+    pub fn relations_grow(&self, player: &PlayerSummary) -> bool {
+        CAN_ALLOCATE && matches!(self.relation_list(player), Ok(Some(_)))
     }
 
     /// Works out pointing the tie at `index` in the list of `player` at another nation or club, and giving a training
@@ -191,7 +236,7 @@ impl Session {
         if patches.0.is_empty() || self.relations(player)?.iter().any(|tie| tie.index != index && same(tie, &after)) {
             return Err(MoveError::SameRelation);
         }
-        Ok(RelationPlan { player: player.uid, before: Some(before), after: Some(after), patches: patches.0 })
+        Ok(RelationPlan { player: player.uid, before: Some(before), after: Some(after), ..RelationPlan::new(patches) })
     }
 
     /// Works out taking the tie at `index` out of the list of `player`: the entries after it move up one. Nothing is
@@ -208,11 +253,12 @@ impl Session {
         patches.push(list.begin + index as u64 * size, entries[index..last].concat(), entries[index + 1..].concat());
         patches.push(list.header + 8, list.end.to_le_bytes(), (list.end - size).to_le_bytes());
         patches.push(list.begin + last as u64 * size, entries[last].clone(), vec![0; size as usize]);
-        Ok(RelationPlan { player: player.uid, before: Some(before), after: None, patches: patches.0 })
+        Ok(RelationPlan { player: player.uid, before: Some(before), ..RelationPlan::new(patches) })
     }
 
     /// Works out adding a tie of `tie` to `target` to the list of `player`, with the homegrown rule `rule` for a
-    /// training, where the list's block has room. Nothing is written.
+    /// training: after its entries where the list's block has room, or else in a grown list (see the module's notes).
+    /// Nothing is written.
     pub fn plan_relation_add(
         &self,
         player: &PlayerSummary,
@@ -220,54 +266,94 @@ impl Session {
         target: TieTarget,
         rule: Option<u8>,
     ) -> Result<RelationPlan, MoveError> {
-        let r = &self.layout.relation;
+        let size = self.layout.relation.size;
         let list = self.relation_list(player)?.ok_or(MoveError::RelationsFull)?;
+        let after = self.new_tie(player, list.entries.len(), tie, target, rule)?;
+        if self.room(&list)? == 0 {
+            let mut entries = list.entries.concat();
+            entries.extend(self.entry_of(&after));
+            let was = [list.begin, list.end, list.capacity];
+            let grow = self.growth(list.header, was, entries, size).ok_or(MoveError::RelationsFull)?;
+            return Ok(RelationPlan {
+                player: player.uid,
+                after: Some(after),
+                grows: true,
+                grow: Some(grow),
+                ..RelationPlan::new(Patches::default())
+            });
+        }
+        let mut patches = Patches::default();
+        let slot = self.process.read_bytes(list.end, size as usize)?;
+        patches.push(list.end, slot, self.entry_of(&after));
+        let end = list.end + size;
+        let header = [list.end.to_le_bytes(), list.capacity.to_le_bytes()].concat();
+        patches.push(list.header + 8, header, [end.to_le_bytes(), list.capacity.max(end).to_le_bytes()].concat());
+        Ok(RelationPlan { player: player.uid, after: Some(after), ..RelationPlan::new(patches) })
+    }
+
+    /// Writes a planned change to a player's ties, each write over the bytes it expects, after checking them all. A list
+    /// to grow gets its buffer first: the entries are written into it, then the list is pointed at it.
+    pub fn apply_relation(&self, plan: &RelationPlan) -> Result<RelationSet, MoveError> {
+        let patches = match &plan.grow {
+            None => plan.patches.clone(),
+            Some(grow) => vec![self.grown_list(grow)?],
+        };
+        self.apply_patches(&patches)?;
+        let RelationPlan { player, ref before, ref after, grows, .. } = *plan;
+        Ok(RelationSet { player, before: before.clone(), after: after.clone(), grew: grows, patches })
+    }
+
+    /// A new tie of `tie` to `target` for `player`, at `index` in his list, with the homegrown rule `rule` for a
+    /// training: checked to be one the editor writes, and one he does not have yet.
+    fn new_tie(
+        &self,
+        player: &PlayerSummary,
+        index: usize,
+        tie: Tie,
+        target: TieTarget,
+        rule: Option<u8>,
+    ) -> Result<Relation, MoveError> {
         let rule = match (tie.is_training(), rule) {
             (true, Some(rule)) if HOMEGROWN_RULES.contains(&rule) => Some(rule),
             (false, None) => None,
             (_, rule) => return Err(MoveError::UnknownRule { rule: rule.unwrap_or(0) }),
         };
-        let after = Relation {
-            index: list.entries.len(),
+        let days = (tie == Tie::WorkPermit).then(|| self.permit_days());
+        let tie = Relation {
+            index,
             tie,
             target: self.tie_target(player, tie, target)?,
             target_uid: target.uid(),
             name: Some(target.name()),
             rule,
+            days,
         };
-        if self.relations(player)?.iter().any(|known| same(known, &after)) {
+        if self.relations(player)?.iter().any(|known| same(known, &tie)) {
             return Err(MoveError::SameRelation);
         }
-        if self.room(&list)? == 0 {
-            return Err(MoveError::RelationsFull);
-        }
-        // A new entry as the game writes one: a nationality's strength of 100 and 80, or a training's rule.
+        Ok(tie)
+    }
+
+    /// The bytes of a new entry for `tie`, as the game writes one: a nationality's strength of 100 and 80, or a
+    /// training's rule.
+    fn entry_of(&self, tie: &Relation) -> Vec<u8> {
+        let r = &self.layout.relation;
         let mut entry = vec![0u8; r.size as usize];
-        entry[r.target as usize..r.target as usize + 8].copy_from_slice(&after.target.to_le_bytes());
-        let (kind, relation) = tie.codes();
+        entry[r.target as usize..r.target as usize + 8].copy_from_slice(&tie.target.to_le_bytes());
+        let (kind, relation) = tie.tie.codes();
         entry[r.target_kind as usize] = kind;
         entry[r.relation as usize] = relation;
         let value = r.value as usize;
-        (entry[value], entry[value + 1]) = match rule {
-            Some(rule) => (rule, 0xFF),
-            None => (0x64, 0x50),
+        (entry[value], entry[value + 1]) = match (tie.tie, tie.rule) {
+            (_, Some(rule)) => (rule, 0xFF),
+            (Tie::WorkPermit, None) => (0, 0xFF),
+            (_, None) => (0x64, 0x50),
         };
+        if let Some(days) = tie.days {
+            entry[r.count as usize..r.count as usize + 2].copy_from_slice(&days.to_le_bytes());
+        }
         entry[r.size as usize - 1] = 0xFF;
-
-        let mut patches = Patches::default();
-        let slot = self.process.read_bytes(list.end, r.size as usize)?;
-        patches.push(list.end, slot, entry);
-        let end = list.end + r.size;
-        let header = [list.end.to_le_bytes(), list.capacity.to_le_bytes()].concat();
-        patches.push(list.header + 8, header, [end.to_le_bytes(), list.capacity.max(end).to_le_bytes()].concat());
-        Ok(RelationPlan { player: player.uid, before: None, after: Some(after), patches: patches.0 })
-    }
-
-    /// Writes a planned change to a player's ties, each write over the bytes it expects, after checking them all.
-    pub fn apply_relation(&self, plan: &RelationPlan) -> Result<RelationSet, MoveError> {
-        self.apply_patches(&plan.patches)?;
-        let RelationPlan { player, ref before, ref after, ref patches } = *plan;
-        Ok(RelationSet { player, before: before.clone(), after: after.clone(), patches: patches.clone() })
+        entry
     }
 
     /// Puts the ties back as they were, provided the list still holds what the change wrote.
@@ -322,7 +408,23 @@ impl Session {
         };
         let target_uid = self.process.read_u32(target + target_uid).ok()?;
         let rule = tie.is_training().then_some(entry[r.value as usize]);
-        Some(Relation { index, tie, target, target_uid, name, rule })
+        let count = r.count as usize;
+        let days = (tie == Tie::WorkPermit).then(|| u16::from_le_bytes([entry[count], entry[count + 1]]));
+        Some(Relation { index, tie, target, target_uid, name, rule, days })
+    }
+
+    /// The days a nation he needs no work permit in is given for: those of the first player of the save who has one,
+    /// so that it ends with theirs; ten years where no one has one.
+    fn permit_days(&self) -> u16 {
+        let r = &self.layout.relation;
+        let (permit, count) = (Tie::WorkPermit.codes(), r.count as usize);
+        let players = self.players().unwrap_or_default();
+        let days = players.iter().find_map(|player| {
+            let list = self.relation_list(player).ok()??;
+            let entry = list.entries.iter().find(|e| (e[r.target_kind as usize], e[r.relation as usize]) == permit)?;
+            Some(u16::from_le_bytes([entry[count], entry[count + 1]]))
+        });
+        days.filter(|&days| days > 0).unwrap_or(PERMIT_DAYS)
     }
 
     /// How many more entries the block of `list` holds: up to its capacity, or to the end of the allocator's block
@@ -346,7 +448,7 @@ impl Session {
     fn tie_target(&self, player: &PlayerSummary, tie: Tie, target: TieTarget) -> Result<u64, MoveError> {
         let p = &self.layout.player;
         match (tie, target) {
-            (Tie::Nationality | Tie::TrainedInNation, TieTarget::Nation(nation)) => {
+            (Tie::Nationality | Tie::TrainedInNation | Tie::WorkPermit, TieTarget::Nation(nation)) => {
                 let first = self.process.read_u64(player.address + p.at(p.nation, player.shift))?;
                 let same_class = is_user_pointer(first)
                     && is_user_pointer(nation.address)
@@ -355,7 +457,8 @@ impl Session {
                 if !same_class || Some(uid) != nation.uid {
                     return Err(MoveError::WrongTarget);
                 }
-                if tie == Tie::Nationality && nation.address == first {
+                // His own nation he neither takes again nor needs a permit for.
+                if matches!(tie, Tie::Nationality | Tie::WorkPermit) && nation.address == first {
                     return Err(MoveError::SameRelation);
                 }
                 Ok(nation.address)

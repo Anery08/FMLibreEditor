@@ -506,13 +506,15 @@ function ChangeRow({ change, field, failure, undoing, onUndo, inBatch }: ChangeR
   // injuries from how many he had to none, and lifting his bans as one of his bans: "Healed 2 injuries" says it better
   // than "2 → 0". Keeping him from retiring is logged with the date he was to retire on, which it names.
   const value = change.moved
-    ? valueChange(change.moved.from, change.moved.to ?? profileText.freeAgent)
+    ? valueChange(change.moved.from ?? profileText.freeAgent, change.moved.to ?? profileText.freeAgent)
     : change.captaincy
       ? valueChange(change.captaincy.from ?? profileText.none, change.captaincy.to)
       : change.tie
         ? valueChange(tieEnd(change.tie.from), tieEnd(change.tie.to))
       : change.clause
         ? valueChange(clauseEnd(change.clause.from), clauseEnd(change.clause.to))
+      : change.stadium
+        ? valueChange(change.stadium.from, change.stadium.to)
       : change.field === "injuries"
         ? text.healed(change.old)
         : change.field === "bans"

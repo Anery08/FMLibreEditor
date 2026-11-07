@@ -9,6 +9,7 @@ import type {
   Scouted,
   ScoutingOverview,
   ScoutRequest,
+  ClubName,
   ClubTeam,
   EditField,
   Entity,
@@ -25,6 +26,7 @@ import type {
   MoveTerms,
   Nation,
   RoomMaker,
+  StadiumName,
   TeamAction,
   TeamFreeze,
   TieKind,
@@ -247,7 +249,7 @@ export const makeLoanPermanent = (uid: number, terms: MoveTerms, fee?: number) =
  * Checks that the player `uid` can be released from his club, and names it. Nothing is written; when he cannot be
  * released, the error says why (a loan, a club a human manager runs, ...).
  */
-export const planRelease = (uid: number) => call<MovePreview["from"]>("plan_release", { uid });
+export const planRelease = (uid: number) => call<ClubName>("plan_release", { uid });
 
 /**
  * Releases the player from his club, which leaves him a free agent: logged as a change of his `club` to 0, and undone
@@ -283,8 +285,8 @@ export const addReleaseClause = (uid: number, amount: number) =>
 export const removeTie = (uid: number, index: number) => call<LoggedChange>("remove_tie", { uid, index });
 
 /**
- * Gives the player a tie to the nation or club with the UID `target`, under the homegrown rule `rule` for a training,
- * where his list has room (see `PlayerDetails.tieRoom`). Logged and undone like any change.
+ * Gives the player a tie to the nation or club with the UID `target`, under the homegrown rule `rule` for a training:
+ * where his list has no room, the app grows it (see `PlayerDetails.tiesGrow`). Logged and undone like any change.
  */
 export const addTie = (uid: number, tie: TieKind, target: number, rule?: number) =>
   call<LoggedChange>("add_tie", { uid, tie, target, rule });
@@ -362,3 +364,15 @@ export const scoutingOverview = () => call<ScoutingOverview>("scouting_overview"
 
 /** Players a scout would recommend for the position `request` describes, for the human manager's club. */
 export const scoutingSuggest = (request: ScoutRequest) => call<Scouted>("scouting_suggest", { request });
+
+/**
+ * The name of the stadium the club plays at, with the names it can take in place (see `StadiumName`). Only reads the
+ * game.
+ */
+export const stadiumName = (club: number) => call<StadiumName>("stadium_name", { club });
+
+/**
+ * Renames the stadium the club plays at, in the block the game gave its name: `name` must take as many bytes as
+ * `stadiumName` allows. Logged and undone like any change.
+ */
+export const renameStadium = (club: number, name: string) => call<LoggedChange>("rename_stadium", { club, name });

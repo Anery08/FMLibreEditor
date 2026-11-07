@@ -122,6 +122,9 @@ pub struct PlayerDetails {
     /// has room for.
     pub ties: Vec<Relation>,
     pub tie_room: usize,
+    /// Whether a tie can be added though his list has no room: the editor grows it (see
+    /// [`crate::Session::relations_grow`]).
+    pub ties_grow: bool,
     /// Whether the editor can read the retirements the game has planned (see
     /// [`crate::Session::planned_retirement`]), and the date he retires on when the game has planned it.
     pub retirement_known: bool,
@@ -330,6 +333,7 @@ pub fn read_player_details(
         bans: Vec::new(),
         ties: Vec::new(),
         tie_room: 0,
+        ties_grow: false,
         retirement_known: false,
         retires: None,
         clause_room: 0,

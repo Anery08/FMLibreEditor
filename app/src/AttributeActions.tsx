@@ -13,7 +13,8 @@ import {
   undoBatch,
 } from "./editing";
 import { describeError } from "./format";
-import { fieldLabel, massEditText, profileText } from "./labels";
+import { InfoTip } from "./InfoTip";
+import { appText, fieldLabel, massEditText, profileText } from "./labels";
 import { undoFailureLines } from "./massDraft";
 import type { PlayerDetails, StaffDetails } from "./types";
 import { EditorContext, useEditSession } from "./useProfileEditing";
@@ -169,15 +170,18 @@ export function AttributeActions({
           {profileText.maxAttributes}
         </button>
         {frozen !== null && (
-          <label className="freeze-toggle" title={editable ? freezeNote : readOnlyNote}>
-            <input
-              type="checkbox"
-              checked={frozen}
-              disabled={!editable}
-              onChange={(e) => void freeze(e.currentTarget.checked)}
-            />
-            <span>{profileText.freezeAttributes}</span>
-          </label>
+          <span className="freeze-line">
+            <label className="freeze-toggle" title={editable ? freezeNote : readOnlyNote}>
+              <input
+                type="checkbox"
+                checked={frozen}
+                disabled={!editable}
+                onChange={(e) => void freeze(e.currentTarget.checked)}
+              />
+              <span>{profileText.freezeAttributes}</span>
+            </label>
+            <InfoTip label={appText.freezeInfo.label} note={appText.freezeInfo.note} />
+          </span>
         )}
       </div>
       {/* A live region that is always there, so that it is read out when it fills; it takes no room while empty. */}

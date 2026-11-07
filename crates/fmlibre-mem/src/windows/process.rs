@@ -8,13 +8,14 @@ use windows_sys::Win32::System::Diagnostics::Debug::{ReadProcessMemory, WritePro
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
+use windows_sys::Win32::System::Memory::{MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE, VirtualAllocEx};
 use windows_sys::Win32::System::Threading::{
     GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_ACCESS_RIGHTS, PROCESS_NAME_WIN32,
     PROCESS_QUERY_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE, QueryFullProcessImageNameW,
 };
 
 use super::handle::{OwnedHandle, create_snapshot, from_wide};
-use super::region::region_at;
+use super::region::{Region, region_at};
 use crate::error::{Error, Result, last_error};
 
 /// A process seen in a system snapshot; not opened.
@@ -168,11 +169,40 @@ impl Process {
 
     /// Writes `data` at `addr`; fails unless every byte was written.
     ///
+    /// Takes `len` bytes of new memory in the process: private, readable and writable, zeroed. For data the editor
+    /// gives the game where the game's own blocks have no room, such as a longer name. The game's allocator knows
+    /// nothing of it, so what lives there must never be handed to the game to let go of (see the count of holders the
+    /// editor gives its strings). It is not given back while the game runs.
+    pub fn allocate(&self, len: usize) -> Result<u64> {
+        if !self.writable {
+            return Err(Error::ReadOnly);
+        }
+        let at =
+            unsafe { VirtualAllocEx(self.handle.0, std::ptr::null(), len, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) };
+        if at.is_null() {
+            return Err(Error::Win32 { op: "VirtualAllocEx", code: last_error() });
+        }
+        Ok(at as u64)
+    }
+
     /// Only heap data can be written: the whole range must lie in one region of
     /// committed, private, writable and non-executable memory. Anything else, such as
     /// a module's code or data, is refused before Windows is asked, because
     /// `WriteProcessMemory` would otherwise lift a page's protection to write it.
     pub fn write_bytes(&self, addr: u64, data: &[u8]) -> Result<()> {
+        self.write_where(addr, data, Region::holds_data)
+    }
+
+    /// Writes `data` at `addr` among a module's statics, as one of the game's pools of objects keeps its first free
+    /// slot and its counts: the whole range must lie in one region of committed, writable and non-executable memory of
+    /// a module's image. Its code, and what it only reads, are refused before Windows is asked, as for
+    /// [`Process::write_bytes`]. The editor writes very few statics, each as the game would.
+    pub fn write_static(&self, addr: u64, data: &[u8]) -> Result<()> {
+        self.write_where(addr, data, Region::holds_statics)
+    }
+
+    /// Writes `data` at `addr` when the whole range lies in one region that `allowed` lets the editor write.
+    fn write_where(&self, addr: u64, data: &[u8], allowed: fn(&Region) -> bool) -> Result<()> {
         if !self.writable {
             return Err(Error::ReadOnly);
         }
@@ -182,7 +212,7 @@ impl Process {
         let len = data.len();
         let end = addr.checked_add(len as u64).ok_or(Error::NotWritable { addr, len })?;
         match region_at(self, addr) {
-            Some(region) if region.holds_data() && end <= region.end() => {}
+            Some(region) if allowed(&region) && end <= region.end() => {}
             _ => return Err(Error::NotWritable { addr, len }),
         }
         let mut written = 0usize;
@@ -225,5 +255,37 @@ mod tests {
         let read_only = Process::open_read(std::process::id()).expect("open this process");
         assert!(matches!(read_only.write_bytes(addr, &[1]), Err(Error::ReadOnly)));
         drop(heap);
+    }
+
+    #[test]
+    fn writes_statics_only_where_a_module_keeps_its_data() {
+        let process = Process::open_read_write(std::process::id()).expect("open this process");
+        // A static the module writes: written as asked.
+        let data = WRITABLE_IN_THE_IMAGE.as_ptr() as u64;
+        process.write_static(data, &7u64.to_le_bytes()).expect("write the static");
+        assert_eq!(WRITABLE_IN_THE_IMAGE.load(std::sync::atomic::Ordering::SeqCst), 7);
+        WRITABLE_IN_THE_IMAGE.store(0, std::sync::atomic::Ordering::SeqCst);
+
+        // What it only reads, its code, and the heap are not.
+        let image = IN_THE_IMAGE.as_ptr() as u64;
+        assert!(matches!(process.write_static(image, &[1]), Err(Error::NotWritable { .. })));
+        let code = writes_statics_only_where_a_module_keeps_its_data as *const () as u64;
+        assert!(matches!(process.write_static(code, &[0xCC]), Err(Error::NotWritable { .. })));
+        let heap = vec![0u8; 64].into_boxed_slice();
+        assert!(matches!(process.write_static(heap.as_ptr() as u64, &[1]), Err(Error::NotWritable { .. })));
+
+        let read_only = Process::open_read(std::process::id()).expect("open this process");
+        assert!(matches!(read_only.write_static(data, &[1]), Err(Error::ReadOnly)));
+    }
+
+    #[test]
+    fn allocates_writable_memory_only_when_open_for_writing() {
+        let process = Process::open_read_write(std::process::id()).expect("open this process");
+        let at = process.allocate(0x1000).expect("allocate");
+        assert_eq!(process.read_bytes(at, 4).expect("read it"), [0, 0, 0, 0]);
+        process.write_bytes(at + 16, b"FMLE").expect("write into it");
+        assert_eq!(process.read_bytes(at + 16, 4).expect("read back"), *b"FMLE");
+        let read_only = Process::open_read(std::process::id()).expect("open this process");
+        assert!(matches!(read_only.allocate(0x1000), Err(Error::ReadOnly)));
     }
 }

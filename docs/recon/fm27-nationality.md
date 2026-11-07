@@ -29,9 +29,25 @@ The relations that matter here:
 | 9 | nation | 100, then 80 | a secondary nationality |
 | 70 | nation | the rule | Nation Eligibility: trained in the nation |
 | 72 | club | the rule | Club Eligibility: trained at the club |
+| 109 | nation | 0 (level 255; the count is the days it has left) | no work permit needed there |
 
 The others include favoured clubs (3), disliked clubs (4), people (1, 2) and time spent in a
 nation (124).
+
+Relation 109 is how the game lets players of the European Union who were in the United Kingdom
+before Brexit play there without a work permit. On the Game Pass save of July 2027, 72 players
+had it for England and 2 for Scotland (Youri Tielemans, Timothy Castagne, Daniel Bachmann;
+Kristoffer Ajer for Scotland), all with a count of 514 or 515, which goes down by one a day: it
+read 835 and 836 on the save of September 2026. Players with an ordinary work permit, such as
+Lisandro Martínez at Manchester United, have nothing of the kind in their list; the game names a
+class `db::WORK_PERMIT_EXEMPTION_INFO`, of which the save had no object. The editor gives the
+relation as the game does (value 0, level 255), with the count of the first player of the save
+who has one, so that it ends with theirs, or ten years where no one has it.
+
+On the Mac (Steam build 26340721, the Arsenal save of 5 July 2027) it is the same: 117 players
+have it for England (Daniel Bachmann, Thomas Kaminski, Timothy Castagne) and 4 for Scotland
+(Kristoffer Ajer), with counts of 543 to 545 at `+0x08`. Rodri (Spain, Barcelona), whose list was
+full, was given England (543 days left), grown, and put back with the probe.
 
 Homegrown rules, by the game's code, as the eligibility page names them:
 
@@ -59,6 +75,39 @@ Out of a sample of 3,636 lists, 94% were exactly as long as their capacity, and 
 1 to 8 entries. Their blocks are too small for the allocator's known size classes, so an entry
 can seldom be added without allocating, which the editor never does. Changing or removing an
 entry always works.
+
+On the Game Pass save of July 2027 (10,655 players, `fmlibre-probe relation-kinds`): 8,372
+players were trained at a club (relation 72), whose club the editor can point elsewhere, and 662
+lists had room for one more entry. Of the 2,283 players trained at no club, 58 had room, 778
+favoured or disliked a club (relations 3 and 4), 463 only favoured or disliked people (1 and 2),
+and 984 had none of those.
+
+None of the 10,655 lists had room past its length: after a load, every list is exactly as long
+as what it holds (`fmlibre-probe relation-kinds`). Their buffers have no header: buffers of 16
+to 160 bytes sit side by side, their own size apart, in blocks the game's allocator carves from
+large regions; above that, in the size classes `layout.toml` names (`relation-blocks`). So no
+other list has a bigger block to lend.
+
+The editor grows a full list (`plan_relation_add`): it writes the entries and the new
+one into memory of its own (`own_memory.rs`), with room for three more, and points the list's
+begin, end and capacity at it. The old buffer stays as it was; the undo points the list back at
+it. The game reads the list where it points, and keeps it in the save, which it writes from the
+entries; on loading, it makes the list again in its own memory.
+
+On the Mac (Steam build 26340721, arm64, the Arsenal save of 5 July 2027) the lists are as full:
+2,832 of the 30,797 players trained at a club had room for another tie. Their buffers come from
+the game's allocator without a header there too (`relation-blocks`: 16 bytes apart for 16, 192
+for 176, 640 for 544), which takes a block it lets go of into its class's list of free blocks
+wherever it is (see the [Mac notes](fm27-steam-macos.md#its-classes-and-how-it-takes-a-block-back)).
+So a full list grows the same way, into memory the editor takes there with `mach_vm_allocate`, in
+a block of its capacity's class and no larger than 4,096 bytes: Rodri's list of 12 entries, given
+a training at Manchester City, read 13 with room for 3 more (a block of 256), and was put back.
+
+Relations to people are kept on both sides: Bukayo Saka's list holds Ezri Konsa (relation 1,
+count 5, value 60), and Konsa's holds Saka with the same values. Such an entry points into the
+person's object, not at its start: a player's at `+0x288` (plus his person block's shift:
+`+0x380` for a player who is also staff), a member of staff's at `+0x100` (Saka's other one is
+Mikel Arteta's).
 
 ## Checked in the game
 

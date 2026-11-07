@@ -1084,9 +1084,28 @@ input::placeholder {
   margin: 0;
 }
 
+/* A box that freezes something and the (i) after it, which says how freezing works: its note opens under the line, as
+   wide as it. */
+.freeze-line {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.freeze-line > .freeze-toggle {
+  margin-right: 0;
+}
+
+/* Where the line is narrow (the club's money, in a column of the overview), the note is wider than it. */
+.freeze-line .info-tip-note {
+  min-width: min(340px, 85vw);
+}
+
 /* Above a player's attributes: Max attributes and the box that freezes them in a row, then what the last write came to
    (in the box of a squad's, see Club squad) and what freezing does while it is on. */
 .attribute-buttons {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1095,6 +1114,11 @@ input::placeholder {
 
 .attribute-buttons .freeze-toggle {
   margin: 0;
+}
+
+/* The note of its (i) opens under the whole row. */
+.attribute-buttons .freeze-line {
+  position: static;
 }
 
 .attribute-actions > :not(:first-child):not(:empty) {
@@ -4012,6 +4036,8 @@ button.danger:hover:not(:disabled) {
   font-size: 12.5px;
   font-weight: 400;
   line-height: 1.45;
+  /* Not the alignment of what it sits in: a value in a list of facts is set right. */
+  text-align: start;
 }
 
 .info-tip-note.shown {
@@ -4156,8 +4182,63 @@ button.danger:hover:not(:disabled) {
 }
 
 .tie-target {
-  flex: 1 1 12em;
+  flex: 1 1 9em;
   min-width: 0;
+}
+
+/* The heading of the nations he needs no work permit in, and the (i) after it: its note opens over the heading (under it,
+   the dialog's foot would cut it off), in the body's type, not the heading's. */
+.tie-head {
+  position: relative;
+}
+
+.tie-head .info-tip-note {
+  top: auto;
+  bottom: calc(100% + 6px);
+  font-family: inherit;
+  font-stretch: 100%;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+}
+
+/* A row's buttons, which wrap together. */
+.tie-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+/* Under the clubs he was trained at: Add a club, or the search that picks a club and its rule, with Add and Cancel at
+   its foot. */
+.tie-rows + .heal-toggle,
+.tie-none + .tie-rows + .heal-toggle {
+  margin-top: 8px;
+}
+
+.tie-pick {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.tie-pick-head {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.tie-pick .move-results-box {
+  margin: 0;
+}
+
+.tie-pick-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* A clause's amount, up to ten digits of pounds, and its condition, a few digits. */
@@ -4312,6 +4393,7 @@ button.danger:hover:not(:disabled) {
 
 /* The boxes that freeze the whole team, in a row under its actions; beside them what freezing covers. */
 .squad-freezes {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -4320,6 +4402,11 @@ button.danger:hover:not(:disabled) {
 
 .squad-freezes .freeze-toggle {
   margin: 0;
+}
+
+/* The (i) after the boxes, which says how freezing works: close to the last one, its note under the row. */
+.squad-freezes > .info-tip {
+  margin-left: -14px;
 }
 
 /* How many of the team are frozen, after a box that is half ticked. */
@@ -5546,4 +5633,39 @@ button.danger:hover:not(:disabled) {
 .scout-action[data-action="release"] {
   background: color-mix(in srgb, var(--tier-1) 12%, transparent);
   color: var(--tier-1);
+}
+
+/* The club's Stadium tab: one column, as wide as a list of facts reads well. */
+.stadium-tab {
+  max-width: 640px;
+}
+
+/* A stadium's name, with Rename beside it. */
+.stadium-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* The line of the name: the note of its (i), which says how a new name lasts, opens under it. */
+.stadium-name-row {
+  position: relative;
+}
+
+/* Renaming it: the input and its buttons on one line under the name, the note of its length under them. */
+.stadium-rename {
+  display: grid;
+  gap: 6px;
+  padding: 8px 0 12px;
+}
+
+.stadium-rename-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stadium-name-input {
+  flex: 1;
+  min-width: 0;
 }

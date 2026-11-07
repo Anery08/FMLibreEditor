@@ -117,3 +117,24 @@ Each write keeps the bytes it found, so one undo puts the loan back. Checked wit
 --restore` (9 writes): while made permanent he read as Barcelona's, not on loan, with the squad status of his loan
 contract (13), and afterwards as on loan again from Stuttgart until 30 June 2027. Whether the game takes him as
 Barcelona's over the next days is to be checked in the game.
+
+## On the Mac
+
+The Mac Steam build (26340721, arm64) keeps loans the same way, 0x40 earlier in the player as the person's fields
+are: his contract at `+0x2F0` and the record of his other contracts right after it, at `+0x2F8`. The record and the
+loan contract are laid out as on Windows, and so are the terms (`[loan]` and `[loan.terms]` in `layout-macos.toml`).
+On the Arsenal save of 5 July 2027, a few days after most loans had ended:
+
+- 92 players had a loan contract, every one passing the class (`N2db13LOAN_CONTRACTE`) and owner checks; 1,471 had
+  a record, whose other slots held 1,370 contracts with B teams (`db::B_CLUB_CONTRACT`) and a few full or basic
+  ones, as on Windows. Two records held a trial contract (`db::TRIAL_CONTRACT`) in the loan's slot, which the editor
+  leaves alone.
+- 1,458 players played for a team of another club than their contract's: the 92 on loan, and nearly all the rest at
+  a club's second team.
+- The terms read as the Loan Club tab would show them: Maxim De Cuyper (Brighton & Hove Albion to Olympique
+  Lyonnais until 29 June 2028) has flags `0x1006`, so he can be recalled but the loan cannot be terminated, an option
+  to buy of £32,394,208 and monthly fees of £52,761; Rob Dickie (Bristol City to FC Cincinnati) `0x1002`, neither.
+
+With the probe, each put back: De Cuyper's loan made permanent (`permanent 18110473 --restore`, 11 writes: he read as
+Lyon's, not on loan, with his loan contract's squad status, then on loan again), and a recall's writes, his loan's
+end to the game's date and his option to buy to -1, each read back and restored.

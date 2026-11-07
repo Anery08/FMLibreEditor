@@ -136,14 +136,15 @@ before trusting them.
 ## Phase 6: Game Pass completeness (in progress)
 
 - [x] Move a player to another club's senior team, on his contract or new terms,
-  with undo. Nothing is allocated in the game, so the new club's squad list must
-  have room in its block. Loans and free agents are refused. A player at a human manager's
+  with undo. At first nothing was allocated in the game, so the new club's squad list had
+  to have room in its block; since free agents are signed (Phase 7, Wave 2), a full list is
+  grown. Loans are refused. A player at a human manager's
   club also leaves its team selections (see Transfers in Phase 7).
 - [x] Make room in a full squad list: the dialog offers to release one of the club's
   players in the same transfer (the weakest who is neither injured nor a captain, by
   default), who leaves his place in the list to the player who joins; or to make it a
-  swap with him. One change, one undo. Growing the list the way the game does is left
-  for later.
+  swap with him. One change, one undo. The list is grown instead now; this stays for a
+  list the editor cannot grow.
 - [x] The rough edges of what shipped:
   - opening a mass edit asks about unapplied profile edits;
   - the Changes view pages and folds mass edits;
@@ -268,11 +269,20 @@ changes many at once, and undo.
   - [x] Move a member of staff to another club, keeping the job and the contract, and change a job. A club
     keeps its staff in three department lists (medical, coaching, scouting); a move takes them out of the
     old club's and into the new club's, and a new job moves them between departments. Staff whom the club or
-    a team points at directly, such as a team's manager, are left to the game, and a full list is refused.
-    Checked on the Mac Steam build and both Windows builds, each change restored.
+    a team points at directly, such as a team's manager, are left to the game. Checked on the Mac Steam build and
+    both Windows builds, each change restored. A full department (most of them, once a save is loaded) is grown into
+    memory the editor takes in the game, as the lists of ties are.
   - [x] Release a player on a free: he leaves his club's lists, and his team and contract pointers are
     cleared, as the game's own free agents have them. A captaincy he held is left empty; so is one a player
     gives up by moving. Checked on the Mac Steam build and both Windows builds, restored.
+  - [x] Sign a free agent: the Transfer dialog, without fee or swap, signs him for a club's senior team
+    under a contract the editor makes. The game keeps its contracts in a pool of 200-byte slots, a static of the game
+    plugin (one of 279 pools in its data, each chaining its free slots): the editor takes the first free slot as the
+    game does, writing the pool's first free slot and counts (the only statics of the game it writes), and fills it
+    with a copy of the contract of the club's player nearest his ability (the same kind of contract and squad status,
+    a goalkeeper's for a goalkeeper), on the wage and end date given, or that player's wage and the end of next
+    season, with no squad number, clauses or bonuses. A full squad list is grown, as the lists of ties are, and so is
+    one a transfer or a swap joins. See the [pool notes](recon/fm27-object-pools.md); the probe's `pools` and `move`.
   - [x] Contract bonuses and release clauses: read, edited and removed, and a release clause added where the list
     has room (see the contract extras below).
   - [x] Suspensions: lift a player's bans, or all of a squad's. A player's bans are listed in the record his
@@ -283,12 +293,31 @@ changes many at once, and undo.
     rule each meets (15-21, 0-21, ...). They are entries of the person's list of relations; the editor changes,
     removes and, where the list has room, adds them. Checked on the Mac Steam build against the game's eligibility
     page, and on both Windows builds: see the [nationality notes](recon/fm27-nationality.md).
+  - [x] Trained at club: the dialog points a club he was trained at at another one, found by a search, and adds one.
+    The game sizes each list to what it holds, so a full list (all of them after a load) is grown into memory the
+    editor takes in the game, and the undo points it back at its old buffer. The probe's `tie-add`,
+    `relation-kinds` (room) and `relation-blocks` (how the allocator places the buffers).
+  - [x] No work permit needed: England or Scotland as a nation a player needs no work permit in, the relation (109)
+    the game gives players of the EU who were in the United Kingdom before Brexit, for as many days as theirs have
+    left. In the same dialog, with an (i). Ordinary work permits are kept elsewhere, not yet found.
   - [ ] Place of birth: a pointer to a city record (`+0x2C8` on macOS), whose nation the game shows.
   - [ ] Appearance. FM27 keeps a person's looks as dozens of 3D face values for the match engine
     (`MATCH_PERSON_APPEARANCE_INPUT`: skin tone, hair and eye colours, face shape); set aside.
   - [x] Stadium capacity: a club's senior team points at its stadium (`db::STADIUM`, team `+0x78`), whose capacity,
     seats, capacity in use and expansion ceiling the club profile shows and edits. Checked on the Windows Game Pass
     build (Old Trafford 74,879; the Emirates 60,704) and on the Mac Steam build, where stadiums are laid out alike.
+  - [x] Stadium name, in the club's Stadium tab: any name of 1 to 80 bytes. One that keeps the size of the old name's
+    block is written over it, for a name the stadium alone holds; any other goes into memory the editor takes in the
+    game, as a string the game never lets go, and the stadium is pointed at it (also for the 2,293 shared names of the
+    Game Pass save, such as the Maracanã's). On the Mac the game's strings come in blocks of steps of 8 bytes, not 16
+    (`[heap] string_step`), so the Emirates Stadium takes 16 to 23 bytes in place there; both layouts take 8, which is
+    safe whatever the steps are on Windows. See `stadium_name.rs`; the
+    probe's `stadium-name`. The game keeps no stadium names in its saves: it gives every stadium the name in its
+    database (`lang_db.dat`) whenever it loads one, and an `.lnc` in the editor data folder does not reach a save
+    already started. So the app remembers each new name for the save, in `frozen.json` beside what is frozen, and
+    gives it again on connecting, on a reload and within seconds of the game loading the save, while it is open;
+    undone, or renamed back, it is forgotten. An (i) beside the name, and beside every freeze, says the app has to stay
+    open for it.
   - [ ] Sponsors, ticket prices and league prize money (`sicomps::PRIZE_MONEY_PROVIDER`).
   - [x] Jadedness: how worn out a player is by playing, which rest takes away (an `i16` at player `+0x25A`,
     -500 when rested). Found from the numbers FMRTE shows for three players, read without editing in FMRTE;

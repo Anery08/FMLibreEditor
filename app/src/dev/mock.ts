@@ -59,10 +59,12 @@ import type {
   MassOperationKind,
   MassPreview,
   MassReport,
+  ClubName,
   MovePreview,
   MoveTerms,
   PlannedChange,
   RoomMaker,
+  StadiumName,
   SkippedField,
 } from "../types";
 
@@ -87,13 +89,15 @@ const FIRST = ["Arda", "Mateo", "Lukas", "Kerem", "Jonas", "Rafael", "Emre", "No
 const FIRST_WOMEN = ["Aitana", "Elif", "Lena", "Ebru", "Sofia", "Marta", "Ingrid", "Chloé", "Zehra", "Pernille"];
 const LAST = ["Yılmaz", "Fernández", "Hoffmann", "Aydın", "Lindqvist", "Moreau", "Çelik", "Kowalski", "Silva", "Novák"];
 const NATIONS = ["Türkiye", "Spain", "Germany", "Brazil", "Denmark", "France", "Poland", "Portugal", "Czechia"];
+/** Every fixture nation: those of the players, and two that work permits are about. */
+const ALL_NATIONS = [...NATIONS, "England", "Scotland"];
 const CLUBS = ["Northbridge FC", "Atlético Riverside", "Sporting Harbour", "FC Lindenau", "Kuzey Spor", "Old Mill United"];
 
 /** Where the game would keep each fixture nation: what a nation field holds. */
-const nationAddress = (nation: string) => 0x7f00_0000 + NATIONS.indexOf(nation) * 0x400;
+const nationAddress = (nation: string) => 0x7f00_0000 + ALL_NATIONS.indexOf(nation) * 0x400;
 
 /** The fixture nation a nation field's value stands for. */
-const nationAt = (address: number) => NATIONS.find((nation) => nationAddress(nation) === address);
+const nationAt = (address: number) => ALL_NATIONS.find((nation) => nationAddress(nation) === address);
 
 /**
  * A fixture person's nation and club with their UIDs, as the real rows have them: the men's club of that name (see
@@ -315,6 +319,7 @@ function details(player: PlayerSummary): PlayerDetails {
     bans: bansOf(player.uid),
     ties: tiesOf(player),
     tieRoom: tieRoomOf(player),
+    tiesGrow: true,
     clauseRoom: player.club ? clauseRoomOf(player.uid) : 0,
     retirementKnown: true,
     retires: retiresOf(player.uid),
@@ -421,13 +426,18 @@ function fixtureTies(player: PlayerSummary): Tie[] {
   const ties: Tie[] = [];
   if (player.uid % 5 === 0) {
     const other = NATIONS[(NATIONS.indexOf(player.nation ?? NATIONS[0]) + 1) % NATIONS.length];
-    ties.push({ index: 0, tie: "nationality", targetUid: 1000 + NATIONS.indexOf(other), name: other, rule: null });
+    ties.push({ index: 0, tie: "nationality", targetUid: 1000 + NATIONS.indexOf(other), name: other, rule: null, days: null });
   }
   if (player.nation) {
-    ties.push({ index: 0, tie: "trainedInNation", targetUid: player.nationUid ?? 0, name: player.nation, rule: 1 });
+    ties.push({ index: 0, tie: "trainedInNation", targetUid: player.nationUid ?? 0, name: player.nation, rule: 1, days: null });
   }
   if (player.club && player.clubUid !== null) {
-    ties.push({ index: 0, tie: "trainedAtClub", targetUid: player.clubUid, name: player.club, rule: 1 });
+    ties.push({ index: 0, tie: "trainedAtClub", targetUid: player.clubUid, name: player.club, rule: 1, days: null });
+  }
+  // One in seven needs no work permit in England, as players of the EU who were there before Brexit.
+  if (player.uid % 7 === 1) {
+    const england = ALL_NATIONS.indexOf("England");
+    ties.push({ index: 0, tie: "workPermit", targetUid: 1000 + england, name: "England", rule: null, days: 515 });
   }
   // A list holds other relations too: the ties are spread through it.
   return ties.map((tie, i) => ({ ...tie, index: i * 2 + 1 }));
@@ -439,9 +449,22 @@ const tiesOf = (player: PlayerSummary) => tiesSet.get(player.uid) ?? fixtureTies
 const tieRoomOf = (player: PlayerSummary) =>
   Math.max(0, (player.uid % 3) - (tiesOf(player).length - fixtureTies(player).length));
 
+/** The fixture club with the UID `uid`, or the real commands' failure. */
+function mockClub(uid: number): ClubSummary {
+  const club = clubs.find((c) => c.uid === uid);
+  if (!club) {
+    throw notFound("club", uid);
+  }
+  return club;
+}
+
+/** The name of the nation or club with the UID `target`, as a tie of `kind` points at one or the other. */
+const targetName = (kind: TieKind, target: number) =>
+  kind === "trainedAtClub" ? mockClub(target).name : mockNation(target);
+
 /** The fixture nation with the UID `uid`, or the real commands' failure. */
 function mockNation(uid: number): string {
-  const name = NATIONS[uid - 1000];
+  const name = ALL_NATIONS[uid - 1000];
   if (name === undefined) {
     throw failure("app.notFound", `No nation with UID ${uid}`, { uid });
   }
@@ -485,15 +508,19 @@ function tieAt(uid: number, index: number): [PlayerSummary, Tie] {
   return [player, tie];
 }
 
-/** `change_tie`: points a fixture player's tie at another nation, or gives a training another rule. */
-function changeTie(uid: number, index: number, nation?: number, rule?: number): LoggedChange {
+/** `change_tie`: points a fixture player's tie at another nation or club, or gives a training another rule. */
+function changeTie(uid: number, index: number, nation?: number, club?: number, rule?: number): LoggedChange {
   const [player, tie] = tieAt(uid, index);
   if (rule !== undefined && (tie.rule === null || !HOMEGROWN_RULES.includes(rule))) {
     throw failure("relation.rule", `homegrown rule ${rule} is not one the editor writes`, { rule });
   }
+  const target = nation ?? club;
+  if (target !== undefined && (club !== undefined) !== (tie.tie === "trainedAtClub")) {
+    throw failure("relation.target", "that is not a nation or club of the game, of the kind this tie takes");
+  }
   const after: Tie = {
     ...tie,
-    ...(nation !== undefined && { targetUid: nation, name: mockNation(nation) }),
+    ...(target !== undefined && { targetUid: target, name: targetName(tie.tie, target) }),
     ...(rule !== undefined && { rule }),
   };
   const ties = tiesOf(player);
@@ -509,24 +536,32 @@ function removeTie(uid: number, index: number): LoggedChange {
   return logTie(player, tie, null, tiesOf(player).filter((t) => t.index !== index));
 }
 
-/** `add_tie`: gives a fixture player a nationality or a nation he was trained in, where his list has room. */
+/**
+ * A new tie of `kind` to `target` for a fixture player at `index`, checked as the real commands check it: a training
+ * takes a rule the editor writes, and he may not have it already.
+ */
+function newTie(player: PlayerSummary, index: number, kind: TieKind, target: number, rule?: number): Tie {
+  const training = kind === "trainedInNation" || kind === "trainedAtClub";
+  if (training !== (rule !== undefined) || (rule !== undefined && !HOMEGROWN_RULES.includes(rule))) {
+    throw failure("relation.rule", `homegrown rule ${rule ?? 0} is not one the editor writes`, { rule: rule ?? 0 });
+  }
+  const days = kind === "workPermit" ? 515 : null;
+  const tie: Tie = { index, tie: kind, targetUid: target, name: targetName(kind, target), rule: rule ?? null, days };
+  if (tiesOf(player).some((t) => t.tie === kind && t.targetUid === target && t.rule === tie.rule)) {
+    throw failure("relation.same", "the player has that already");
+  }
+  return tie;
+}
+
+/** `add_tie`: gives a fixture player a nationality, or a nation or club he was trained in. */
 function addTie(uid: number, kind: TieKind, target: number, rule?: number): LoggedChange {
   const player = players.find((p) => p.uid === uid);
   if (!player) {
     throw notFound("player", uid);
   }
-  if (tieRoomOf(player) === 0) {
-    throw failure(
-      "relation.noRoom",
-      "the player's list of nationalities and ties has no room for another, and the editor cannot make it bigger; change one of them instead",
-    );
-  }
   const ties = tiesOf(player);
-  const index = Math.max(0, ...ties.map((t) => t.index)) + 1;
-  const after: Tie = { index, tie: kind, targetUid: target, name: mockNation(target), rule: rule ?? null };
-  if (ties.some((t) => t.tie === kind && t.targetUid === target && t.rule === after.rule)) {
-    throw failure("relation.same", "the player has that already");
-  }
+  // As on Windows: a list without room is grown.
+  const after = newTie(player, Math.max(0, ...ties.map((t) => t.index)) + 1, kind, target, rule);
   return logTie(player, null, after, [...ties, after]);
 }
 
@@ -593,6 +628,65 @@ function logClause(player: PlayerSummary, before: Clause | null, after: Clause |
     undoneAt: null,
     batch: null,
     clause: { from: before, to: after },
+  };
+  changes.push(logged);
+  return { ...logged };
+}
+
+// Stadium names ---------------------------------------------------------------------------------------------------
+
+/** The stadiums renamed through the editor, by club UID, while the rename is not undone. */
+const stadiumNames = new Map<number, string>();
+
+/** The name of a fixture club's stadium, as renamed. */
+function stadiumNameOf(club: ClubSummary): string {
+  return stadiumNames.get(club.uid) ?? `${club.shortName} Park`;
+}
+
+/** Bytes of UTF-8, as the real app counts a name. */
+const utf8Bytes = (text: string) => new TextEncoder().encode(text).length;
+
+/**
+ * `stadium_name`: as the real command on Windows, any name up to 80 bytes; one club in eleven has a name other things
+ * share, which the real command renames all the same, by giving the stadium a string of its own.
+ */
+function stadiumNameRoom(uid: number): StadiumName {
+  const club = clubs.find((c) => c.uid === uid);
+  if (!club) {
+    throw notFound("club", uid);
+  }
+  return { name: stadiumNameOf(club), holders: uid % 11 === 3 ? 3 : 1, renamable: true, minBytes: 1, maxBytes: 80 };
+}
+
+/** `rename_stadium`: checked as the real command, and logged with the names; its undo puts the old one back. */
+function renameStadium(uid: number, name: string): LoggedChange {
+  const room = stadiumNameRoom(uid);
+  // eslint-disable-next-line no-control-regex
+  if (name === "" || name.trim() !== name || /[\u0000-\u001f\u007f]/.test(name)) {
+    throw failure("stadium.badName", "a stadium's name cannot be empty, start or end with a space, or hold control characters");
+  }
+  const bytes = utf8Bytes(name);
+  if (bytes < room.minBytes || bytes > room.maxBytes) {
+    throw failure("stadium.nameLength", "a new name for this stadium must take 1 to 80 bytes", {
+      min: String(room.minBytes),
+      max: String(room.maxBytes),
+      bytes: String(bytes),
+    });
+  }
+  const club = clubs.find((c) => c.uid === uid)!;
+  stadiumNames.set(uid, name);
+  const logged: LoggedChange = {
+    id: changes.length + 1,
+    at: Date.now(),
+    name: club.name,
+    entity: "club",
+    uid,
+    field: "stadium.name",
+    old: utf8Bytes(room.name),
+    new: bytes,
+    undoneAt: null,
+    batch: null,
+    stadium: { from: room.name, to: name },
   };
   changes.push(logged);
   return { ...logged };
@@ -1252,8 +1346,11 @@ function movableStaff(uid: number): StaffSummary {
   return member;
 }
 
+/** A plan from one club to another: every one but a free agent's signing. */
+type ClubToClub = MovePreview & { from: ClubName };
+
 /** `plan_staff_move`: the checks of the real command that the fixtures can have, with its messages. */
-function planStaffMove(uid: number, clubUid: number): MovePreview {
+function planStaffMove(uid: number, clubUid: number): ClubToClub {
   const member = movableStaff(uid);
   const to = clubs.find((c) => c.uid === clubUid);
   if (!to) {
@@ -1347,6 +1444,11 @@ function undoChange(id: number): LoggedChange {
   }
   if (entry.clause) {
     clausesSet.set(entry.uid, clauseUndo.get(entry.id)!);
+    entry.undoneAt = Date.now();
+    return { ...entry };
+  }
+  if (entry.stadium) {
+    stadiumNames.set(entry.uid, entry.stadium.from);
     entry.undoneAt = Date.now();
     return { ...entry };
   }
@@ -1474,7 +1576,20 @@ function planMove(uid: number, clubUid: number, terms: MoveTerms, fee?: number, 
     throw outOfRange("contract.expires", terms.expires, tomorrow, 21001231);
   }
   if (player.clubUid === null) {
-    throw failure("move.freeAgent", "the player has no club; free agents cannot be moved yet");
+    // A free agent is signed under a contract made for him, as the real command does: the wage given or one like the
+    // club's, and the end date given or 30 June at the end of next season.
+    if (to.women !== isWoman(uid)) {
+      throw failure("move.menAndWomen", "one club is a men's club and the other a women's club");
+    }
+    const seasonEnds = GAME_DATE.month <= 6 ? GAME_DATE.year : GAME_DATE.year + 1;
+    return {
+      to: { uid: to.uid, name: to.name },
+      contract: {
+        wage: terms.wage ?? 25_000,
+        expires: terms.expires ?? (seasonEnds + 1) * 10_000 + 630,
+        squadStatus: player.positions.includes("gk") ? 20 : 4,
+      },
+    };
   }
   if (player.clubUid === clubUid) {
     throw failure("move.sameClub", "the player is at this club already");
@@ -1528,7 +1643,7 @@ function payFee(preview: MovePreview): [number, string, number][] {
  * `plan_loan_permanent`: a fixture player on loan can stay at the club he is on loan to, on the terms, that club paying
  * his own one the fee; the same checks of the terms as a move.
  */
-function planLoanPermanent(uid: number, terms: MoveTerms, fee?: number): MovePreview {
+function planLoanPermanent(uid: number, terms: MoveTerms, fee?: number): ClubToClub {
   const player = players.find((p) => p.uid === uid);
   if (!player) {
     throw notFound("player", uid);
@@ -1608,8 +1723,10 @@ function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number
   });
   player.club = preview.to.name;
   player.clubUid = preview.to.uid;
-  if (terms.expires !== undefined) {
-    player.contractExpires = dateFromNumber(terms.expires);
+  // A free agent's new contract ends on the day it says, given or not.
+  const expires = terms.expires ?? preview.contract?.expires;
+  if (expires !== undefined) {
+    player.contractExpires = dateFromNumber(expires);
   }
   if (terms.wage !== undefined) {
     writeValue("player", uid, "contract.wage", terms.wage);
@@ -1625,12 +1742,12 @@ function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number
     entity: "player",
     uid,
     field: "club",
-    old: preview.from.uid,
+    old: preview.from?.uid ?? 0,
     new: preview.to.uid,
     undoneAt: null,
     batch: null,
     moved: {
-      from: preview.from.name,
+      ...(preview.from && { from: preview.from.name }),
       to: preview.to.name,
       ...(leaver && { released: leaver.name }),
       ...(preview.fee && { fee: preview.fee.fee }),
@@ -1641,13 +1758,13 @@ function movePlayer(uid: number, clubUid: number, terms: MoveTerms, fee?: number
 }
 
 /** `plan_release`: the checks of the real command that the fixtures can have, with its messages; names his club. */
-function planRelease(uid: number): MovePreview["from"] {
+function planRelease(uid: number): ClubName {
   const player = players.find((p) => p.uid === uid);
   if (!player) {
     throw notFound("player", uid);
   }
   if (player.clubUid === null) {
-    throw failure("move.freeAgent", "the player has no club; free agents cannot be moved yet");
+    throw failure("move.freeAgent", "the player is a free agent, with no club to leave or swap");
   }
   const from = clubs.find((c) => c.uid === player.clubUid)!;
   return { uid: from.uid, name: from.name };
@@ -1681,7 +1798,7 @@ function releasePlayer(uid: number): LoggedChange {
 }
 
 /** `plan_club_swap`: the checks of the real command that the fixtures can have, with its messages. */
-function planSwap(uid: number, otherUid: number): MovePreview {
+function planSwap(uid: number, otherUid: number): ClubToClub {
   const player = players.find((p) => p.uid === uid);
   const other = players.find((p) => p.uid === otherUid);
   if (!player) {
@@ -1692,7 +1809,7 @@ function planSwap(uid: number, otherUid: number): MovePreview {
   }
   for (const p of [player, other]) {
     if (p.clubUid === null) {
-      throw failure("move.freeAgent", "the player has no club; free agents cannot be moved yet");
+      throw failure("move.freeAgent", "the player is a free agent, with no club to leave or swap");
     }
   }
   if (player.clubUid === other.clubUid) {
@@ -2256,7 +2373,7 @@ function clubDetails(club: ClubSummary): ClubDetails {
 /** A made-up stadium for `club`: all seated, as in the top leagues, with room to grow. */
 function stadiumOf(club: ClubSummary, next: () => number): ClubDetails["stadium"] {
   const capacity = Math.round(8000 + next() * 60000);
-  return { name: `${club.shortName} Park`, capacity, seating: capacity, used: 0, expansion: Math.round(capacity * 1.25) };
+  return { name: stadiumNameOf(club), capacity, seating: capacity, used: 0, expansion: Math.round(capacity * 1.25) };
 }
 
 /** A date as a number that orders like the date. */
@@ -2527,7 +2644,7 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         return info as T;
       }
       // What a restart of the app finds frozen in this save: the attributes of the first two players, the energy and
-      // sharpness of the first seven, and the first club, with one more that waits.
+      // sharpness of the first seven, and the first club, whose stadium was renamed too, with one more that waits.
       for (const player of players.slice(0, 2)) {
         frozenAttributes.add(player.uid);
       }
@@ -2538,12 +2655,14 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       for (const member of staff.slice(0, 2)) {
         frozenStaff.add(member.uid);
       }
+      stadiumNames.set(clubs[0].uid, `${clubs[0].shortName} Arena`);
       const again: Refrozen = {
         players: players.slice(0, 2).map((p) => p.name),
         staff: staff.slice(0, 2).map((s) => s.name),
         clubs: [clubs[0].name],
         fitness: players.slice(0, 7).map((p) => p.name),
         positions: [],
+        stadiums: [stadiumNameOf(clubs[0])],
         waiting: 1,
       };
       return { ...info, refrozen: again } as T;
@@ -2591,7 +2710,9 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       const limit = Number(args?.limit ?? 200);
       const filter = (args?.filter ?? {}) as ClubFilter;
       const kindOf = clubs.find((c) => c.uid === args?.kindOf);
-      const women = kindOf ? kindOf.women : filter.women;
+      // A free agent's kind is his own.
+      const kindOfPlayer = typeof args?.kindOfPlayer === "number" ? isWoman(args.kindOfPlayer) : undefined;
+      const women = kindOf ? kindOf.women : (kindOfPlayer ?? filter.women);
       const words = fold(query).split(/\s+/).filter(Boolean);
       const hits = clubs
         .filter((c) => String(c.uid) === query.trim() || words.every((w) => fold(`${c.name} ${c.shortName ?? ""}`).includes(w)))
@@ -2736,7 +2857,7 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       return report as T;
     }
     case "list_nations": {
-      const nations: Nation[] = NATIONS.map((name) => ({ address: nationAddress(name), uid: 1000 + NATIONS.indexOf(name), name }));
+      const nations: Nation[] = ALL_NATIONS.map((name) => ({ address: nationAddress(name), uid: 1000 + ALL_NATIONS.indexOf(name), name }));
       return nations.sort((a, b) => a.name.localeCompare(b.name)) as T;
     }
     case "read_values":
@@ -2792,6 +2913,10 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       return healPlayer(Number(args?.uid)) as T;
     case "lift_bans":
       return liftBans(Number(args?.uid)) as T;
+    case "stadium_name":
+      return stadiumNameRoom(Number(args?.club)) as T;
+    case "rename_stadium":
+      return renameStadium(Number(args?.club), String(args?.name ?? "")) as T;
     case "change_clause":
       return changeClause(
         Number(args?.uid),
@@ -2810,6 +2935,7 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         Number(args?.uid),
         Number(args?.index),
         args?.nation as number | undefined,
+        args?.club as number | undefined,
         args?.rule as number | undefined,
       ) as T;
     case "remove_tie":

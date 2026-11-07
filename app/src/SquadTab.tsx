@@ -10,7 +10,9 @@ import { CaptainMenu } from "./CaptainMenu";
 import { changeLog, clubSquads, freezeTeam, setCaptain, teamAction, undoBatch, undoChange } from "./editing";
 import { describeError, formatNumber } from "./format";
 import { intlLocale } from "./i18n";
+import { InfoTip } from "./InfoTip";
 import {
+  appText,
   fieldLabel,
   massEditText,
   positionLabel,
@@ -588,6 +590,7 @@ function TeamFreezes({ team, editable, busy, onFreeze }: TeamFreezesProps) {
           onChange={(on) => onFreeze(kind, on)}
         />
       ))}
+      <InfoTip label={appText.freezeInfo.label} note={appText.freezeInfo.note} />
     </div>
   );
 }

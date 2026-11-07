@@ -40,6 +40,47 @@ pub struct Layout {
     /// Where a player on loan keeps his loan contract; only in the layouts it has been checked in.
     #[serde(default)]
     pub loan: Option<LoanLayout>,
+    /// How one of the game's pools of objects keeps its slots (see `object_pool.rs`); only in the layouts it has been
+    /// checked in.
+    #[serde(default)]
+    pub pool: Option<PoolLayout>,
+}
+
+/// One of the game's pools of objects (see `object_pool.rs`), a static of the game plugin, from where it keeps the
+/// list `(begin, end, capacity)` of pointers to its chunks. The rest are `u32`s but for the first free slot.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PoolLayout {
+    /// The list of chunks.
+    pub chunks: u64,
+    /// Pointer to the first free slot, null when none is free. Each free slot's first 8 bytes point at the next.
+    pub first_free: u64,
+    /// How many slots are free, and how many hold an object.
+    pub free: u64,
+    pub used: u64,
+    /// Bytes per slot.
+    pub slot_size: u64,
+    /// How many slots the first chunk has, and each later one.
+    pub first_chunk: u64,
+    pub later_chunks: u64,
+}
+
+impl PoolLayout {
+    /// One past the last byte of every field, from where the pool keeps its list of chunks.
+    pub fn end(&self) -> u64 {
+        [
+            self.chunks + 24,
+            self.first_free + 8,
+            self.free + 4,
+            self.used + 4,
+            self.slot_size + 4,
+            self.first_chunk + 4,
+            self.later_chunks + 4,
+        ]
+        .into_iter()
+        .max()
+        .unwrap_or(0)
+    }
 }
 
 /// The tactic block a selection's list ([`SelectionLayout::list`]) points at: the eleven slots of the formation, once
@@ -176,8 +217,11 @@ pub struct RelationLayout {
     pub target: u64,
     /// `u8`: 1 for a club, 3 for a person, 8 for a nation.
     pub target_kind: u64,
-    /// `u8`: 9 for a nationality, 70 for a nation he was trained in, 72 for a club he was trained at.
+    /// `u8`: 9 for a nationality, 70 for a nation he was trained in, 72 for a club he was trained at, 109 for a nation
+    /// he needs no work permit in.
     pub relation: u64,
+    /// `u16`: a count some relations use; for one he needs no work permit for, the days it has left.
+    pub count: u64,
     /// `u8`: for a training, the homegrown rule it meets.
     pub value: u64,
     /// Bytes per entry.
@@ -378,6 +422,15 @@ pub struct ContractLayout {
     /// senior contracts); none in a layout where it has not been checked.
     #[serde(default)]
     pub contract_type: Option<u64>,
+    /// Bytes of a contract: the size of the slots of the game's pool of contracts, which the editor takes one of for a
+    /// contract of its making (see `signing.rs`). None in a layout where it does not make contracts.
+    #[serde(default)]
+    pub size: Option<u64>,
+    /// Where a contract the editor makes holds 8 zero bytes in place of what the contract it is modelled on has: places
+    /// that hold a pointer in some contracts and nothing in most, to records the editor does not know and must not
+    /// share. The unhappiness record and the two lists of extras start empty too.
+    #[serde(default)]
+    pub cleared: Vec<u64>,
 }
 
 impl ContractLayout {
@@ -633,6 +686,14 @@ pub struct HeapLayout {
     /// Block sizes in bytes, ascending. A buffer of more than the first size and up to the last one sits in
     /// the smallest block at least as large as it; outside that span the block size is not known.
     pub block_sizes: Vec<u64>,
+    /// The steps, in bytes, in which the game's allocator sizes the blocks of its strings (a header of 8 bytes, a
+    /// count of holders, the length, the text and a NUL), for the names the editor writes (see `stadium_name.rs`).
+    /// 16 when not given.
+    pub string_step: Option<u64>,
+    /// The largest block the game's own allocator hands out: it gets larger ones from the system's allocator, and
+    /// gives them back to it, so the editor grows no list into memory of its own past it (see `own_memory.rs`). Not
+    /// given where it is not known.
+    pub largest_block: Option<u64>,
 }
 
 impl HeapLayout {
@@ -643,6 +704,22 @@ impl HeapLayout {
             return None;
         }
         sizes.iter().copied().find(|&size| size >= bytes)
+    }
+
+    /// The size of a block of the editor's own for a list's buffer of `bytes`, to be at least as large as the game's
+    /// allocator would give it, so that the game can hand it out again once it lets the list go. Within the classes
+    /// the layout lists, that class; past them, where the class is not known, the next power of two, which holds it (on
+    /// the Mac every class past 512 bytes lies below it); a smaller buffer gets its own size, as the classes below the
+    /// first come in steps of 8 and then 16. None past `largest_block`: the game would give that block to `free()`.
+    pub fn grown_block(&self, bytes: u64) -> Option<u64> {
+        if self.largest_block.is_some_and(|largest| bytes > largest) {
+            return None;
+        }
+        if let Some(size) = self.block_size(bytes) {
+            return Some(size);
+        }
+        let past_classes = self.block_sizes.last().is_some_and(|&last| bytes > last);
+        Some(if past_classes { bytes.next_power_of_two() } else { bytes })
     }
 }
 
@@ -901,8 +978,11 @@ mod tests {
             (r.planned, r.by_person, r.person, r.date, r.player_person - l.player.identity())
         };
         assert_eq!(retirement(&mac), retirement(&windows));
-        // The game's own allocator, with the same size classes on both systems.
-        assert_eq!(mac.heap.block_sizes, windows.heap.block_sizes);
+        // The game's own allocator, with the same size classes on both systems; the Mac's go on to 4,096 bytes, read
+        // from the allocator itself.
+        assert!(mac.heap.block_sizes.starts_with(&windows.heap.block_sizes));
+        assert_eq!(mac.heap.block_sizes.last(), mac.heap.largest_block.as_ref());
+        assert_eq!(mac.heap.largest_block, windows.heap.largest_block);
     }
 
     #[test]
@@ -914,6 +994,26 @@ mod tests {
         assert_eq!(mach_o.to_string(), "UUID 9E8E47DE-F704-314C-917D-C32D12637678");
         assert!(toml::from_str::<PluginFingerprint>(r#"uuid = "9E8E47DE-F704""#).is_err());
         assert!(toml::from_str::<PluginFingerprint>("size_of_image = 1\nlink_timestamp = 2\nuuid = 3").is_err());
+    }
+
+    #[test]
+    fn a_grown_list_gets_a_block_the_game_can_hand_out_again() {
+        let windows: Layout = parse(WINDOWS);
+        let mac: Layout = parse(MACOS);
+        // Within the classes listed, the class: 20 pointers and room for 3 more in 192 bytes.
+        assert_eq!(windows.heap.grown_block(23 * 8), Some(192));
+        assert_eq!(mac.heap.grown_block(23 * 8), Some(192));
+        // Past Windows' 512, a power of two, at least the class the Mac reads (75 pointers: 600 bytes, a class of 640).
+        assert_eq!(windows.heap.grown_block(600), Some(1024));
+        assert_eq!(mac.heap.grown_block(600), Some(640));
+        for bytes in (520..=4096).step_by(8) {
+            let class = mac.heap.grown_block(bytes).expect("a class");
+            assert!(windows.heap.grown_block(bytes).expect("a block") >= class, "{bytes}");
+        }
+        // Below the first class, its own size; past the largest block, none.
+        assert_eq!(windows.heap.grown_block(96), Some(96));
+        assert_eq!(windows.heap.grown_block(4104), None);
+        assert_eq!(mac.heap.grown_block(4104), None);
     }
 
     #[test]

@@ -114,7 +114,7 @@ const errors: ErrorTexts = {
   "edit.conflict": (p) => `${field(p.field)} şu an ${p.found}, ${p.expected} değil: oyun o zamandan beri değiştirmiş.`,
   "move.moved": () => `Oyuncu oyunun belleğinde yer değiştirmiş; ${reload}.`,
   "move.notAClub": () => "Bu kulübün oyuncunun katılabileceği bir A takımı yok.",
-  "move.freeAgent": () => "Oyuncunun kulübü yok; serbest oyuncular henüz taşınamıyor.",
+  "move.freeAgent": () => "Oyuncu serbest: ayrılacağı ya da takas edileceği bir kulübü yok.",
   "move.sameClub": () => "Oyuncu zaten bu kulüpte.",
   "move.onLoan": () =>
     "Oyuncu kiralık: önce profilindeki Kiralık bölümünden geri çağırın ya da kiralığı kalıcı yapın.",
@@ -127,7 +127,14 @@ const errors: ErrorTexts = {
   "move.menAndWomen": () => "Kulüplerden biri erkek, diğeri kadın kulübü.",
   "move.notListed": () => "Kadro listeleri oyuncuyu olması gereken yerde tutmuyor.",
   "move.noRoom": (p) =>
-    `Kulübün kadro listesinde bir oyuncuya daha yer yok (şu an ${p.players} oyuncu) ve düzenleyici listeyi büyütemez.`,
+    `Kulübün kadro listesinde bir oyuncuya daha yer yok (şu an ${p.players} oyuncu) ve düzenleyici bu sistemde listeyi büyütemez.`,
+  "sign.noPool": () =>
+    "Düzenleyici, oyunun bu sürümünde sözleşmeleri nerede tuttuğunu bulamıyor; bu yüzden serbest oyuncuya sözleşme veremiyor.",
+  "sign.poolFull": () =>
+    "Oyunun başka bir sözleşmeye yeri yok; yer, oyun günler geçtikçe kendi sözleşmelerini yaptıkça açılır. Oyunda bir gün ilerleyip tekrar deneyin.",
+  "sign.noModel": () =>
+    "Kulübün A takımında yeni sözleşmeye örnek alınacak, olağan sözleşmeli bir oyuncu yok.",
+  "sign.noDate": () => "Düzenleyici oyun içi tarihi okuyamıyor; yeni sözleşme o tarihte başlar.",
   "move.outOfRange": (p) => `${field(p.field)} için ${p.value} geçersiz: ${p.min} ile ${p.max} arasında olmalı.`,
   "move.changed": () => `Oyun bu belleği o zamandan beri değiştirmiş; ${reload}.`,
   "move.notApplied": () => "Belleğe yazıldı ama geri okunan farklı çıktı.",
@@ -158,7 +165,12 @@ const errors: ErrorTexts = {
     "Kulüp ya da takımlarından biri bu personele doğrudan işaret ediyor (bir takımın teknik direktörü gibi); onu oyun kendisi taşır.",
   "staff.notListed": () => "Kulübün personel listeleri onu olması gereken yerde tutmuyor.",
   "staff.noRoom": (p) =>
-    `Kulübün ${STAFF_DEPARTMENTS[p.department] ?? p.department} listesinde bir kişiye daha yer yok (şu an ${p.staff}) ve düzenleyici listeyi büyütemez.`,
+    `Kulübün ${STAFF_DEPARTMENTS[p.department] ?? p.department} listesinde bir kişiye daha yer yok (şu an ${p.staff}) ve düzenleyici bu sistemde listeyi büyütemez.`,
+  "stadium.none": () => "Kulübün A takımının oynadığı stadyum okunamıyor.",
+  "stadium.shared": (p) => `Bu adı oyunda ${p.holders} şey paylaşıyor; yalnızca bu stadyum için değiştirilemez.`,
+  "stadium.nameLength": (p) =>
+    `Bu stadyumun yeni adı, oyunun adı tuttuğu yere sığmak için ${p.min} ile ${p.max} bayt arası olmalı; bu ad ${p.bytes} bayt.`,
+  "stadium.badName": () => "Stadyum adı boş olamaz, boşlukla başlayıp bitemez ve denetim karakteri içeremez.",
   "staff.job": (p) => `Düzenleyici, görevi ${jobName(p.job)} olan personeli henüz taşıyamıyor ve bu görevi veremiyor.`,
   "squad.noTeam": () => `Kulübün böyle bir takımı yok ya da takım doğrulanamadı; ${reload}.`,
   "captain.notInTeam": () => "Oyuncu bu takımda oynamıyor; kaptan ancak takımın kendi oyuncularından seçilebilir.",
@@ -481,6 +493,7 @@ export const tr: Strings = {
     2: "Antrenör",
     4: "Başkan",
     6: "Yönetici",
+    10: "Futbol Direktörü",
     12: "Fizyoterapist",
     14: "Gözlemci",
     16: "Teknik Direktör",
@@ -535,6 +548,7 @@ export const tr: Strings = {
     "tie.nationality": "İkinci uyruk",
     "tie.trainedInNation": "Yetiştiği ülke",
     "tie.trainedAtClub": "Yetiştiği kulüp",
+    "tie.workPermit": "Çalışma izni gerekmeyen ülke",
     club: "Kulüp",
     injuries: "Sakatlıklar",
     bans: "Cezalar",
@@ -555,6 +569,7 @@ export const tr: Strings = {
     "finance.wage_budget": "Maaş bütçesi",
     "finance.total_wage_budget": "Toplam maaş bütçesi",
     "stadium.capacity": "Stadyum kapasitesi",
+    "stadium.name": "Stadyum adı",
     "stadium.seating": "Oturma kapasitesi",
     "stadium.used": "Kullanılan kapasite",
     "stadium.expansion": "Genişleme kapasitesi",
@@ -936,7 +951,7 @@ export const tr: Strings = {
 
     // The tabs under the header
     tabsLabel: "Kulüp bölümleri",
-    tabs: { overview: "Genel", squad: "Kadro" },
+    tabs: { overview: "Genel", squad: "Kadro", stadium: "Stadyum" },
     squadLocked: "Kadroyu açmak için düzenlemeyi bitirin",
 
     facilities: "Tesisler",
@@ -970,6 +985,25 @@ export const tr: Strings = {
     usedTitle: "Oyunun kapasitenin ne kadarını kullandığı, bir sınır koyduğunda (örneğin bazı tribünler kapalıyken); 0 tamamı demektir",
     expansion: "Genişleyebileceği",
     noStadium: "Bu kulübün stadyumu okunamadı.",
+    stadiumName: "Adı",
+    rename: "Adını değiştir",
+    renameTitle: "Stadyuma başka bir ad verin; hemen yazılır, Değişiklikler bölümünden geri alınabilir",
+    renameInfoLabel: "Yeniden adlandırma nasıl çalışır?",
+    renameInfo:
+      "Oyun stadyum adlarını kayıt dosyasında tutmaz; her kayıt yüklenişinde adları kendi veritabanından alır. Bu " +
+      "yüzden FMLibreEditor yeni adı bu kayıt için hatırlar ve oyun kaydı her yüklediğinde birkaç saniye içinde yeniden " +
+      "yazar; bunun için uygulamanın açık ve oyuna bağlı kalması gerekir. Kayıt uygulama kapalıyken yüklenirse oyun " +
+      "kendi adını gösterir; uygulama yeniden bağlanınca yeni ad geri gelir. Eski ada dönmek için değişikliği " +
+      "Değişiklikler bölümünden geri alın ya da stadyuma eski adını yeniden verin.",
+    saveName: "Kaydet",
+    renaming: "Kaydediliyor…",
+    cancelRename: "Vazgeç",
+    nameLength: (bytes, min, max) =>
+      min <= 1
+        ? `${bytes} / en çok ${max} karakter (ç, ğ, ı, ö, ş, ü gibi harfler iki sayılır)`
+        : `${bytes} karakter: oyunun adı tuttuğu yere sığması için ${min} ile ${max} arası (ç, ğ, ı, ö, ş, ü gibi harfler iki sayılır)`,
+    nameShared: (holders) =>
+      `Bu adı oyunda ${holders} şey paylaşıyor; bu yüzden yalnızca bu stadyum için değiştirilemez`,
     info: "Kulüp bilgisi",
     seasonTickets: "Sezonluk biletler",
     socialMedia: "Sosyal medya takipçileri",
@@ -1037,10 +1071,19 @@ export const tr: Strings = {
       clubs: (names) => `Para: ${names}`,
       fitness: (names) => `Enerji ve maç kondisyonu: ${names}`,
       positions: (names) => `Mevkiler: ${names}`,
+      stadiums: (names) => `Stadyum adları: ${names}`,
       more: (count) => `ve ${format(count)} tane daha`,
       waiting: (count) =>
         `${format(count)} tanesi hatırlanıyor ama şu an dondurulmadı: FMLibreEditor oyunun bu sürümüne henüz yazamıyor.`,
       dismiss: "Kapat",
+    },
+
+    freezeInfo: {
+      label: "Dondurma nasıl çalışır?",
+      note:
+        "Dondurma oyunu kalıcı olarak değiştirmez: FMLibreEditor her 2 saniyede bir oyunun düşürdüğünü geri koyar. Bu " +
+        "yüzden yalnızca uygulama açık ve oyuna bağlıyken çalışır; uygulamayı kapatırsanız oyun değerleri yine " +
+        "düşürür. Uygulama bu kayıtta neyin dondurulduğunu hatırlar ve kayda bir sonraki bağlanışında yine dondurur.",
     },
 
     connect: {
@@ -1462,8 +1505,8 @@ export const tr: Strings = {
     noRoom: (club) => `${club} kadrosunda boş yer yok.`,
     noRoomInfoLabel: "Neden?",
     noRoomInfo:
-      "Editör, kadro listesini oyunu riske atmadan büyütemiyor. Yer açmak şimdilik geçici ama güvenli bir çözüm; " +
-      "listeyi büyütmenin bir yolu üzerinde çalışılıyor.",
+      "Editör dolu kadro listesini yapabildiği yerde büyütür, ama bu listeyi büyütemez: yer açmak için bir " +
+      "oyuncunun ayrılması gerekir.",
     noRoomNeed: (player) => `${player} transferi için kadrodan bir oyuncunun ayrılması gerekiyor.`,
     releaseChoice: "Serbest bırak:",
     releasePickLabel: "Serbest bırakılacak oyuncu",
@@ -1522,6 +1565,30 @@ export const tr: Strings = {
       "Değişiklikler bölümünde tek değişiklik olarak listelenir; geri alınırsa ikisi de eski kulübüne döner",
     ],
 
+    // Signing a free agent
+    signButtonTitle: "Bu serbest oyuncuyu oyunda bir kulüple sözleşme imzalat",
+    signTitle: "Serbest oyuncuyla sözleşme",
+    signChooseClub: "Oyuncunun imza atacağı kulübü seçin.",
+    signChecking: "İmza kontrol ediliyor…",
+    signTerms:
+      "Boş bırakırsanız maaş, kulüpte yeteneği ona en yakın oyuncunun maaşı olur; sözleşme gelecek sezonun sonuna " +
+      "kadar sürer.",
+    signRoute: (to) => `Serbest oyuncu → ${to}`,
+    signContract: (wage, expires, status) => `Yeni sözleşme: haftalık ${wage}, ${expires} tarihine kadar, ${status}`,
+    signDoesHeading: "İmza ne yapar",
+    signDoes: [
+      "Kulübün A takımına katılır; kadro listesi doluysa büyütülür",
+      "Oyundaki tarihle başlayan yeni bir sözleşme, oyunun kendi boş sözleşme yuvalarından birinde, oyunun yaptığı gibi",
+      "Sözleşme, kulüpte yeteneği ona en yakın oyuncununkini örnek alır: aynı sözleşme türü ve aynı forma süresi",
+      "Sizin girdiğiniz maaş ve bitiş tarihi; boşsa o oyuncunun maaşı ve gelecek sezonun sonu",
+      "Forma numarası, sadakat primi, madde ve prim yok",
+      "Oyunun transfer geçmişinde henüz görünmez",
+      "Değişiklikler bölümünde listelenir; tek geri alma hepsini geri alır",
+    ],
+    signHint: "Siz imzalatmadan oyunda hiçbir şey değişmez.",
+    sign: "İmzalat",
+    signing: "İmzalatılıyor…",
+
     // The foot
     hint: "Siz transfer etmeden oyunda hiçbir şey değişmez.",
     move: "Transfer et",
@@ -1537,6 +1604,7 @@ export const tr: Strings = {
     nationalities: "İkinci uyruklar",
     trainedInNation: "Yetiştiği ülke",
     trainedAtClub: "Yetiştiği kulüp",
+    workPermit: "Çalışma izni gerekmeyen ülke",
     none: "Yok",
     rules: {
       1: "Yerli 15-21",
@@ -1560,9 +1628,24 @@ export const tr: Strings = {
     removeTitle: (name) => `${name} kaydını kaldır`,
     addNationality: "Uyruk ekle…",
     addNation: "Ülke ekle…",
+    addPermit: "İzin gerekmeyen ülke ekle…",
+    daysLeft: (days) => `${format(days)} gün kaldı`,
+    permitInfoLabel: "Bu ne işe yarar?",
+    permitInfo:
+      "Oyun, Brexit'ten önce İngiltere ya da İskoçya'da bulunan Avrupa Birliği oyuncularının orada belli bir süre " +
+      "çalışma izni olmadan oynamasına izin verir. Bunu verdiğiniz oyuncunun da o ülkede oynamak için çalışma iznine " +
+      "ihtiyacı olmaz; süresi o oyuncularınkiyle aynı gün dolar (kayıtta kimsede yoksa on yıl).",
     newRule: "Yeni ülkenin yerli kuralı",
     add: "Ekle",
-    clubNote: "Bir kulübün kuralı değiştirilebilir ya da kulüp kaldırılabilir; kulüpleri oyun kendisi ekler.",
+    changeClub: "Kulübü değiştir",
+    changeClubTitle: (name) => `${name} yerine başka bir kulüpte yetişmiş olsun`,
+    clubInsteadOf: (name) => `${name} yerine kulüp`,
+    addClub: "Kulüp ekle…",
+    addClubTitle: "Bir kulüpte daha yetişmiş olsun",
+    newClub: "Yeni kulüp",
+    pickAnother: "Başkasını seç",
+    newClubRule: "Yeni kulübün yerli kuralı",
+    cancel: "Vazgeç",
     working: "Oyuna yazılıyor…",
     close: "Kapat",
   },

@@ -122,8 +122,9 @@ export interface ExportReport {
 
 /**
  * What connecting froze again of what the app remembers as frozen in this save: the players' attributes, their energy
- * and match sharpness (`fitness`), the attributes of staff, and the clubs' money, by name, and how many it left for
- * later, still remembered (FMLibreEditor cannot write to this version of the game yet, or a check did not pass).
+ * and match sharpness (`fitness`), the attributes of staff, and the clubs' money, by name, the stadiums given the names
+ * the editor gave them again, by those names, and how many it left for later, still remembered (FMLibreEditor cannot
+ * write to this version of the game yet, or a check did not pass).
  */
 export interface Refrozen {
   players: string[];
@@ -131,6 +132,7 @@ export interface Refrozen {
   clubs: string[];
   fitness: string[];
   positions: string[];
+  stadiums: string[];
   waiting: number;
 }
 
@@ -228,6 +230,20 @@ export interface Stadium {
   used: number;
   /** The most it can be expanded to. */
   expansion: number;
+}
+
+/**
+ * A stadium's name as `stadium_name` reads it, with the names it can take: `minBytes` to `maxBytes` bytes of UTF-8.
+ * Any name up to 80 bytes, written over the old one when it fits its block or given a string of its own; where the
+ * editor could not take memory in the game, only one that keeps the size of the old one's block, and only for a name
+ * the stadium alone holds (`holders` 1).
+ */
+export interface StadiumName {
+  name: string;
+  holders: number;
+  renamable: boolean;
+  minBytes: number;
+  maxBytes: number;
 }
 
 /** A manager, coach, scout, director or other non-playing person. */
@@ -497,6 +513,8 @@ export interface PlayerDetails extends PlayerSummary {
   ties: Tie[];
   /** How many more ties his list has room for: the game sizes it to what it holds, and the editor allocates nothing. */
   tieRoom: number;
+  /** Whether a tie can be added though his list has no room: the editor grows it. */
+  tiesGrow: boolean;
   /** Whether the editor can read the retirements the game has planned in this version of the game. */
   retirementKnown: boolean;
   /** The date the game plans him to retire on; null when it has planned none (or `retirementKnown` is false). */
@@ -561,7 +579,8 @@ export interface LoanTerms {
 export type LoanEnd = "later" | "today" | "passed" | "unknown";
 
 /** What ties a player to a nation or club: a secondary nationality, or a nation or club he was trained in. */
-export type TieKind = "nationality" | "trainedInNation" | "trainedAtClub";
+/** "workPermit" is a nation he needs no work permit in (England, Scotland), for the days it has left. */
+export type TieKind = "nationality" | "trainedInNation" | "trainedAtClub" | "workPermit";
 
 /** One of a player's ties. */
 export interface Tie {
@@ -573,6 +592,8 @@ export interface Tie {
   name: string | null;
   /** For a training, the homegrown rule it meets, by the game's code (see `homegrownRules`). */
   rule: number | null;
+  /** For a nation he needs no work permit in, the days that has left. */
+  days: number | null;
 }
 
 /** One current injury of a player. */
@@ -675,7 +696,8 @@ export interface LoggedChange {
    * its new value.
    */
   moved?: {
-    from: string;
+    /** Absent for a free agent signed, who had no club. */
+    from?: string;
     /** Absent for a release, after which the player has no club. */
     to?: string;
     /** For a swap of two players, logged as one change, the player who went the other way. */
@@ -690,7 +712,7 @@ export interface LoggedChange {
   };
   /**
    * Set for a change to a player's ties, which is logged as a change of his field `tie.nationality`,
-   * `tie.trainedInNation` or `tie.trainedAtClub` from one nation's or club's UID to the other's (0 for none): the
+   * `tie.trainedInNation`, `tie.trainedAtClub` or `tie.workPermit` from one nation's or club's UID to the other's (0 for none): the
    * names and homegrown rules on either side.
    */
   tie?: {
@@ -705,6 +727,14 @@ export interface LoggedChange {
   clause?: {
     from: Clause | null;
     to: Clause | null;
+  };
+  /**
+   * Set for a stadium renamed (`rename_stadium`), logged as a change of the club's field `stadium.name` from one length
+   * in bytes to the other: the names.
+   */
+  stadium?: {
+    from: string;
+    to: string;
   };
   /**
    * Set for a recall from loan (`recall_loan`, logged as a change of `loan.expires`) that took the loan's option to buy
@@ -810,11 +840,30 @@ export interface RoomMaker extends PlayerSummary {
 }
 
 /** From `plan_club_move`: the move can be made, between these clubs. */
+/** A club by its UID and name, as a plan names it. */
+export interface ClubName {
+  uid: number;
+  name: string;
+}
+
 export interface MovePreview {
-  from: { uid: number; name: string };
-  to: { uid: number; name: string };
+  /** Absent for a free agent, who has no club. */
+  from?: ClubName;
+  to: ClubName;
   /** What the fee does to the two clubs' money, when one is to be paid. */
   fee?: FeePlan;
+  /** For a free agent, the contract the editor makes for him. */
+  contract?: NewContract;
+}
+
+/** The contract the editor makes for a free agent it signs, as the plan has it. */
+export interface NewContract {
+  /** Pounds per week. */
+  wage: number;
+  /** The end date, as a number like 20290630. */
+  expires: number;
+  /** The squad status's code. */
+  squadStatus: number;
 }
 
 /** An amount of money before and after a fee is paid, in pounds. */
