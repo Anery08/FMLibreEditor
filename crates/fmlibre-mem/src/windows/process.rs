@@ -8,6 +8,7 @@ use windows_sys::Win32::System::Diagnostics::Debug::{ReadProcessMemory, WritePro
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
+use windows_sys::Win32::System::Memory::{MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE, VirtualAllocEx};
 use windows_sys::Win32::System::Threading::{
     GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_ACCESS_RIGHTS, PROCESS_NAME_WIN32,
     PROCESS_QUERY_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE, QueryFullProcessImageNameW,
@@ -168,6 +169,22 @@ impl Process {
 
     /// Writes `data` at `addr`; fails unless every byte was written.
     ///
+    /// Takes `len` bytes of new memory in the process: private, readable and writable, zeroed. For data the editor
+    /// gives the game where the game's own blocks have no room, such as a longer name. The game's allocator knows
+    /// nothing of it, so what lives there must never be handed to the game to let go of (see the count of holders the
+    /// editor gives its strings). It is not given back while the game runs.
+    pub fn allocate(&self, len: usize) -> Result<u64> {
+        if !self.writable {
+            return Err(Error::ReadOnly);
+        }
+        let at =
+            unsafe { VirtualAllocEx(self.handle.0, std::ptr::null(), len, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) };
+        if at.is_null() {
+            return Err(Error::Win32 { op: "VirtualAllocEx", code: last_error() });
+        }
+        Ok(at as u64)
+    }
+
     /// Only heap data can be written: the whole range must lie in one region of
     /// committed, private, writable and non-executable memory. Anything else, such as
     /// a module's code or data, is refused before Windows is asked, because
@@ -225,5 +242,16 @@ mod tests {
         let read_only = Process::open_read(std::process::id()).expect("open this process");
         assert!(matches!(read_only.write_bytes(addr, &[1]), Err(Error::ReadOnly)));
         drop(heap);
+    }
+
+    #[test]
+    fn allocates_writable_memory_only_when_open_for_writing() {
+        let process = Process::open_read_write(std::process::id()).expect("open this process");
+        let at = process.allocate(0x1000).expect("allocate");
+        assert_eq!(process.read_bytes(at, 4).expect("read it"), [0, 0, 0, 0]);
+        process.write_bytes(at + 16, b"FMLE").expect("write into it");
+        assert_eq!(process.read_bytes(at + 16, 4).expect("read back"), *b"FMLE");
+        let read_only = Process::open_read(std::process::id()).expect("open this process");
+        assert!(matches!(read_only.allocate(0x1000), Err(Error::ReadOnly)));
     }
 }

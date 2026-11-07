@@ -223,6 +223,20 @@ enum Command {
         #[arg(long, default_value_t = 0)]
         hold: u64,
     },
+    /// Show the name of the stadium a club plays at and the names it can take in place; with NAME, rename it in the
+    /// running game. Without a club, how many stadiums' names the editor can change, by the size of their blocks.
+    StadiumName {
+        /// The club's UID.
+        club: Option<u32>,
+        /// The new name.
+        name: Option<String>,
+        /// Put the old name back afterwards and check it: tests the change without changing the save.
+        #[arg(long)]
+        restore: bool,
+        /// With --restore, how many seconds to wait before putting it back, to look at the game meanwhile.
+        #[arg(long, default_value_t = 0)]
+        hold: u64,
+    },
     /// Work out a move as the app's transfer dialog does, on the player's contract, and say whether it can be made.
     /// Writes nothing.
     Plan {
@@ -580,6 +594,9 @@ enum Command {
     },
     /// Read every team's player list and show how the game's allocator spaces their buffers.
     Squads,
+    /// Find the game's own allocators in the game plugin's writable data and show, for each, the header it puts
+    /// before a block and its size classes: the block each size asked for gets. Only reads memory
+    Allocators,
     /// Find where clubs or players keep a value seen in another tool: from each club and its senior
     /// team, or from each player, follow pointers up to --depth hops and print the places where every
     /// one given holds its own value, under several encodings.
@@ -880,6 +897,7 @@ fn run(cli: Cli) -> Result<()> {
             Command::Set { .. }
                 | Command::Move { .. }
                 | Command::Permanent { .. }
+                | Command::StadiumName { name: Some(_), .. }
                 | Command::Release { .. }
                 | Command::StaffMove { .. }
                 | Command::StaffJob { .. }
@@ -959,6 +977,9 @@ fn run(cli: Cli) -> Result<()> {
             let expires = expires.as_deref().map(parse_iso_date).transpose()?.map(FmDate::to_number);
             let session = connect(process, ArraySource::ProfileFirst)?;
             make_permanent(&session, uid, MoveTerms { wage, expires }, restore.then_some(hold))
+        }
+        Command::StadiumName { club, name, restore, hold } => {
+            stadium_name(&connect(process, ArraySource::ProfileFirst)?, club, name.as_deref(), restore.then_some(hold))
         }
         Command::Plan { uid, club, release } => {
             plan_move(&connect(process, ArraySource::ProfileFirst)?, uid, club, release)
@@ -1086,6 +1107,7 @@ fn run(cli: Cli) -> Result<()> {
             refs(&process, &modules, resolve(&addr, &modules)?, parse_hex(&span)?, max)
         }
         Command::Squads => squads(&connect(process, ArraySource::ProfileFirst)?),
+        Command::Allocators => allocators(&connect(process, ArraySource::ProfileFirst)?),
         Command::Related { clubs, players, depth, span, tolerance, linear } => {
             let session = connect(process, ArraySource::ProfileFirst)?;
             let roots = related_roots(&session, &clubs, &players)?;
@@ -1333,6 +1355,82 @@ fn holders(process: &Process, modules: &[Module], addr: u64, max: usize) -> Resu
 /// per capacity, the spacing of list buffers that share a 64 KiB page (a slab allocator
 /// puts blocks of one size class at multiples of that size), and whether the rest of the
 /// block the layout's heap gives them is zero.
+/// `allocators`: the game's own allocators, found in the game plugin's writable data by their shape: a list of their
+/// size classes, then a list of one entry per size asked for, up to the largest they hand out, each pointing at the
+/// class that serves it (null where the system's allocator does), then the bytes of the header they write before a
+/// block (the size asked for) and a byte that is 1 while they are in use. A block holds the largest size its class
+/// serves and the header. Seen on the Mac (arm64): the lists of the game's objects come from one without a header, of
+/// 34 classes up to 4,096 bytes; its strings from one with a header of 8 bytes.
+fn allocators(session: &Session) -> Result<()> {
+    const SHAPE: usize = 0x38;
+    let process = &session.process;
+    let plugin = &session.plugin;
+    let word = |bytes: &[u8], at: usize| u64::from_le_bytes(bytes[at..at + 8].try_into().expect("8 bytes"));
+    let list = |bytes: &[u8], at: usize, most: u64| {
+        let (begin, end, capacity) = (word(bytes, at), word(bytes, at + 8), word(bytes, at + 16));
+        let fits = is_user_pointer(begin)
+            && begin < end
+            && end <= capacity
+            && (end - begin).is_multiple_of(8)
+            && (end - begin) / 8 <= most;
+        fits.then_some((begin, (end - begin) / 8))
+    };
+    let mut found = 0;
+    for region in regions(process, plugin.base, plugin.end()).into_iter().filter(|r| r.is_writable()) {
+        let Ok(bytes) = process.read_bytes(region.base, region.size as usize) else { continue };
+        for at in (0..bytes.len().saturating_sub(SHAPE)).step_by(8) {
+            let shape = &bytes[at..at + SHAPE];
+            let header = u32::from_le_bytes(shape[0x30..0x34].try_into().expect("4 bytes"));
+            if shape[0x34] != 1 || ![0, 4, 8, 16].contains(&header) {
+                continue;
+            }
+            let (Some((classes_at, classes)), Some((sizes_at, sizes))) =
+                (list(shape, 0, 64), list(shape, 0x18, 0x1_0001))
+            else {
+                continue;
+            };
+            if sizes < 65 {
+                continue;
+            }
+            let (Ok(classes), Ok(by_size)) = (
+                process.read_bytes(classes_at, classes as usize * 8),
+                process.read_bytes(sizes_at, sizes as usize * 8),
+            ) else {
+                continue;
+            };
+            let classes: Vec<u64> = classes.as_chunks::<8>().0.iter().map(|w| u64::from_le_bytes(*w)).collect();
+            let by_size: Vec<u64> = by_size.as_chunks::<8>().0.iter().map(|w| u64::from_le_bytes(*w)).collect();
+            if by_size.iter().any(|class| *class != 0 && !classes.contains(class)) {
+                continue;
+            }
+            // Runs of sizes served by one class: the block holds the largest of them and the header.
+            let mut blocks = Vec::new();
+            let mut start = 0;
+            for size in 1..=by_size.len() {
+                if size == by_size.len() || by_size[size] != by_size[start] {
+                    if by_size[start] != 0 {
+                        let largest = size as u64 - 1;
+                        blocks.push(format!("{} ({}-{largest})", largest + u64::from(header), start.max(1)));
+                    }
+                    start = size;
+                }
+            }
+            found += 1;
+            println!(
+                "{GAME_PLUGIN}+{:#x}: header {header} bytes, {} classes, sizes up to {} from them, larger from the system",
+                region.base + at as u64 - plugin.base,
+                classes.len(),
+                by_size.len() - 1
+            );
+            for line in blocks.chunks(8) {
+                println!("  blocks {}", line.join(", "));
+            }
+        }
+    }
+    println!("{found} allocator(s) in {}'s writable data", GAME_PLUGIN);
+    Ok(())
+}
+
 fn squads(session: &Session) -> Result<()> {
     let process = &session.process;
     let mut lists: Vec<(u64, u64, u64)> = Vec::new(); // (begin, length, capacity)
@@ -3338,6 +3436,77 @@ fn make_permanent(session: &Session, uid: u32, terms: MoveTerms, restore_after: 
             std::thread::sleep(std::time::Duration::from_secs(hold));
         }
         session.undo_club_move(&done)?;
+        show("restored")?;
+    }
+    Ok(())
+}
+
+/// `stadium-name`: one club's stadium name and the names it can take, renamed with `name`; or, without a club, how
+/// many stadiums' names the editor reads, how many the stadium alone holds (renamed in place when the new name keeps
+/// the size of the block) and how many are shared (renamed by pointing the stadium at a new string).
+fn stadium_name(session: &Session, club: Option<u32>, name: Option<&str>, restore: Option<u64>) -> Result<()> {
+    let clubs = ClubIndex::new(session.clubs()?);
+    let Some(uid) = club else {
+        let (mut sizes, mut shared, mut renamable, mut unread) = (BTreeMap::<usize, usize>::new(), Vec::new(), 0, 0);
+        for club in clubs.iter() {
+            match session.stadium_name(club) {
+                Ok(found) => {
+                    renamable += usize::from(found.renamable);
+                    if found.holders == 1 {
+                        *sizes.entry(found.name.len().div_ceil(16)).or_default() += 1;
+                    } else {
+                        shared.push(format!("{} ({}, {} holders)", found.name, club.name, found.holders));
+                    }
+                }
+                Err(_) => unread += 1,
+            }
+        }
+        println!(
+            "Stadium names read: {}; the editor can rename {renamable}",
+            sizes.values().sum::<usize>() + shared.len()
+        );
+        println!("Held by the stadium alone, by their length:");
+        for (sixteenths, count) in &sizes {
+            println!("  {:>3} to {:>3} bytes  {count:>6}", sixteenths * 16 - 15, sixteenths * 16);
+        }
+        println!(
+            "Shared, renamed by pointing the stadium at a new name: {}{}",
+            shared.len(),
+            if shared.is_empty() { "" } else { ", e.g." }
+        );
+        for example in shared.iter().take(8) {
+            println!("  {example}");
+        }
+        println!("No stadium the editor can read: {unread} clubs");
+        return Ok(());
+    };
+    let club = clubs.get(uid).with_context(|| format!("no club with UID {uid}"))?;
+    let show = |label: &str| -> Result<()> {
+        let found = session.stadium_name(club)?;
+        println!(
+            "{label}: {:?} ({} bytes; {} holder(s); a new name may take {} to {} bytes)",
+            found.name,
+            found.name.len(),
+            found.holders,
+            found.min_bytes,
+            found.max_bytes
+        );
+        Ok(())
+    };
+    println!("{} (club {}):", club.name, club.uid);
+    show("stadium")?;
+    let Some(name) = name else {
+        return Ok(());
+    };
+    let plan = session.plan_stadium_rename(club, name)?;
+    let done = session.apply_stadium_rename(&plan)?;
+    show(if done.in_place { "renamed in place" } else { "renamed, in a string of the editor's own" })?;
+    if let Some(hold) = restore {
+        if hold > 0 {
+            println!("  putting it back in {hold} s");
+            std::thread::sleep(std::time::Duration::from_secs(hold));
+        }
+        session.undo_stadium_rename(&done)?;
         show("restored")?;
     }
     Ok(())

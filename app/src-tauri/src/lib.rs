@@ -12,8 +12,8 @@ use fmlibre_core::{
     LOAN_EXPIRES, LOAN_OPTION_FEE, Lifted, Listed, Loan, MoveError, MovePlan, MoveTerms, Nation, Operation, Paid,
     Picture, Planned, PlayerDetails, PlayerFilter, PlayerIndex, PlayerOrder, PlayerSummary, ROLES, RelationSet,
     RetirementSet, Role, SCOUT_POSITIONS, STAFF_JOBS, ScoutError, ScoutPosition, ScoutRequest, Scouted, SearchIndex,
-    Session, SessionError, Skipped, SquadReport, StaffChange, StaffDetails, StaffFilter, StaffIndex, StaffOrder,
-    StaffPlan, Target, Tie, TieTarget, find_game, nations, sort_players, sort_staff,
+    Session, SessionError, Skipped, SquadReport, StadiumName, StadiumRename, StaffChange, StaffDetails, StaffFilter,
+    StaffIndex, StaffOrder, StaffPlan, Target, Tie, TieTarget, find_game, nations, sort_players, sort_staff,
 };
 use fmlibre_mem::{Process, find_processes, is_current_process_elevated, list_modules};
 use serde::{Deserialize, Serialize};
@@ -51,11 +51,42 @@ struct Connection {
     frozen: Frozen,
     /// Which save the game has loaded (see `save_of`); none when the lists name no human manager.
     save: Option<String>,
+    /// What the hold last found of the game's clubs, for the stadiums renamed in the editor.
+    clubs_seen: ClubsSeen,
 }
 
-/// How often the balances of frozen clubs and the attributes, energy and sharpness of frozen players and the
-/// attributes of frozen members of staff are looked at.
+/// How often the balances of frozen clubs, the attributes, energy and sharpness of frozen players, the attributes of
+/// frozen members of staff and the names of renamed stadiums are looked at.
 const FREEZE_EVERY: Duration = Duration::from_secs(2);
+
+/// How long after the game's clubs moved (a save loaded) the hold looks often whether the game has the save the lists
+/// were read from, while it may still be loading it, how often, and how often after that.
+const SAVE_SETTLES: Duration = Duration::from_secs(180);
+const SAVE_RECHECK: Duration = Duration::from_secs(5);
+const SAVE_RECHECK_LATER: Duration = Duration::from_secs(60);
+
+/// What the hold last found of the game's clubs (see `Connection::hold_stadiums`): a save loaded again, this one or
+/// another, gives them a new array, of new objects.
+struct ClubsSeen {
+    /// Where the array of clubs began.
+    begin: u64,
+    /// Whether a club whose stadium was renamed was missing, or not where the lists found it.
+    lost: bool,
+    /// Whether the game had given a stadium renamed in the editor another name.
+    off: bool,
+    /// Since when the game had what it has: when one of these last came about.
+    since: Instant,
+    /// Whether the game has the save the lists were read from; none until it is known.
+    same_save: Option<bool>,
+    /// When that was last worked out.
+    checked: Option<Instant>,
+}
+
+impl ClubsSeen {
+    fn unknown(begin: u64) -> Self {
+        Self { begin, lost: false, off: false, since: Instant::now(), same_save: None, checked: None }
+    }
+}
 
 /// The attributes of a player that are at their best at 1, not at 20.
 const LOWER_IS_BETTER: [&str; 2] = ["attribute.injury_proneness", "attribute.dirtiness"];
@@ -78,11 +109,34 @@ struct Frozen {
     /// The players whose energy and match sharpness are frozen, with the least each may be, as stored: what it was
     /// when it was frozen, or more once he was fitter. A player frozen at full energy stays at it.
     fitness: BTreeMap<u32, BTreeMap<String, i64>>,
+    /// The stadiums renamed in the editor, by the UID of a club that plays there: the game gives a stadium its own
+    /// name back whenever it loads the save, as it keeps no stadium names in it, and the app gives it the new one again.
+    stadiums: BTreeMap<u32, HeldName>,
+}
+
+/// A stadium's name as the editor gave it, and the game's own, which an undo back to it lets go of.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct HeldName {
+    name: String,
+    original: String,
+}
+
+impl HeldName {
+    /// What is held once the editor has given a stadium `name`, by a rename or an undo, after `held` was: `before` is
+    /// the name it had, which is the game's own when nothing was held. Nothing, once it has the game's own name back.
+    fn after(held: Option<&HeldName>, name: &str, before: &str) -> Option<HeldName> {
+        let original = held.map_or(before, |held| held.original.as_str());
+        (name != original).then(|| HeldName { name: name.to_owned(), original: original.to_owned() })
+    }
 }
 
 impl Frozen {
     fn is_empty(&self) -> bool {
-        self.money.is_empty() && self.attributes.is_empty() && self.staff.is_empty() && self.fitness.is_empty()
+        self.money.is_empty()
+            && self.attributes.is_empty()
+            && self.staff.is_empty()
+            && self.fitness.is_empty()
+            && self.stadiums.is_empty()
     }
 
     /// The players frozen in the way `kind` names, with what they are held at.
@@ -129,11 +183,19 @@ struct RememberedSave {
     /// The players whose energy and match sharpness are frozen; not in the files of versions before it.
     #[serde(default)]
     fitness: BTreeSet<u32>,
+    /// The stadiums renamed in the editor, by the UID of a club that plays there; not in the files of versions before
+    /// it.
+    #[serde(default)]
+    stadiums: BTreeMap<u32, HeldName>,
 }
 
 impl RememberedSave {
     fn is_empty(&self) -> bool {
-        self.players.is_empty() && self.staff.is_empty() && self.clubs.is_empty() && self.fitness.is_empty()
+        self.players.is_empty()
+            && self.staff.is_empty()
+            && self.clubs.is_empty()
+            && self.fitness.is_empty()
+            && self.stadiums.is_empty()
     }
 
     /// The players frozen in the way `kind` names.
@@ -193,6 +255,8 @@ struct Refrozen {
     clubs: Vec<String>,
     /// The players whose energy and match sharpness are frozen again, by name.
     fitness: Vec<String>,
+    /// The stadiums given the names the editor gave them again, by their new names.
+    stadiums: Vec<String>,
     /// How many are left for later, still remembered: the editor has no profile for this version of the game, or a
     /// check did not pass.
     waiting: usize,
@@ -204,8 +268,15 @@ impl Refrozen {
             && self.staff.is_empty()
             && self.clubs.is_empty()
             && self.fitness.is_empty()
+            && self.stadiums.is_empty()
             && self.waiting == 0
     }
+}
+
+/// Where the game's array of clubs begins now; none when it cannot be read.
+fn clubs_begin(session: &Session) -> Option<u64> {
+    let array = session.arrays.clubs.as_ref()?;
+    array.locate(&session.process, &session.plugin).ok().map(|(begin, _)| begin)
 }
 
 /// What tells one save from another: the storefront, and the managers that human players control in it, whom each
@@ -273,7 +344,11 @@ impl Connection {
         let clubs = ClubIndex::new(session.clubs()?);
         let next_id = log.iter().filter_map(|logged| logged.batch).max().unwrap_or(0) + 1;
         let frozen = Frozen::default();
-        Ok(Self { session, players, staff, clubs, human_clubs, log, mass: None, next_id, frozen, save })
+        // The clubs were just read, from this save.
+        let begin = clubs_begin(&session).unwrap_or(0);
+        let clubs_seen =
+            ClubsSeen { same_save: Some(true), checked: Some(Instant::now()), ..ClubsSeen::unknown(begin) };
+        Ok(Self { session, players, staff, clubs, human_clubs, log, mass: None, next_id, frozen, save, clubs_seen })
     }
 
     /// Freezes again what was frozen in this save before, as the file at `path` remembers it: the attributes, energy
@@ -290,14 +365,17 @@ impl Connection {
         let Some(entry) = remembered.saves.get_mut(&save) else {
             return refrozen;
         };
-        let count = entry.players.len() + entry.staff.len() + entry.clubs.len() + entry.fitness.len();
+        let count =
+            entry.players.len() + entry.staff.len() + entry.clubs.len() + entry.fitness.len() + entry.stadiums.len();
         entry.players.retain(|&uid| self.players.get(uid).is_some());
         entry.staff.retain(|&uid| self.staff.get(uid).is_some());
         entry.clubs.retain(|&uid| self.clubs.get(uid).is_some());
         entry.fitness.retain(|&uid| self.players.get(uid).is_some());
+        entry.stadiums.retain(|&uid, _| self.clubs.get(uid).is_some());
         let (players, staff) = (entry.players.clone(), entry.staff.clone());
         let (clubs, fitness) = (entry.clubs.clone(), entry.fitness.clone());
-        if players.len() + staff.len() + clubs.len() + fitness.len() < count {
+        let stadiums = entry.stadiums.clone();
+        if players.len() + staff.len() + clubs.len() + fitness.len() + stadiums.len() < count {
             remembered.saves.retain(|_, save| !save.is_empty());
             let _ = remembered.write(path);
         }
@@ -326,7 +404,147 @@ impl Connection {
                 _ => refrozen.waiting += 1,
             }
         }
+        for (uid, held) in stadiums {
+            if safe && self.give_stadium_name(uid, &held.name) {
+                refrozen.stadiums.push(held.name.clone());
+                self.frozen.stadiums.insert(uid, held);
+            } else {
+                refrozen.waiting += 1;
+            }
+        }
         refrozen
+    }
+
+    /// Gives the stadium of the club `uid` the name `name`, unless it has it already: whether it has it now. Not
+    /// logged: the rename that chose the name was.
+    fn give_stadium_name(&mut self, uid: u32, name: &str) -> bool {
+        let Some(club) = self.clubs.get(uid) else {
+            return false;
+        };
+        match self.session.stadium_name(club) {
+            Ok(now) if now.name == name => true,
+            Ok(_) => self
+                .session
+                .plan_stadium_rename(club, name)
+                .and_then(|plan| self.session.apply_stadium_rename(&plan))
+                .is_ok(),
+            Err(_) => false,
+        }
+    }
+
+    /// Gives each stadium renamed in the editor its name again where the game has given it back its own, as it does
+    /// whenever it loads the save. Before that, the game is checked to have this save: a save loaded (this one again or
+    /// another) moves the clubs' array or objects, or gives the stadiums the names in the game's database. Once it is
+    /// this one, clubs that moved are read again; while it is another, or none, nothing is written, and it is looked at
+    /// again every little while.
+    fn hold_stadiums(&mut self) {
+        if self.frozen.stadiums.is_empty() {
+            return;
+        }
+        let Some(begin) = clubs_begin(&self.session) else {
+            return;
+        };
+        let lost = self.clubs_lost();
+        // Names are read only from clubs where the lists found them.
+        let off = !lost && self.stadium_names_off();
+        let seen = &self.clubs_seen;
+        if begin != seen.begin || (lost && !seen.lost) || (off && !seen.off) {
+            self.clubs_seen = ClubsSeen { lost, off, ..ClubsSeen::unknown(begin) };
+        }
+        self.clubs_seen.off = off;
+        let seen = &self.clubs_seen;
+        let every = if seen.since.elapsed() < SAVE_SETTLES { SAVE_RECHECK } else { SAVE_RECHECK_LATER };
+        if (seen.same_save != Some(true) || lost) && seen.checked.is_none_or(|at| at.elapsed() >= every) {
+            if seen.same_save != Some(true) {
+                self.clubs_seen.same_save = Some(self.same_save());
+            }
+            if self.clubs_seen.same_save == Some(true)
+                && lost
+                && let Ok(clubs) = self.session.clubs()
+            {
+                self.clubs = ClubIndex::new(clubs);
+            }
+            self.clubs_seen.lost = self.clubs_lost();
+            self.clubs_seen.checked = Some(Instant::now());
+        }
+        if self.clubs_seen.same_save == Some(true) {
+            self.give_stadium_names();
+        }
+    }
+
+    /// Gives every stadium renamed in the editor the name it was given, where it has another (see
+    /// `give_stadium_name`). For the save the lists were read from only.
+    fn give_stadium_names(&mut self) {
+        let names: Vec<(u32, String)> =
+            self.frozen.stadiums.iter().map(|(&uid, held)| (uid, held.name.clone())).collect();
+        for (uid, name) in names {
+            self.give_stadium_name(uid, &name);
+        }
+    }
+
+    /// Whether the game has given a stadium renamed in the editor a name other than the one the editor gave it.
+    fn stadium_names_off(&self) -> bool {
+        self.frozen.stadiums.iter().any(|(&uid, held)| {
+            let now = self.clubs.get(uid).and_then(|club| self.session.stadium_name(club).ok());
+            now.is_some_and(|now| now.name != held.name)
+        })
+    }
+
+    /// Whether a club whose stadium was renamed is missing from the lists, or its object is no longer where they found
+    /// it.
+    fn clubs_lost(&self) -> bool {
+        self.frozen.stadiums.keys().any(|&uid| {
+            self.clubs.get(uid).is_none_or(|club| {
+                self.session.process.read_u32(club.address + self.session.layout.club.uid).ok() != Some(uid)
+            })
+        })
+    }
+
+    /// Whether the game has the save the lists were read from: the same human managers.
+    fn same_save(&self) -> bool {
+        let Ok(staff) = self.session.staff() else {
+            return false;
+        };
+        let mut humans: Vec<u32> = staff.iter().filter(|member| member.is_human).map(|member| member.uid).collect();
+        humans.sort_unstable();
+        self.save.is_some() && save_of(&self.session, &humans) == self.save
+    }
+
+    /// Holds and remembers `name`, the name the editor just gave the stadium of the club `uid`, by a rename or an undo
+    /// (see `HeldName::after`); a stadium given back the game's own name is let go of.
+    fn hold_stadium_name(&mut self, path: Option<&Path>, uid: u32, name: &str, before: &str) {
+        match HeldName::after(self.frozen.stadiums.get(&uid), name, before) {
+            Some(held) => {
+                self.frozen.stadiums.insert(uid, held.clone());
+                self.remember(path, |save| {
+                    save.stadiums.insert(uid, held);
+                });
+            }
+            None => {
+                self.frozen.stadiums.remove(&uid);
+                self.remember(path, |save| {
+                    save.stadiums.remove(&uid);
+                });
+            }
+        }
+    }
+
+    /// Gives the stadium the name it had before `renamed`: by putting back what it wrote, or, once the game has given
+    /// the stadium its own name again and the app this one after it (the save loaded meanwhile), by renaming it back.
+    fn undo_stadium(&self, renamed: &StadiumRename) -> Result<(), Failure> {
+        let Err(err) = self.session.undo_stadium_rename(renamed) else {
+            return Ok(());
+        };
+        let Some(club) = self.clubs.get(renamed.club) else {
+            return Err(err.into());
+        };
+        match self.session.stadium_name(club) {
+            Ok(now) if now.name == renamed.to => {}
+            _ => return Err(err.into()),
+        }
+        let plan = self.session.plan_stadium_rename(club, &renamed.from)?;
+        self.session.apply_stadium_rename(&plan)?;
+        Ok(())
     }
 
     /// Changes, with `change`, what the file at `path` remembers as frozen in this save. Without a file or a known
@@ -508,6 +726,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: None,
         };
         self.log.push(logged.clone());
@@ -572,6 +791,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Captain(done)),
         };
         self.log.push(logged.clone());
@@ -599,6 +819,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Heal(done)),
         };
         self.log.push(logged.clone());
@@ -626,6 +847,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Lift(done)),
         };
         self.log.push(logged.clone());
@@ -654,6 +876,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Retirement(done)),
         };
         self.log.push(logged.clone());
@@ -695,7 +918,38 @@ impl Connection {
             tie: Some(TieChange { from: end(&done.before), to: end(&done.after) }),
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Tie(done)),
+        };
+        self.log.push(logged.clone());
+        logged
+    }
+
+    /// Logs a stadium renamed, as a change of the club's `stadium.name` from one length in bytes to the other, with the
+    /// names; its undo writes the old name back.
+    fn log_stadium(&mut self, done: StadiumRename) -> LoggedChange {
+        let change = Change {
+            entity: Entity::Club,
+            uid: done.club,
+            field: "stadium.name".to_owned(),
+            old: done.from.len() as i64,
+            new: done.to.len() as i64,
+        };
+        let name = self.clubs.get(done.club).map_or_else(|| done.club.to_string(), |club| club.name.clone());
+        let logged = LoggedChange {
+            id: self.log.len() + 1,
+            at: now_ms(),
+            name,
+            change,
+            undone_at: None,
+            batch: None,
+            moved: None,
+            captaincy: None,
+            tie: None,
+            clause: None,
+            recall: None,
+            stadium: Some(StadiumNames { from: done.from.clone(), to: done.to.clone() }),
+            undo: Some(Undo::Stadium(done)),
         };
         self.log.push(logged.clone());
         logged
@@ -724,6 +978,7 @@ impl Connection {
             tie: None,
             clause: Some(ClauseChange { from: done.before.clone(), to: done.after.clone() }),
             recall: None,
+            stadium: None,
             undo: Some(Undo::Clause(done)),
         };
         self.log.push(logged.clone());
@@ -783,6 +1038,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Staff(LoggedStaff { done, club, club_uid, job })),
         };
         self.log.push(logged.clone());
@@ -919,6 +1175,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Move(before)),
         };
         self.log.push(logged.clone());
@@ -960,6 +1217,7 @@ impl Connection {
             tie: None,
             clause: None,
             recall: None,
+            stadium: None,
             undo: Some(Undo::Move(LoggedMove { done, rows, paid: Vec::new() })),
         };
         self.log.push(logged.clone());
@@ -993,6 +1251,7 @@ impl Connection {
                 }
                 self.note_change(&entry.change, entry.change.old);
             }
+            Some(Undo::Stadium(renamed)) => self.undo_stadium(&renamed)?,
             Some(Undo::Move(moved)) => {
                 // The fee goes back first, by what it changed; if the player cannot go back, it is paid again.
                 self.session.refund_fee(&moved.paid)?;
@@ -1048,6 +1307,7 @@ impl Connection {
     /// gave raises what they are held at. These writes are not logged; unfreezing ends them.
     fn hold_frozen(&mut self) {
         self.hold_money();
+        self.hold_stadiums();
         if !self.frozen.attributes.is_empty() {
             let fields = self.attribute_fields(Entity::Player);
             let target_of = |uid| self.players.get(uid).map(|player| player.target());
@@ -1183,6 +1443,10 @@ struct LoggedChange {
     /// For a recall from loan that took the loan's option to buy away too: what the option was.
     #[serde(skip_serializing_if = "Option::is_none")]
     recall: Option<RecallNote>,
+    /// For a stadium renamed, logged as a change of the club's field `stadium.name` from one length in bytes to the
+    /// other: the names.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stadium: Option<StadiumNames>,
     /// For a move, healing, lifting bans, a captaincy, a tie or a clause: what undoing it takes. Other changes write
     /// back `old`.
     #[serde(skip)]
@@ -1198,12 +1462,22 @@ struct RecallNote {
     option_fee: i64,
 }
 
+/// A stadium's name before and after a rename.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StadiumNames {
+    from: String,
+    to: String,
+}
+
 /// What undoing a change takes when writing back its old value is not enough.
 #[derive(Clone)]
 enum Undo {
     /// A recall from loan that took the loan's option to buy away too: the change of the option, written back with the
     /// loan's end.
     Recall(Change),
+    /// A stadium renamed: the bytes it wrote, which the undo writes back.
+    Stadium(StadiumRename),
     Move(LoggedMove),
     Heal(Healed),
     Lift(Lifted),
@@ -1800,6 +2074,8 @@ async fn reload(state: State<'_, AppState>, file: State<'_, FrozenFile>) -> Resu
         let mut connection = Connection::load(old.session, old.log)?;
         if connection.save == save {
             connection.frozen = frozen;
+            // A save loaded again has its stadiums' own names back: the ones the editor gave are given again now.
+            connection.give_stadium_names();
             return Ok((connection, None));
         }
         let refrozen = connection.restore_frozen(path.as_deref());
@@ -2341,12 +2617,17 @@ fn change_log(state: State<'_, AppState>) -> Result<Vec<LoggedChange>, Failure> 
 }
 
 /// Writes back the old value of the logged change `id`, provided the game still holds the
-/// value that change wrote.
+/// value that change wrote. A stadium's name is held from then on as the undo left it: back to
+/// the game's own, it is let go of.
 #[tauri::command]
-fn undo_change(state: State<'_, AppState>, id: usize) -> Result<LoggedChange, Failure> {
+fn undo_change(state: State<'_, AppState>, file: State<'_, FrozenFile>, id: usize) -> Result<LoggedChange, Failure> {
     let mut guard = state.0.lock()?;
     let connection = guard.as_mut().ok_or_else(not_connected)?;
-    connection.undo(id)
+    let logged = connection.undo(id)?;
+    if let Some(names) = &logged.stadium {
+        connection.hold_stadium_name(file.0.as_deref(), logged.change.uid, &names.from, &names.to);
+    }
+    Ok(logged)
 }
 
 /// Checks that the player `uid` can move to the club `club` on the contract `terms`, and
@@ -2693,6 +2974,37 @@ fn remove_clause(state: State<'_, AppState>, uid: u32, index: usize) -> Result<L
     let plan = connection.session.plan_clause_removal(player, index)?;
     let done = connection.session.apply_clause(&plan)?;
     Ok(connection.log_clause(done))
+}
+
+/// The name of the stadium the club `club` plays at, with the names it can take in place. Only reads memory.
+#[tauri::command]
+fn stadium_name(state: State<'_, AppState>, club: u32) -> Result<StadiumName, Failure> {
+    let guard = state.0.lock()?;
+    let connection = guard.as_ref().ok_or_else(not_connected)?;
+    let found = connection.clubs.get(club).ok_or_else(|| not_found(Entity::Club, club))?;
+    Ok(connection.session.stadium_name(found)?)
+}
+
+/// Renames the stadium the club `club` plays at to `name`: over the old name where it fits its block, in a string of the
+/// editor's own otherwise (see `stadium_name.rs`). Logged and undone like any change. The game keeps no stadium names in
+/// its saves, so the app remembers the name for this save and gives it again whenever the game gives the stadium its
+/// own back, for as long as it is open (see `Connection::hold_stadiums`).
+#[tauri::command]
+fn rename_stadium(
+    state: State<'_, AppState>,
+    file: State<'_, FrozenFile>,
+    club: u32,
+    name: String,
+) -> Result<LoggedChange, Failure> {
+    let mut guard = state.0.lock()?;
+    let connection = guard.as_mut().ok_or_else(not_connected)?;
+    let found = connection.clubs.get(club).ok_or_else(|| not_found(Entity::Club, club))?;
+    let plan = connection.session.plan_stadium_rename(found, &name)?;
+    let done = connection.session.apply_stadium_rename(&plan)?;
+    let (from, to) = (done.from.clone(), done.to.clone());
+    let logged = connection.log_stadium(done);
+    connection.hold_stadium_name(file.0.as_deref(), club, &to, &from);
+    Ok(logged)
 }
 
 /// Gives the contract of the player `uid`, which has none, a release clause of `amount` pounds, where its list has
@@ -3174,6 +3486,8 @@ pub fn run() {
             change_clause,
             remove_clause,
             add_release_clause,
+            stadium_name,
+            rename_stadium,
             homegrown_rules,
             club_squads,
             scouting_overview,
@@ -3203,6 +3517,39 @@ mod tests {
         let remembered: Remembered = serde_json::from_str(file).expect("an earlier file");
         let save = &remembered.saves["Steam:1000"];
         assert!(save.players.contains(&28122642) && save.clubs.contains(&602) && save.fitness.is_empty());
+    }
+
+    #[test]
+    fn a_stadium_keeps_the_name_the_editor_gave_it_until_it_has_its_own_back() {
+        let held = |name: &str, original: &str| HeldName { name: name.to_owned(), original: original.to_owned() };
+        // Renamed, renamed again, then two undos.
+        let first = HeldName::after(None, "North Bank", "Emirates Stadium");
+        assert_eq!(first, Some(held("North Bank", "Emirates Stadium")));
+        let second = HeldName::after(first.as_ref(), "Highbury", "North Bank");
+        assert_eq!(second, Some(held("Highbury", "Emirates Stadium")));
+        let undone = HeldName::after(second.as_ref(), "North Bank", "Highbury");
+        assert_eq!(undone, Some(held("North Bank", "Emirates Stadium")));
+        assert_eq!(HeldName::after(undone.as_ref(), "Emirates Stadium", "North Bank"), None);
+        // Renamed back by hand, and that undone: the editor's name is held again.
+        assert_eq!(HeldName::after(first.as_ref(), "Emirates Stadium", "North Bank"), None);
+        assert_eq!(HeldName::after(None, "North Bank", "Emirates Stadium"), first);
+    }
+
+    #[test]
+    fn stadium_names_are_remembered_beside_what_is_frozen() {
+        // As 0.4.4 wrote it, before stadium names were remembered.
+        let file = r#"{ "saves": { "Steam:1000": { "players": [], "staff": [], "clubs": [602], "fitness": [] } } }"#;
+        let mut remembered: Remembered = serde_json::from_str(file).expect("an earlier file");
+        let save = remembered.saves.get_mut("Steam:1000").expect("the save");
+        assert!(save.stadiums.is_empty());
+        save.clubs.clear();
+        assert!(save.is_empty());
+        let name = HeldName { name: "North Bank".to_owned(), original: "Emirates Stadium".to_owned() };
+        save.stadiums.insert(602, name.clone());
+        assert!(!save.is_empty());
+        let written = serde_json::to_string(&remembered).expect("written");
+        let read: Remembered = serde_json::from_str(&written).expect("read back");
+        assert_eq!(read.saves["Steam:1000"].stadiums.get(&602), Some(&name));
     }
 
     #[test]

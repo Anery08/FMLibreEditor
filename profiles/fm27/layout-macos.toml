@@ -299,8 +299,15 @@ reputation = 0xA8         # Tottenham: 7650
 # hands out). Measured natively with probe `squads`: 837 of the 853 team lists of 145 to
 # 512 bytes had their class's slack zeroed after their capacity. The other 16 had grown
 # past their length and held old data there, at their class's spacing.
+#
+# Strings (a stadium's name) come from another of the game's allocators, game_plugin+0x56C18D8
+# on arm64, which writes the size it was asked for into a header of 8 bytes before each block
+# and sizes its blocks in steps of 8 bytes up to 136, not 16 as on Windows: Leicester City
+# Stadium (22 bytes, asked for 31), The Odsal Stadium (17), the Emirates Stadium (16) and
+# The Archibalds' Stadium (23) sit 40 bytes apart, all in one chunk of 1,638 blocks of 40.
 [heap]
 block_sizes = [144, 160, 192, 224, 256, 288, 320, 384, 448, 512]
+string_step = 8
 
 # Tottenham Hotspur (UID 728): 50,000 season tickets, founded 1882, supporter traits
 # 18/14/7/14/7/14, £65 tickets, corporate facilities 20.

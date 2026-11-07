@@ -21,9 +21,13 @@ FM27's interface is Unity (IL2CPP), but the game itself, its database and
 simulation, lives in a native, anti-tamper protected module: `game_plugin.dll`.
 FMLibreEditor runs as a separate process and reads that module's heap data with
 `ReadProcessMemory`. To edit, it writes values back with `WriteProcessMemory`, and
-only into the game's heap. It never patches the game's code and never allocates
-memory in the game. On Windows it puts no code of its own in the game either; on macOS
-the game loads one small library of ours, the bridge (see [On macOS](#on-macos)).
+only into the game's heap. It never patches the game's code. It takes memory in the
+game for one thing only: a stadium's name that does not fit the block of the old one
+(`VirtualAllocEx` on Windows, `mach_vm_allocate` on the game's task port on macOS), a
+string laid out as the game's with a count of holders the game never brings down to
+nothing, so the game never hands it to its allocator (see `stadium_name.rs`). On
+Windows it puts no code of its own in the game; on macOS the game loads one small
+library of ours, the bridge (see [On macOS](#on-macos)).
 
 Before every write it checks four things:
 - the object still belongs to the same person;
@@ -187,6 +191,12 @@ The app remembers what was frozen in each save in `frozen.json` in its data fold
 `~/Library/Application Support/io.github.tozmoz.fmlibreeditor` on macOS). A save is told
 apart by the storefront and the UIDs of its human managers. To test without touching that
 file, set `FMLIBRE_DATA` to another folder before starting the app.
+
+The same file keeps the names the editor gave stadiums. The game keeps no stadium names in
+its saves and gives each stadium the name in its database whenever it loads one, so the app
+gives the new names again: on connecting, on a reload, and from its hold, which every 2 s
+notices when the game has loaded a save (the clubs' array has moved), checks it is the same
+save before writing, and reads the clubs again (see `Connection::hold_stadiums`).
 
 Exports go to `Documents\FMLibreEditor\Exports` (`~/Documents/FMLibreEditor/Exports` on
 macOS); `FMLIBRE_EXPORTS` names another folder. The columns and the JSON keys are in

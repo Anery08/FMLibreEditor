@@ -266,11 +266,14 @@ export class App {
     await sleep(400);
   }
 
-  /** Opens a club's profile from the Clubs tab, by its exact name. */
-  async openClub(name) {
+  /**
+   * Opens a club's profile from the Clubs tab, by its exact name; with its `uid`, the search is for that club alone,
+   * since a women's club can have the same name, and come first.
+   */
+  async openClub(name, uid) {
     await this.openTab("Clubs");
     await this.waitFor(`${VIS}(".search input")`, "the clubs' search");
-    await this.setInput(`${VIS}(".search input")`, name);
+    await this.setInput(`${VIS}(".search input")`, uid == null ? name : String(uid));
     const rows = `[...document.querySelectorAll("table.grid tbody tr")].filter(${SHOWN})`;
     const row = `${rows}.find((tr) => [...tr.querySelectorAll("td, td *")].some((c) => c.textContent.trim() === ${JSON.stringify(name)}))`;
     await this.waitFor(row, `the row of ${name}`);

@@ -42,7 +42,7 @@ export async function run({ app, report, connection: c }) {
   await app.waitFor(`${rows}.length > 0`, "the staff's rows");
   report.check("the staff list fills", true, `${await app.js(`${rows}.length`)} rows shown`);
   const [club] = await topClubs(app, 1);
-  await app.openClub(club.name);
+  await app.openClub(club.name, club.uid);
   const opened = await app.js(`${VIS}(".profile:not(.popup) h2")?.textContent ?? ""`);
   report.check("a club's profile opens", opened.includes(club.name), opened);
   await app.click(`[...document.querySelectorAll(".profile-tabs [role=tab]")].filter(${SHOWN})[1]`, "the Squad tab");

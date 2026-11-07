@@ -10,7 +10,7 @@ const POPUP = `document.querySelector(".modal-backdrop .profile.popup")`;
 
 export async function run({ app, report }) {
   const [club] = await topClubs(app, 1);
-  await app.openClub(club.name);
+  await app.openClub(club.name, club.uid);
   await app.click(`[...document.querySelectorAll(".profile-tabs [role=tab]")].filter(${SHOWN})[1]`, "the Squad tab");
   const names = `[...document.querySelectorAll(".squad-tab tbody .squad-name button.name-link")]`;
   await app.waitFor(`${names}.length > 0`, "the squad's names", 30000);

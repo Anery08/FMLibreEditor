@@ -503,6 +503,7 @@ export const en = {
     "finance.wage_budget": "Wage budget",
     "finance.total_wage_budget": "Total wage budget",
     "stadium.capacity": "Stadium capacity",
+    "stadium.name": "Stadium name",
     "stadium.seating": "Seated capacity",
     "stadium.used": "Capacity in use",
     "stadium.expansion": "Expansion capacity",
@@ -956,7 +957,7 @@ export const en = {
     // The tabs under the header: what the club has, and its squad (see `squad`).
     /** The name of the tabs for assistive technology. */
     tabsLabel: "Club sections",
-    tabs: { overview: "Overview", squad: "Squad" },
+    tabs: { overview: "Overview", squad: "Squad", stadium: "Stadium" },
     /** Hover text of the Squad tab while the club is edited: its values are on the Overview. */
     squadLocked: "Finish editing to open the squad",
 
@@ -998,6 +999,29 @@ export const en = {
     expansion: "Can grow to",
     /** When the layout of this build does not know where the stadium is, or the club's stadium did not check out. */
     noStadium: "The stadium could not be read for this club.",
+    /** Its name, which can be changed in place: in the block the game gave the old one. */
+    stadiumName: "Name",
+    rename: "Rename",
+    renameTitle: "Give the stadium another name; it is written at once, and Changes can undo it",
+    /** The (i) beside the name: how a new name lasts, and that the app has to stay open for it. */
+    renameInfoLabel: "How does renaming work?",
+    renameInfo:
+      "The game keeps no stadium names in its saves: it takes them from its database each time it loads a save. So " +
+      "FMLibreEditor remembers the new name for this save, and gives it back within seconds each time the game loads " +
+      "it, as long as the app is open and connected. If the game loads the save while the app is closed, it shows its " +
+      "own name until the app connects again. To go back to the old name, undo the rename in Changes, or rename the " +
+      "stadium back.",
+    saveName: "Save",
+    renaming: "Saving…",
+    cancelRename: "Cancel",
+    /** How long the name being typed is, in bytes of UTF-8, and how long it may be. */
+    nameLength: (bytes: number, min: number, max: number) =>
+      min <= 1
+        ? `${bytes} of at most ${max} characters (an accented letter counts as two)`
+        : `${bytes} characters: from ${min} to ${max}, to fit where the game keeps the name (an accented letter counts as two)`,
+    /** Instead of Rename, when other things in the game hold the same name. */
+    nameShared: (holders: number) =>
+      `${holders} things in the game share this name, so it cannot be changed for the stadium alone`,
 
     // Club info
     info: "Club info",
@@ -1085,6 +1109,8 @@ export const en = {
       staff: (names: string) => `Staff attributes: ${names}`,
       clubs: (names: string) => `Money: ${names}`,
       fitness: (names: string) => `Energy and sharpness: ${names}`,
+      /** `names` are the stadiums' new names, given again. */
+      stadiums: (names: string) => `Stadium names: ${names}`,
       /** After the first few names. */
       more: (count: number) => `and ${format(count)} more`,
       /** What was left for later: an update of the game, say. */
@@ -1092,6 +1118,15 @@ export const en = {
         `${count === 1 ? "1 is" : `${format(count)} are`} remembered but not frozen now: FMLibreEditor cannot write ` +
         "to this version of the game yet.",
       dismiss: "Dismiss",
+    },
+
+    /** The (i) beside every box that freezes something: how freezing works, and that the app has to stay open. */
+    freezeInfo: {
+      label: "How does freezing work?",
+      note:
+        "Freezing does not change the game for good: every 2 seconds, FMLibreEditor puts back what the game took. So it " +
+        "works only while the app is open and connected; close it, and the game changes them again. The app remembers " +
+        "what is frozen in this save, and freezes it again the next time it connects to it.",
     },
 
     /** The panel shown while not connected. */
