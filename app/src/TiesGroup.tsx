@@ -128,7 +128,7 @@ type Picking = { kind: "change"; tie: Tie } | { kind: "add" } | null;
 
 /**
  * The player's ties with the controls that change them: a nation's select and a training's rule, Remove, and rows
- * that add a nationality, a nation or a club, where his list has room or the app grows it (Windows). A club he was
+ * that add a nationality, a nation or a club, where his list has room or the app grows it. A club he was
  * trained at is changed, and one added, with a search for the club. A write keeps every control busy until the profile
  * has read the game again; then the dialog shows the ties the game holds.
  */

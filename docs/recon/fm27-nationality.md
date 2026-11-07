@@ -83,11 +83,20 @@ to 160 bytes sit side by side, their own size apart, in blocks the game's alloca
 large regions; above that, in the size classes `layout.toml` names (`relation-blocks`). So no
 other list has a bigger block to lend.
 
-The editor grows a full list on Windows (`plan_relation_add`): it writes the entries and the new
+The editor grows a full list (`plan_relation_add`): it writes the entries and the new
 one into memory of its own (`own_memory.rs`), with room for three more, and points the list's
 begin, end and capacity at it. The old buffer stays as it was; the undo points the list back at
 it. The game reads the list where it points, and keeps it in the save, which it writes from the
 entries; on loading, it makes the list again in its own memory.
+
+On the Mac (Steam build 26340721, arm64, the Arsenal save of 5 July 2027) the lists are as full:
+2,832 of the 30,797 players trained at a club had room for another tie. Their buffers come from
+the game's allocator without a header there too (`relation-blocks`: 16 bytes apart for 16, 192
+for 176, 640 for 544), which takes a block it lets go of into its class's list of free blocks
+wherever it is (see the [Mac notes](fm27-steam-macos.md#its-classes-and-how-it-takes-a-block-back)).
+So a full list grows the same way, into memory the editor takes there with `mach_vm_allocate`, in
+a block of its capacity's class and no larger than 4,096 bytes: Rodri's list of 12 entries, given
+a training at Manchester City, read 13 with room for 3 more (a block of 256), and was put back.
 
 Relations to people are kept on both sides: Bukayo Saka's list holds Ezri Konsa (relation 1,
 count 5, value 60), and Konsa's holds Saka with the same values. Such an entry points into the

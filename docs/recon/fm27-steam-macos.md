@@ -243,6 +243,53 @@ right away:
 
 These sizes were measured on the arm64 half only. The Intel half, which Intel Macs and Rosetta run, was not measured.
 
+### Its classes, and how it takes a block back
+
+Read on 7 November 2026 (Arsenal save, 5 July 2027, arm64) with the probe's `allocators`, which finds the game's
+allocators in the plugin's writable data by their shape: a list of their size classes, a list of one entry per size
+asked for (each pointing at the class that serves it), the size of the header they write before a block, and a byte
+that is 1 while they are in use. Four were found:
+
+| Where | Header | Classes | Sizes it serves | Used for |
+| --- | --- | --- | --- | --- |
+| `game_plugin+0x56C1630` | none | 34 | up to 4,096 bytes | the lists of the game's objects |
+| `game_plugin+0x56C1670` | none | 29 | up to 1,536 | |
+| `game_plugin+0x56C16B0` | 8 bytes | 14 | up to 512 | |
+| `game_plugin+0x56C18D8` | 8 bytes | 43 | up to 3,088 | strings, such as stadium names |
+
+The first one's classes are 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 96, 112, 128, 144, 160, 192, 224, 256, 288, 320,
+384, 448, 512, 640, 768, 896, 1,024, 1,280, 1,536, 2,048, 2,560, 3,072, 3,584 and 4,096 bytes: the layout's
+`block_sizes` were the part of them the team lists had shown.
+
+How it hands out and takes back a block (`game_plugin+0x4355A04` and `+0x4355ED4` on arm64):
+
+- **Handing out.** A size it serves takes the first block on its class's list of free blocks, under the class's
+  mutex, or carves a new one from a chunk. With a header, the size asked for goes into the header's first `u32` and the
+  caller gets the bytes after it. A larger size comes from `malloc`.
+- **Taking back.** The caller gives the size, or the allocator reads it from the header. A size it serves puts the
+  block first on its class's list of free blocks: the next block's address in its first 8 bytes. It does not look at
+  where the block is, and no class counts its blocks or gives chunks back (the counts' flags are clear in every
+  class). A larger size goes to `free()`.
+- **The lists' buffers.** A list's destructor gives its capacity in bytes: `free(allocator, begin, capacity - begin)`.
+  The lists of players' relations, of clubs' departments of staff and of teams' players all come from the first
+  allocator: none has a header (no department list of 91 read had its size before it), and buffers of one capacity sit
+  their class apart (relations: 16 bytes apart for 16, 192 for 176, 640 for 544).
+
+So a block of memory the editor takes in the game can stand in for one of a list's: the game takes it into its class's
+list of free blocks when it lets the list go, and hands it out again later, as on Windows. The block has to be as large
+as the class of the list's capacity, and the capacity at most 4,096 bytes: a larger one would go to `free()`, which
+stops the game (`pointer being freed was not allocated`) for a block `malloc` never gave out.
+
+**Strings** come from the fourth allocator, with a header of 8 bytes: the size asked for (the text and 9: the count of
+holders, the length and the NUL), then 4 bytes left from the address of the next free block when it was free. Its
+blocks come in steps of 8 bytes up to 136 (16 up to 288, then wider), not 16 as on Windows. On the save, Leicester City
+Stadium (22 bytes, asked for 31), The Odsal Stadium (17), the Emirates Stadium (16) and The Archibalds' Stadium (23)
+sit 40 bytes apart, in a chunk of 1,638 blocks of 40: walked block by block from Leicester City Stadium's, the next 644
+held strings, up to the chunk's end. The Tottenham Hotspur Stadium (25 bytes, asked for 34) sits in a run of 1,365
+blocks of 48, a name asked for 42 in a run of 1,170 of 56. So a new name written over an old one on the Mac must keep a block of steps of 8 (the
+layout's `string_step`): the Emirates Stadium takes 16 to 23 bytes there, where the steps of 16 would let a name of up
+to 31 run 8 bytes into the next string's header.
+
 ## The features first mapped on Windows
 
 Jadedness, traits, the contract's extras, the reasons to be unhappy, stadiums and planned retirements were first

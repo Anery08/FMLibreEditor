@@ -330,7 +330,7 @@ impl Session {
             return Err(MoveError::Locked(lock));
         }
         let bytes = grow.capacity * self.layout.relation.size;
-        let block = self.own_block(self.layout.heap.block_size(bytes).unwrap_or(bytes))?;
+        let block = self.own_block(self.grown_block_size(bytes).ok_or(MoveError::RelationsFull)?)?;
         self.process.write_bytes(block, &grow.entries)?;
         let words = |words: [u64; 3]| words.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<u8>>();
         let now = [block, block + grow.entries.len() as u64, block + bytes];
