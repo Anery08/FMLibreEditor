@@ -774,9 +774,11 @@ export const tr: Strings = {
     freezeFitnessNote:
       "Uygulama açık ve oyuna bağlıyken enerjisi ve maç kondisyonu düşmez: oyunun düşürdüğü geri konur, artışlar " +
       "yine sayılır; %100'deyse orada kalır. Uygulama bunu bu kayıt için hatırlar.",
-    freezePositions: "Pozisyonları dondur",
+    freezePositions: "Dondur",
+    freezePositionsInfo: "Pozisyonları dondurmak ne yapar?",
     freezePositionsNote:
-      "Uygulama açık ve oyuna bağlıyken pozisyon dereceleri aynen kalır: oyunun yeniden hesapladığı veya yeniden eğittiği her şey geri yüklenir. Uygulama bunu bu kayıt için hatırlar.",
+      "Uygulama açık ve oyuna bağlıyken pozisyon puanları olduğu gibi kalır: oyuncu başka bir pozisyona yakınlık " +
+      "geliştirmez, puanları ne yükselir ne düşer. Uygulama bunu bu kayıt için hatırlar.",
 
     // Staff
     you: "Siz",
@@ -1070,7 +1072,7 @@ export const tr: Strings = {
       staff: (names) => `Personel özellikleri: ${names}`,
       clubs: (names) => `Para: ${names}`,
       fitness: (names) => `Enerji ve maç kondisyonu: ${names}`,
-      positions: (names) => `Mevkiler: ${names}`,
+      positions: (names) => `Pozisyonlar: ${names}`,
       stadiums: (names) => `Stadyum adları: ${names}`,
       more: (count) => `ve ${format(count)} tane daha`,
       waiting: (count) =>
@@ -1786,10 +1788,10 @@ export const tr: Strings = {
     freezeFitnessTitle:
       "Uygulama açık ve oyuna bağlıyken bu takımdaki her oyuncunun enerjisi ve maç kondisyonu düşmez: oyunun " +
       "düşürdüğü geri konur. Hepsini %100'de tutmak için önce Hepsini dinlendir'e basın",
-    freezePositions: "Mevkileri dondur",
+    freezePositions: "Pozisyonları dondur",
     freezePositionsTitle:
-      "Uygulama açık ve oyuna bağlıyken bu takımdaki her oyuncunun mevkileri olduğu gibi korunur: oyunun " +
-      "değiştirdiği geri konur",
+      "Uygulama açık ve oyuna bağlıyken bu takımdaki her oyuncunun pozisyon puanları olduğu gibi kalır: oyunun " +
+      "yükselttiği ya da düşürdüğü puan geri konur",
     // "5 / 26": no ending to put on a figure.
     frozenCount: (frozen, total) => `${format(frozen)} / ${format(total)}`,
     freezeHint:
@@ -1804,8 +1806,8 @@ export const tr: Strings = {
         : `${format(count)} oyuncunun enerjisi ve maç kondisyonu donduruldu`,
     unfrozeFitness: (count) => `${format(count)} oyuncunun enerjisindeki ve maç kondisyonundaki dondurma kaldırıldı`,
     frozePositions: (count) =>
-      count === 0 ? "Mevkileri zaten donduruluydu" : `${format(count)} oyuncunun mevkileri donduruldu`,
-    unfrozePositions: (count) => `${format(count)} oyuncunun mevkilerindeki dondurma kaldırıldı`,
+      count === 0 ? "Pozisyonları zaten donduruluydu" : `${format(count)} oyuncunun pozisyonları donduruldu`,
+    unfrozePositions: (count) => `${format(count)} oyuncunun pozisyonlarındaki dondurma kaldırıldı`,
 
     // What an action did, under the buttons
     written: (count) => (count === 0 ? "Hiçbir değişiklik yazılmadı" : `${changes(count)} yazıldı`),
@@ -1867,14 +1869,14 @@ export const tr: Strings = {
     elsewhereTitle: "Kulübün başka bir takımında oynuyor",
     frozen: "Donduruldu",
     frozenTitle: (attributes, fitness, positions) => {
-      const parts: string[] = [];
-      if (attributes) parts.push("özellikleri");
-      if (fitness) parts.push("enerjisi ve maç kondisyonu");
-      if (positions) parts.push("mevkileri");
-      if (parts.length === 3) return "Özellikleri, enerjisi, maç kondisyonu ve mevkileri donduruldu";
-      if (parts.length === 2) return `${parts[0]} ve ${parts[1]} donduruldu`;
-      if (parts.length === 1) return `${parts[0]} donduruldu`;
-      return "Donduruldu";
+      const frozen = [
+        ...(attributes ? ["özellikleri"] : []),
+        ...(fitness ? ["enerjisi", "maç kondisyonu"] : []),
+        ...(positions ? ["pozisyonları"] : []),
+      ];
+      const last = frozen.pop() ?? "";
+      const listed = frozen.length > 0 ? `${frozen.join(", ")} ve ${last}` : last;
+      return `${listed.charAt(0).toLocaleUpperCase("tr")}${listed.slice(1)} donduruldu`;
     },
   },
 

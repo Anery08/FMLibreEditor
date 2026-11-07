@@ -806,9 +806,12 @@ export const es: Strings = {
       "Mientras la aplicación esté abierta y conectada, su energía y su ritmo de competición no bajan: lo que el " +
       "juego quita se devuelve, y lo que gana sigue contando, así que al 100 % se queda ahí. La aplicación lo " +
       "recuerda para esta partida.",
-    freezePositions: "Congelar posiciones",
+    freezePositions: "Congelar",
+    freezePositionsInfo: "¿Qué hace congelar las posiciones?",
     freezePositionsNote:
-      "Mientras la aplicación esté abierta y conectada, sus valoraciones de posición se mantienen exactamente como están: lo que el juego recalcule o reentrene se devuelve. La aplicación lo recuerda para esta partida.",
+      "Mientras la aplicación esté abierta y conectada, sus valoraciones por posición se quedan como están: no " +
+      "aprende ninguna posición nueva y sus valoraciones ni suben ni bajan. La aplicación lo recuerda para esta " +
+      "partida.",
 
     // Personal
     you: "Tú",
@@ -1858,8 +1861,8 @@ export const es: Strings = {
       "100 %",
     freezePositions: "Congelar posiciones",
     freezePositionsTitle:
-      "Mientras la aplicación esté abierta y conectada, las valoraciones de posición de todos los jugadores de este " +
-      "equipo se mantienen: lo que el juego recalcule o reentrene se devuelve",
+      "Mientras la aplicación esté abierta y conectada, las valoraciones por posición de todos los jugadores " +
+      "de este equipo se quedan como están: lo que el juego sube o baja se devuelve",
     frozenCount: (frozen, total) => `${format(frozen)} de ${format(total)}`,
     freezeHint:
       "Congelar abarca a todos los jugadores de la lista y acompaña a cada uno vaya donde vaya. La aplicación lo " +
@@ -1944,14 +1947,16 @@ export const es: Strings = {
     elsewhereTitle: "Juega en otro equipo del club",
     frozen: "Congelado",
     frozenTitle: (attributes, fitness, positions) => {
-      const parts: string[] = [];
-      if (attributes) parts.push("atributos");
-      if (fitness) parts.push("energía y ritmo");
-      if (positions) parts.push("posiciones");
-      if (parts.length === 3) return "Sus atributos, energía, ritmo y posiciones están congelados";
-      if (parts.length === 2) return `Sus ${parts[0]} y su ${parts[1]} están congelados`;
-      if (parts.length === 1) return `Sus ${parts[0]} están congelados`;
-      return "Congelado";
+      const frozen = [
+        ...(attributes ? ["sus atributos"] : []),
+        ...(fitness ? ["su energía", "su ritmo"] : []),
+        ...(positions ? ["sus posiciones"] : []),
+      ];
+      const last = frozen.pop() ?? "";
+      const listed = frozen.length > 0 ? `${frozen.join(", ")} y ${last}` : last;
+      // Feminine only when his positions alone are frozen.
+      const ending = attributes || fitness ? "congelados" : "congeladas";
+      return `${listed.charAt(0).toUpperCase()}${listed.slice(1)} están ${ending}`;
     },
   },
 

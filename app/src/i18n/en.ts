@@ -745,10 +745,12 @@ export const en = {
     freezeFitnessNote:
       "While the app is open and connected, his energy and match sharpness do not go down: what the game takes is put " +
       "back, and gains still count, so at 100% he stays there. The app remembers this for this save.",
-    /** Freezing his position ratings, under them in the Positions section. */
-    freezePositions: "Freeze positions",
+    /** Freezing his position ratings: the box under the pitch, and the (i) after it, which says what that does. */
+    freezePositions: "Freeze",
+    freezePositionsInfo: "What does freezing positions do?",
     freezePositionsNote:
-      "While the app is open and connected, his position ratings stay exactly as they are: what the game recalculates or retrains is put back. The app remembers this for this save.",
+      "While the app is open and connected, his position ratings stay as they are: he does not learn a new position, " +
+      "and his ratings neither rise nor drop. The app remembers this for this save.",
 
     // Staff
     /** Badge on the manager the user controls. */
@@ -2042,7 +2044,7 @@ export const en = {
     freezePositions: "Freeze positions",
     freezePositionsTitle:
       "While the app is open and connected, the position ratings of every player in this team stay as they are: " +
-      "what the game recalculates or retrains is put back",
+      "a rating the game raises or lowers is put back",
     /** After a box: how many of the team's `total` players are frozen that way, while some are and some are not. */
     frozenCount: (frozen: number, total: number) => `${format(frozen)} of ${format(total)}`,
     /** Beside the boxes: whom freezing covers, and for how long. */
@@ -2133,16 +2135,16 @@ export const en = {
     elsewhere: "Elsewhere",
     elsewhereTitle: "Plays for another team of the club",
     frozen: "Frozen",
-    /** Hover text of Frozen: what is frozen. */
-    frozenTitle: (attributes: boolean, fitness: boolean, positions?: boolean): string => {
-      const parts: string[] = [];
-      if (attributes) parts.push("attributes");
-      if (fitness) parts.push("energy and match sharpness");
-      if (positions) parts.push("positions");
-      if (parts.length === 3) return "His attributes, energy, match sharpness and positions are frozen";
-      if (parts.length === 2) return `His ${parts[0]} and ${parts[1]} are frozen`;
-      if (parts.length === 1) return `His ${parts[0]} are frozen`;
-      return "Frozen";
+    /** Hover text of Frozen: what is frozen, one of them at least. */
+    frozenTitle: (attributes: boolean, fitness: boolean, positions: boolean): string => {
+      const frozen = [
+        ...(attributes ? ["attributes"] : []),
+        ...(fitness ? ["energy", "match sharpness"] : []),
+        ...(positions ? ["positions"] : []),
+      ];
+      const last = frozen.pop() ?? "";
+      const listed = frozen.length > 0 ? `${frozen.join(", ")} and ${last}` : last;
+      return `His ${listed} are frozen`;
     },
   },
 

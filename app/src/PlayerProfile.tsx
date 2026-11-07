@@ -177,13 +177,14 @@ function ProfileBody({ details }: { details: PlayerDetails }) {
           <RatingGroup title={profileText.personality} rows={personalityRows(details.personality)} />
           <section className="profile-group">
             <h3>{profileText.positions}</h3>
-            <PositionPitch ratings={details.positionRatings} />
+            <PositionPitch ratings={details.positionRatings}>
+              <PositionFreeze details={details} />
+            </PositionPitch>
           </section>
         </div>
       </div>
 
       <PositionRatings ratings={details.positionRatings} />
-      <PositionFreeze uid={details.uid} />
 
       <MedicalGroup details={details} />
 

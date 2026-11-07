@@ -2233,6 +2233,25 @@ input::placeholder {
   font-variant-numeric: tabular-nums;
 }
 
+/* The box under the pitch that freezes the position ratings. Its (i) says what that does; the note opens leftwards from
+   the end of the line, as the pitch stands in the last column of the profile. */
+.position-freeze {
+  margin: 8px 0 0;
+  padding: 0 6px;
+}
+
+.position-freeze .freeze-toggle {
+  margin: 0;
+}
+
+.position-freeze .info-tip-note {
+  left: auto;
+}
+
+.position-freeze .note {
+  margin: 6px 0 0;
+}
+
 .swatch {
   flex: none;
   width: 14px;
