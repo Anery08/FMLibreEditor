@@ -17,7 +17,7 @@ use fmlibre_mem::is_user_pointer;
 
 use crate::clubs::ClubSummary;
 use crate::edit::Kind;
-use crate::own_memory::{CAN_ALLOCATE, Growth};
+use crate::own_memory::Growth;
 use crate::profile::Layout;
 use crate::session::Session;
 use crate::staff::StaffSummary;
@@ -289,12 +289,10 @@ impl Session {
         if list.len() < list.room(&self.process, &self.layout.heap)? {
             return self.append_patches(list, object, patches);
         }
-        if !CAN_ALLOCATE {
-            return Err(MoveError::DepartmentFull { department: department.name(), staff: list.len() });
-        }
         let mut bytes: Vec<u8> = elements.iter().flat_map(|element| element.to_le_bytes()).collect();
         bytes.extend(object.to_le_bytes());
-        grow.push(Growth::new(list.header(), list.words(), bytes, 8));
+        let full = MoveError::DepartmentFull { department: department.name(), staff: list.len() };
+        grow.push(self.growth(list.header(), list.words(), bytes, 8).ok_or(full)?);
         Ok(())
     }
 

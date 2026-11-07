@@ -286,7 +286,7 @@ changes many at once, and undo.
     page, and on both Windows builds: see the [nationality notes](recon/fm27-nationality.md).
   - [x] Trained at club: the dialog points a club he was trained at at another one, found by a search, and adds one.
     The game sizes each list to what it holds, so a full list (all of them after a load) is grown into memory the
-    editor takes in the game (Windows), and the undo points it back at its old buffer. The probe's `tie-add`,
+    editor takes in the game, and the undo points it back at its old buffer. The probe's `tie-add`,
     `relation-kinds` (room) and `relation-blocks` (how the allocator places the buffers).
   - [x] No work permit needed: England or Scotland as a nation a player needs no work permit in, the relation (109)
     the game gives players of the EU who were in the United Kingdom before Brexit, for as many days as theirs have
@@ -299,8 +299,9 @@ changes many at once, and undo.
     build (Old Trafford 74,879; the Emirates 60,704) and on the Mac Steam build, where stadiums are laid out alike.
   - [x] Stadium name, in the club's Stadium tab: any name of 1 to 80 bytes. One that keeps the size of the old name's
     block is written over it, for a name the stadium alone holds; any other goes into memory the editor takes in the
-    game (Windows), as a string the game never lets go, and the stadium is pointed at it (also for the 2,293 shared
-    names of the Game Pass save, such as the Maracanã's). On macOS only the first kind. See `stadium_name.rs`; the
+    game, as a string the game never lets go, and the stadium is pointed at it (also for the 2,293 shared names of the
+    Game Pass save, such as the Maracanã's). On the Mac the game's strings come in blocks of steps of 8 bytes, not 16
+    (`[heap] string_step`), so the Emirates Stadium takes 16 to 23 bytes in place there. See `stadium_name.rs`; the
     probe's `stadium-name`. The game keeps no stadium names in its saves: it gives every stadium the name in its
     database (`lang_db.dat`) whenever it loads one, and an `.lnc` in the editor data folder does not reach a save
     already started. So the app remembers each new name for the save, in `frozen.json` beside what is frozen, and
