@@ -1501,8 +1501,8 @@ export const tr: Strings = {
     noRoom: (club) => `${club} kadrosunda boş yer yok.`,
     noRoomInfoLabel: "Neden?",
     noRoomInfo:
-      "Windows'ta editör dolu kadro listesini büyütür. Burada oyunda bellek almadığı için büyütemez: yer açmak için " +
-      "bir oyuncunun ayrılması gerekir.",
+      "Editör dolu kadro listesini yapabildiği yerde büyütür, ama bu listeyi büyütemez: yer açmak için bir " +
+      "oyuncunun ayrılması gerekir.",
     noRoomNeed: (player) => `${player} transferi için kadrodan bir oyuncunun ayrılması gerekiyor.`,
     releaseChoice: "Serbest bırak:",
     releasePickLabel: "Serbest bırakılacak oyuncu",

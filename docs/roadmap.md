@@ -138,13 +138,13 @@ before trusting them.
 - [x] Move a player to another club's senior team, on his contract or new terms,
   with undo. At first nothing was allocated in the game, so the new club's squad list had
   to have room in its block; since free agents are signed (Phase 7, Wave 2), a full list is
-  grown on Windows. Loans are refused. A player at a human manager's
+  grown. Loans are refused. A player at a human manager's
   club also leaves its team selections (see Transfers in Phase 7).
 - [x] Make room in a full squad list: the dialog offers to release one of the club's
   players in the same transfer (the weakest who is neither injured nor a captain, by
   default), who leaves his place in the list to the player who joins; or to make it a
-  swap with him. One change, one undo. On Windows the list is grown instead; this stays
-  for macOS, where the editor takes no memory in the game.
+  swap with him. One change, one undo. The list is grown instead now; this stays for a
+  list the editor cannot grow.
 - [x] The rough edges of what shipped:
   - opening a mass edit asks about unapplied profile edits;
   - the Changes view pages and folds mass edits;
@@ -275,7 +275,7 @@ changes many at once, and undo.
   - [x] Release a player on a free: he leaves his club's lists, and his team and contract pointers are
     cleared, as the game's own free agents have them. A captaincy he held is left empty; so is one a player
     gives up by moving. Checked on the Mac Steam build and both Windows builds, restored.
-  - [x] Sign a free agent (Windows): the Transfer dialog, without fee or swap, signs him for a club's senior team
+  - [x] Sign a free agent: the Transfer dialog, without fee or swap, signs him for a club's senior team
     under a contract the editor makes. The game keeps its contracts in a pool of 200-byte slots, a static of the game
     plugin (one of 279 pools in its data, each chaining its free slots): the editor takes the first free slot as the
     game does, writing the pool's first free slot and counts (the only statics of the game it writes), and fills it

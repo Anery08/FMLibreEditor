@@ -151,6 +151,23 @@ unhappiness = 0x30
 # 8,110 youth (16 on average), 1,812 part-time (Lucas Beltrán), 1,176 amateur, 758 non-contract and one 11, Mark
 # McKenzie's MLS senior contract: the players the Windows readings name.
 contract_type = 0xC3
+# As on Windows: contracts (db::FULL_CONTRACT) take 200 bytes, in the slots of the game's pool of them (see [pool]).
+# Across the 48,949 of the Arsenal save (5 July 2027), +0x98 holds a pointer in 375 and +0xA0 in 336, +0x28 none
+# (zero in 42,116, other values in the rest); a contract the editor makes for a free agent has none there.
+size = 0xC8
+cleared = [0x28, 0x98, 0xA0]
+
+# The game's pools of objects are laid out as on Windows (see crates/fmlibre-core/src/object_pool.rs). On the Arsenal
+# save the probe's `pools --walk` found 279 in the plugin's data on arm64, each chain of free slots as counted; the
+# contracts' (game_plugin+0x56AFE10) had 48,700 + 1,024 slots, 48,949 used and 775 free.
+[pool]
+chunks = 0x00             # (begin, end, capacity) of pointers to the chunks
+first_free = 0x18         # pointer to the first free slot, null for none; a free slot's first 8 bytes point at the next
+free = 0x20               # u32 slots free
+used = 0x24               # u32 slots holding an object
+slot_size = 0x28          # u32 bytes per slot
+first_chunk = 0x2C        # u32 slots of the first chunk, as many as the save loaded needed
+later_chunks = 0x30       # u32 slots of each later chunk
 
 # Relative to the players (begin, end) pair, as on Windows; the static data between them is
 # laid out differently, so this sits 0xC0 further. It read the date in a new game, but an

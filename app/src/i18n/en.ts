@@ -1673,8 +1673,8 @@ export const en = {
     /** The name of the (i) button after the first line, for assistive technology, and the note it shows. */
     noRoomInfoLabel: "Why?",
     noRoomInfo:
-      "On Windows the editor makes a full squad list bigger. Here it takes no memory in the game, so it cannot: a " +
-      "player has to leave to make room.",
+      "The editor makes a full squad list bigger where it can, but it cannot make this one bigger: a player has to " +
+      "leave to make room.",
     /** The second line, which also names the choices under it; `player` is the player transferred. */
     noRoomNeed: (player: string, club: string) => `For ${player} to join, a player has to leave ${club}.`,
     /** The first choice: a player of the club picked from a list, who becomes a free agent. */

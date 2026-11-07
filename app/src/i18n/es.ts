@@ -1561,8 +1561,8 @@ export const es: Strings = {
     noRoom: (club) => `${club} no tiene sitio en su plantilla.`,
     noRoomInfoLabel: "¿Por qué?",
     noRoomInfo:
-      "En Windows el editor amplía una lista de plantilla llena. Aquí no toma memoria en el juego, así que no puede: " +
-      "tiene que salir un jugador para hacer sitio.",
+      "El editor amplía una lista de plantilla llena donde puede, pero esta no puede ampliarla: tiene que salir un " +
+      "jugador para hacer sitio.",
     noRoomNeed: (player) => `Para que llegue ${player}, tiene que salir un jugador de la plantilla.`,
     releaseChoice: "Rescindir:",
     releasePickLabel: "Jugador cuyo contrato se rescinde",

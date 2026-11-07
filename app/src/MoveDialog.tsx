@@ -6,7 +6,7 @@
 // A switch at the top of the dialog makes it a swap instead: after the club it picks one of the club's players, who
 // goes the other way, and each keeps his own contract.
 //
-// On Windows a full squad list is made bigger. Where the editor takes no memory in the game (macOS), a club whose squad
+// A full squad list is made bigger. Where the editor cannot make it bigger (see `Session::growth`), a club whose squad
 // list is full cannot take one more player: the dialog then offers to make room, in a box where the refusal would be:
 // one of the club's players is released in the same transfer, logged and undone with it, or the transfer becomes a
 // swap with him.

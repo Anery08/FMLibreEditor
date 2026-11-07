@@ -8,12 +8,11 @@
 //!
 //! The player goes into the senior team's list where its block has room: below its capacity,
 //! or up to the end of the allocator's block (see [`HeapLayout`]). After a load every list is
-//! full; on Windows a full list is then grown into memory of the editor's own, as the lists of
-//! ties are (see `own_memory.rs`). Where the editor takes no memory (macOS), a full list is no
-//! obstacle only when one of the team's players is released in the same move: the player who
-//! joins takes his slot, as in a swap (see [`Session::plan_club_move_releasing`]). Only players
-//! with simple ties move: under contract with the club they play for (no loans), and not
-//! player-coaches.
+//! full; a full list is then grown into memory of the editor's own, as the lists of ties are
+//! (see `own_memory.rs`). Where the editor cannot grow it, a full list is no obstacle only when
+//! one of the team's players is released in the same move: the player who joins takes his
+//! slot, as in a swap (see [`Session::plan_club_move_releasing`]). Only players with simple
+//! ties move: under contract with the club they play for (no loans), and not player-coaches.
 //!
 //! A free agent, who has no club and no contract, joins a club under a contract the editor makes
 //! for him (see `signing.rs`).

@@ -85,8 +85,25 @@ contract the game made at the same moment would take the same slot.
 With no slot free, which is the case from a load until the game makes its first contract, the signing is refused; the
 game takes a new chunk only when it makes a contract itself.
 
-A full squad list is grown the same way for a transfer and a swap now, on Windows; on macOS, where the editor takes no
-memory in the game, the dialog still offers to make room.
+A full squad list is grown the same way for a transfer and a swap now. Where the editor cannot grow it, the dialog
+still offers to make room.
+
+## On the Mac
+
+The Mac Steam build (26340721, arm64) keeps its pools the same way, laid out as on Windows (`[pool]` in
+`layout-macos.toml`). On the Arsenal save of 5 July 2027, `pools --walk` found 279 in the plugin's data, every chain
+of free slots as counted. The contracts' pool sits at `game_plugin+0x56AFE10`, with 200-byte slots: a first chunk of
+48,700 and a second of 1,024, 48,949 used and 775 free, as the game had made contracts since the save was loaded. The
+contracts are laid out as on Windows too: of the 48,949, `+0x98` holds a pointer in 375 and `+0xA0` in 336, and `+0x28`
+none, so `[contract] cleared` is the same. `+0xA8` looks like a pointer in a few (`0x00000073_0000051A`), but holds two
+`u32`s.
+
+`Process::write_static` on macOS writes only within a module's segment mapped writable and not executable (the
+plugin's `__DATA`), in pages the game can write now, never `__DATA_CONST`, its code or the heap.
+
+With the probe, Jack Grealish (a free agent, CA 145) was signed for Liverpool, whose squad list of 32 was full: five
+writes, the list grown into memory of the editor's own, a contract of £150,000 a week to 30 June 2029, Fringe Player,
+no squad number; moved back, the pool read 775 free and 48,949 used again.
 
 ## Checked
 
@@ -106,4 +123,4 @@ is Domestic Cup Goalkeeper (17).
 
 Not checked yet: the game playing on, saving, loading and quitting with a signed player; the game letting go of such
 a contract (it is one of its own, so it goes back to the pool as any other); the game growing a squad list the editor
-grew; Steam; the Intel and Mac builds, where the pools have not been looked for.
+grew; Steam; the Intel half of the Mac build, where the pools have not been looked for.
