@@ -1796,8 +1796,17 @@ export const en = {
     addNation: "Add a nation…",
     newRule: "Homegrown rule of the new nation",
     add: "Add",
-    /** Under the clubs: what the dialog cannot do with them. */
-    clubNote: "A club can be given another rule or removed; the game itself adds clubs.",
+    /** A club he was trained at: the button that points it at another club, and the search it opens. */
+    changeClub: "Change club",
+    changeClubTitle: (name: string) => `Make him trained at another club instead of ${name}`,
+    clubInsteadOf: (name: string) => `Club instead of ${name}`,
+    /** The button that adds a club he was trained at, and what it opens. */
+    addClub: "Add a club…",
+    addClubTitle: "Make him trained at one more club",
+    newClub: "New club",
+    pickAnother: "Pick another",
+    newClubRule: "Homegrown rule of the new club",
+    cancel: "Cancel",
     working: "Writing to the game…",
     close: "Close",
   },

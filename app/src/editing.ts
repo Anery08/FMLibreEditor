@@ -275,8 +275,8 @@ export const addReleaseClause = (uid: number, amount: number) =>
 export const removeTie = (uid: number, index: number) => call<LoggedChange>("remove_tie", { uid, index });
 
 /**
- * Gives the player a tie to the nation or club with the UID `target`, under the homegrown rule `rule` for a training,
- * where his list has room (see `PlayerDetails.tieRoom`). Logged and undone like any change.
+ * Gives the player a tie to the nation or club with the UID `target`, under the homegrown rule `rule` for a training:
+ * where his list has no room, the app grows it (see `PlayerDetails.tiesGrow`). Logged and undone like any change.
  */
 export const addTie = (uid: number, tie: TieKind, target: number, rule?: number) =>
   call<LoggedChange>("add_tie", { uid, tie, target, rule });

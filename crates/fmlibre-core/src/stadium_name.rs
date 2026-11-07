@@ -17,11 +17,10 @@
 //! bytes it found, so one undo puts the old name back. Where the editor cannot take memory, only the first kind of
 //! rename is offered.
 
-use std::sync::PoisonError;
-
 use serde::Serialize;
 
 use crate::clubs::{ClubSummary, club_stadium};
+use crate::own_memory::CAN_ALLOCATE;
 use crate::session::Session;
 use crate::text::read_fm_string;
 use crate::transfer::{MoveError, Patch, Patches};
@@ -46,10 +45,6 @@ pub const LONGEST_NAME: usize = 80;
 const FOREVER: u32 = 0x4000_0000;
 /// The second word of the editor's own strings, to know them again: "FMLE".
 const OWN_MARK: u32 = u32::from_le_bytes(*b"FMLE");
-/// How much memory the editor takes at a time for its own strings.
-const POOL: u64 = 0x1_0000;
-/// Whether the editor can take memory in the game for a name longer than its block.
-const CAN_ALLOCATE: bool = cfg!(any(windows, target_os = "macos"));
 
 /// How the game's allocator sizes the blocks of its strings: in steps of so many bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -211,16 +206,11 @@ impl Session {
     }
 
     /// A string of `text` in memory of the editor's own, laid out as the game's are (the size word, the editor's mark, a
-    /// count of holders that never runs out, the length, the text and a NUL), in the next block of its pool.
+    /// count of holders that never runs out, the length, the text and a NUL), in a block of its own (see `own_memory.rs`).
     fn own_string(&self, text: &str) -> Result<u64, MoveError> {
         let bytes = text.as_bytes();
         let size = self.string_blocks().size(bytes.len()) as u64;
-        let mut pool = self.string_pool.lock().unwrap_or_else(PoisonError::into_inner);
-        let (region, length, used) = match *pool {
-            Some((region, length, used)) if used + size <= length => (region, length, used),
-            _ => (self.process.allocate(POOL as usize)?, POOL, 0),
-        };
-        let block = region + used;
+        let block = self.own_block(size)?;
         let mut data = Vec::with_capacity(size as usize);
         data.extend((bytes.len() as u32 + ASKED_OVERHEAD).to_le_bytes());
         data.extend(OWN_MARK.to_le_bytes());
@@ -229,7 +219,6 @@ impl Session {
         data.extend(bytes);
         data.push(0);
         self.process.write_bytes(block, &data)?;
-        *pool = Some((region, length, used + size));
         Ok(block + SIZE_WORD)
     }
 

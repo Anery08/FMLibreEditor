@@ -4182,8 +4182,46 @@ button.danger:hover:not(:disabled) {
 }
 
 .tie-target {
-  flex: 1 1 12em;
+  flex: 1 1 9em;
   min-width: 0;
+}
+
+/* A row's buttons, which wrap together. */
+.tie-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+/* Under the clubs he was trained at: Add a club, or the search that picks a club and its rule, with Add and Cancel at
+   its foot. */
+.tie-rows + .heal-toggle,
+.tie-none + .tie-rows + .heal-toggle {
+  margin-top: 8px;
+}
+
+.tie-pick {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.tie-pick-head {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.tie-pick .move-results-box {
+  margin: 0;
+}
+
+.tie-pick-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* A clause's amount, up to ten digits of pounds, and its condition, a few digits. */

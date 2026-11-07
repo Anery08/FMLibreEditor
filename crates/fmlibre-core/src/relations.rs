@@ -8,9 +8,10 @@
 //! player's `nation` field.
 //!
 //! The editor reads those three kinds of tie. It points one at another nation or club, gives a training another
-//! rule, takes one out, or adds one. Like the squad lists, the list is as long as the game made it and the editor
-//! allocates nothing: a tie is added only where the list's block has room (see [`HeapLayout`]), which most players'
-//! lists lack, so changing one of his ties is the way to give him another.
+//! rule, takes one out, or adds one. The game makes each list as long as what it holds: after a save is loaded, none
+//! has room past its length. A tie is added where the list's block has room (see [`HeapLayout`]); otherwise the list is
+//! grown into memory of the editor's own (see `own_memory.rs`): its entries and the new one, with room for a few more,
+//! and the list pointed at them. The old buffer stays as it was, for the undo, which points the list back at it.
 //!
 //! [`HeapLayout`]: crate::profile::HeapLayout
 //! [`RelationLayout`]: crate::profile::RelationLayout
@@ -19,6 +20,7 @@ use fmlibre_mem::is_user_pointer;
 use serde::{Deserialize, Serialize};
 
 use crate::clubs::ClubSummary;
+use crate::own_memory::CAN_ALLOCATE;
 use crate::players::{Nation, PlayerSummary, nation_name};
 use crate::session::Session;
 use crate::text::read_fm_string;
@@ -30,6 +32,10 @@ const MOST_RELATIONS: u64 = 256;
 /// The game's codes for the kinds of target.
 const CLUB: u8 = 1;
 const NATION: u8 = 8;
+
+/// The room a list grown by the editor has past its new entry: so that the game, adding one of its own, finds room for
+/// it where it is.
+const GROWN_ROOM: u64 = 3;
 
 /// The homegrown rules the editor writes, by the game's code: 15–21, 0–21, 15–21 excluding loans, and 0–19 for a
 /// year. The game has others, which the editor shows but does not write.
@@ -113,7 +119,29 @@ pub struct RelationPlan {
     /// The tie before and after: none before for one added, none after for one taken out.
     pub before: Option<Relation>,
     pub after: Option<Relation>,
+    /// Whether a tie added grows the list into memory of the editor's own, its block having no room.
+    pub grows: bool,
     patches: Vec<Patch>,
+    grow: Option<Growth>,
+}
+
+impl RelationPlan {
+    /// A change that writes `patches`, for the caller to say more of.
+    fn new(patches: Patches) -> Self {
+        Self { player: 0, before: None, after: None, grows: false, patches: patches.0, grow: None }
+    }
+}
+
+/// A list to grow into memory of the editor's own: what its header holds now, and the entries it is to hold.
+#[derive(Debug, Clone)]
+struct Growth {
+    header: u64,
+    /// Its begin, end and capacity now.
+    was: [u64; 3],
+    /// Its entries and the new one, as they are written.
+    entries: Vec<u8>,
+    /// How many entries the new buffer has room for.
+    capacity: u64,
 }
 
 /// A change to a player's ties that was written: what undoing it takes.
@@ -122,6 +150,8 @@ pub struct RelationSet {
     pub player: u32,
     pub before: Option<Relation>,
     pub after: Option<Relation>,
+    /// Whether the list was grown into memory of the editor's own.
+    pub grew: bool,
     patches: Vec<Patch>,
 }
 
@@ -150,12 +180,33 @@ impl Session {
         Ok(self.relation_list(player)?.map(|list| list.entries.into_iter().enumerate().collect()).unwrap_or_default())
     }
 
+    /// Where the buffer of the list of `player` begins, and its capacity in bytes; `None` for a player without a list
+    /// or with an empty one, or one that does not check out.
+    pub fn relation_buffer(&self, player: &PlayerSummary) -> Option<(u64, u64)> {
+        let list = self.relation_list(player).ok()??;
+        (list.begin != 0).then_some((list.begin, list.capacity - list.begin))
+    }
+
+    /// How many entries the list of `player` holds, and how many its capacity says it has room for; `None` for a
+    /// player without a list, or one that does not check out.
+    pub fn relation_capacity(&self, player: &PlayerSummary) -> Option<(u64, u64)> {
+        let size = self.layout.relation.size;
+        let list = self.relation_list(player).ok()??;
+        Some(((list.end - list.begin) / size, (list.capacity - list.begin) / size))
+    }
+
     /// How many more ties the list of `player` has room for.
     pub fn relation_room(&self, player: &PlayerSummary) -> Result<usize, MoveError> {
         match self.relation_list(player)? {
             Some(list) => self.room(&list),
             None => Ok(0),
         }
+    }
+
+    /// Whether a tie can be added to the list of `player` though its block has no room: the editor grows it (see
+    /// `plan_relation_add`). Not where it cannot take memory in the game, or for a player without a record of ties.
+    pub fn relations_grow(&self, player: &PlayerSummary) -> bool {
+        CAN_ALLOCATE && matches!(self.relation_list(player), Ok(Some(_)))
     }
 
     /// Works out pointing the tie at `index` in the list of `player` at another nation or club, and giving a training
@@ -191,7 +242,7 @@ impl Session {
         if patches.0.is_empty() || self.relations(player)?.iter().any(|tie| tie.index != index && same(tie, &after)) {
             return Err(MoveError::SameRelation);
         }
-        Ok(RelationPlan { player: player.uid, before: Some(before), after: Some(after), patches: patches.0 })
+        Ok(RelationPlan { player: player.uid, before: Some(before), after: Some(after), ..RelationPlan::new(patches) })
     }
 
     /// Works out taking the tie at `index` out of the list of `player`: the entries after it move up one. Nothing is
@@ -208,11 +259,12 @@ impl Session {
         patches.push(list.begin + index as u64 * size, entries[index..last].concat(), entries[index + 1..].concat());
         patches.push(list.header + 8, list.end.to_le_bytes(), (list.end - size).to_le_bytes());
         patches.push(list.begin + last as u64 * size, entries[last].clone(), vec![0; size as usize]);
-        Ok(RelationPlan { player: player.uid, before: Some(before), after: None, patches: patches.0 })
+        Ok(RelationPlan { player: player.uid, before: Some(before), ..RelationPlan::new(patches) })
     }
 
     /// Works out adding a tie of `tie` to `target` to the list of `player`, with the homegrown rule `rule` for a
-    /// training, where the list's block has room. Nothing is written.
+    /// training: after its entries where the list's block has room, or else in a grown list (see the module's notes).
+    /// Nothing is written.
     pub fn plan_relation_add(
         &self,
         player: &PlayerSummary,
@@ -220,54 +272,108 @@ impl Session {
         target: TieTarget,
         rule: Option<u8>,
     ) -> Result<RelationPlan, MoveError> {
-        let r = &self.layout.relation;
+        let size = self.layout.relation.size;
         let list = self.relation_list(player)?.ok_or(MoveError::RelationsFull)?;
+        let after = self.new_tie(player, list.entries.len(), tie, target, rule)?;
+        if self.room(&list)? == 0 {
+            if !CAN_ALLOCATE {
+                return Err(MoveError::RelationsFull);
+            }
+            let mut entries = list.entries.concat();
+            entries.extend(self.entry_of(&after));
+            let capacity = list.entries.len() as u64 + 1 + GROWN_ROOM;
+            let grow = Growth { header: list.header, was: [list.begin, list.end, list.capacity], entries, capacity };
+            return Ok(RelationPlan {
+                player: player.uid,
+                after: Some(after),
+                grows: true,
+                grow: Some(grow),
+                ..RelationPlan::new(Patches::default())
+            });
+        }
+        let mut patches = Patches::default();
+        let slot = self.process.read_bytes(list.end, size as usize)?;
+        patches.push(list.end, slot, self.entry_of(&after));
+        let end = list.end + size;
+        let header = [list.end.to_le_bytes(), list.capacity.to_le_bytes()].concat();
+        patches.push(list.header + 8, header, [end.to_le_bytes(), list.capacity.max(end).to_le_bytes()].concat());
+        Ok(RelationPlan { player: player.uid, after: Some(after), ..RelationPlan::new(patches) })
+    }
+
+    /// Writes a planned change to a player's ties, each write over the bytes it expects, after checking them all. A list
+    /// to grow gets its buffer first: the entries are written into it, then the list is pointed at it.
+    pub fn apply_relation(&self, plan: &RelationPlan) -> Result<RelationSet, MoveError> {
+        let patches = match &plan.grow {
+            None => plan.patches.clone(),
+            Some(grow) => self.grown_list(grow)?,
+        };
+        self.apply_patches(&patches)?;
+        let RelationPlan { player, ref before, ref after, grows, .. } = *plan;
+        Ok(RelationSet { player, before: before.clone(), after: after.clone(), grew: grows, patches })
+    }
+
+    /// The buffer of a list to grow, in memory of the editor's own, with its entries in it, and the write that points
+    /// the list at it. The block is as large as the game's allocator gives a buffer of that capacity, should the game
+    /// ever pass it on.
+    fn grown_list(&self, grow: &Growth) -> Result<Vec<Patch>, MoveError> {
+        if let Some(lock) = self.structure_lock() {
+            return Err(MoveError::Locked(lock));
+        }
+        let bytes = grow.capacity * self.layout.relation.size;
+        let block = self.own_block(self.grown_block_size(bytes).ok_or(MoveError::RelationsFull)?)?;
+        self.process.write_bytes(block, &grow.entries)?;
+        let words = |words: [u64; 3]| words.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<u8>>();
+        let now = [block, block + grow.entries.len() as u64, block + bytes];
+        let mut patches = Patches::default();
+        patches.push(grow.header, words(grow.was), words(now));
+        Ok(patches.0)
+    }
+
+    /// A new tie of `tie` to `target` for `player`, at `index` in his list, with the homegrown rule `rule` for a
+    /// training: checked to be one the editor writes, and one he does not have yet.
+    fn new_tie(
+        &self,
+        player: &PlayerSummary,
+        index: usize,
+        tie: Tie,
+        target: TieTarget,
+        rule: Option<u8>,
+    ) -> Result<Relation, MoveError> {
         let rule = match (tie.is_training(), rule) {
             (true, Some(rule)) if HOMEGROWN_RULES.contains(&rule) => Some(rule),
             (false, None) => None,
             (_, rule) => return Err(MoveError::UnknownRule { rule: rule.unwrap_or(0) }),
         };
-        let after = Relation {
-            index: list.entries.len(),
+        let tie = Relation {
+            index,
             tie,
             target: self.tie_target(player, tie, target)?,
             target_uid: target.uid(),
             name: Some(target.name()),
             rule,
         };
-        if self.relations(player)?.iter().any(|known| same(known, &after)) {
+        if self.relations(player)?.iter().any(|known| same(known, &tie)) {
             return Err(MoveError::SameRelation);
         }
-        if self.room(&list)? == 0 {
-            return Err(MoveError::RelationsFull);
-        }
-        // A new entry as the game writes one: a nationality's strength of 100 and 80, or a training's rule.
+        Ok(tie)
+    }
+
+    /// The bytes of a new entry for `tie`, as the game writes one: a nationality's strength of 100 and 80, or a
+    /// training's rule.
+    fn entry_of(&self, tie: &Relation) -> Vec<u8> {
+        let r = &self.layout.relation;
         let mut entry = vec![0u8; r.size as usize];
-        entry[r.target as usize..r.target as usize + 8].copy_from_slice(&after.target.to_le_bytes());
-        let (kind, relation) = tie.codes();
+        entry[r.target as usize..r.target as usize + 8].copy_from_slice(&tie.target.to_le_bytes());
+        let (kind, relation) = tie.tie.codes();
         entry[r.target_kind as usize] = kind;
         entry[r.relation as usize] = relation;
         let value = r.value as usize;
-        (entry[value], entry[value + 1]) = match rule {
+        (entry[value], entry[value + 1]) = match tie.rule {
             Some(rule) => (rule, 0xFF),
             None => (0x64, 0x50),
         };
         entry[r.size as usize - 1] = 0xFF;
-
-        let mut patches = Patches::default();
-        let slot = self.process.read_bytes(list.end, r.size as usize)?;
-        patches.push(list.end, slot, entry);
-        let end = list.end + r.size;
-        let header = [list.end.to_le_bytes(), list.capacity.to_le_bytes()].concat();
-        patches.push(list.header + 8, header, [end.to_le_bytes(), list.capacity.max(end).to_le_bytes()].concat());
-        Ok(RelationPlan { player: player.uid, before: None, after: Some(after), patches: patches.0 })
-    }
-
-    /// Writes a planned change to a player's ties, each write over the bytes it expects, after checking them all.
-    pub fn apply_relation(&self, plan: &RelationPlan) -> Result<RelationSet, MoveError> {
-        self.apply_patches(&plan.patches)?;
-        let RelationPlan { player, ref before, ref after, ref patches } = *plan;
-        Ok(RelationSet { player, before: before.clone(), after: after.clone(), patches: patches.clone() })
+        entry
     }
 
     /// Puts the ties back as they were, provided the list still holds what the change wrote.

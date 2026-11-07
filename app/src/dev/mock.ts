@@ -316,6 +316,7 @@ function details(player: PlayerSummary): PlayerDetails {
     bans: bansOf(player.uid),
     ties: tiesOf(player),
     tieRoom: tieRoomOf(player),
+    tiesGrow: true,
     clauseRoom: player.club ? clauseRoomOf(player.uid) : 0,
     retirementKnown: true,
     retires: retiresOf(player.uid),
@@ -440,6 +441,19 @@ const tiesOf = (player: PlayerSummary) => tiesSet.get(player.uid) ?? fixtureTies
 const tieRoomOf = (player: PlayerSummary) =>
   Math.max(0, (player.uid % 3) - (tiesOf(player).length - fixtureTies(player).length));
 
+/** The fixture club with the UID `uid`, or the real commands' failure. */
+function mockClub(uid: number): ClubSummary {
+  const club = clubs.find((c) => c.uid === uid);
+  if (!club) {
+    throw notFound("club", uid);
+  }
+  return club;
+}
+
+/** The name of the nation or club with the UID `target`, as a tie of `kind` points at one or the other. */
+const targetName = (kind: TieKind, target: number) =>
+  kind === "trainedAtClub" ? mockClub(target).name : mockNation(target);
+
 /** The fixture nation with the UID `uid`, or the real commands' failure. */
 function mockNation(uid: number): string {
   const name = NATIONS[uid - 1000];
@@ -486,15 +500,19 @@ function tieAt(uid: number, index: number): [PlayerSummary, Tie] {
   return [player, tie];
 }
 
-/** `change_tie`: points a fixture player's tie at another nation, or gives a training another rule. */
-function changeTie(uid: number, index: number, nation?: number, rule?: number): LoggedChange {
+/** `change_tie`: points a fixture player's tie at another nation or club, or gives a training another rule. */
+function changeTie(uid: number, index: number, nation?: number, club?: number, rule?: number): LoggedChange {
   const [player, tie] = tieAt(uid, index);
   if (rule !== undefined && (tie.rule === null || !HOMEGROWN_RULES.includes(rule))) {
     throw failure("relation.rule", `homegrown rule ${rule} is not one the editor writes`, { rule });
   }
+  const target = nation ?? club;
+  if (target !== undefined && (club !== undefined) !== (tie.tie === "trainedAtClub")) {
+    throw failure("relation.target", "that is not a nation or club of the game, of the kind this tie takes");
+  }
   const after: Tie = {
     ...tie,
-    ...(nation !== undefined && { targetUid: nation, name: mockNation(nation) }),
+    ...(target !== undefined && { targetUid: target, name: targetName(tie.tie, target) }),
     ...(rule !== undefined && { rule }),
   };
   const ties = tiesOf(player);
@@ -510,24 +528,31 @@ function removeTie(uid: number, index: number): LoggedChange {
   return logTie(player, tie, null, tiesOf(player).filter((t) => t.index !== index));
 }
 
-/** `add_tie`: gives a fixture player a nationality or a nation he was trained in, where his list has room. */
+/**
+ * A new tie of `kind` to `target` for a fixture player at `index`, checked as the real commands check it: a training
+ * takes a rule the editor writes, and he may not have it already.
+ */
+function newTie(player: PlayerSummary, index: number, kind: TieKind, target: number, rule?: number): Tie {
+  const training = kind !== "nationality";
+  if (training !== (rule !== undefined) || (rule !== undefined && !HOMEGROWN_RULES.includes(rule))) {
+    throw failure("relation.rule", `homegrown rule ${rule ?? 0} is not one the editor writes`, { rule: rule ?? 0 });
+  }
+  const tie: Tie = { index, tie: kind, targetUid: target, name: targetName(kind, target), rule: rule ?? null };
+  if (tiesOf(player).some((t) => t.tie === kind && t.targetUid === target && t.rule === tie.rule)) {
+    throw failure("relation.same", "the player has that already");
+  }
+  return tie;
+}
+
+/** `add_tie`: gives a fixture player a nationality, or a nation or club he was trained in. */
 function addTie(uid: number, kind: TieKind, target: number, rule?: number): LoggedChange {
   const player = players.find((p) => p.uid === uid);
   if (!player) {
     throw notFound("player", uid);
   }
-  if (tieRoomOf(player) === 0) {
-    throw failure(
-      "relation.noRoom",
-      "the player's list of nationalities and ties has no room for another, and the editor cannot make it bigger; change one of them instead",
-    );
-  }
   const ties = tiesOf(player);
-  const index = Math.max(0, ...ties.map((t) => t.index)) + 1;
-  const after: Tie = { index, tie: kind, targetUid: target, name: mockNation(target), rule: rule ?? null };
-  if (ties.some((t) => t.tie === kind && t.targetUid === target && t.rule === after.rule)) {
-    throw failure("relation.same", "the player has that already");
-  }
+  // As on Windows: a list without room is grown.
+  const after = newTie(player, Math.max(0, ...ties.map((t) => t.index)) + 1, kind, target, rule);
   return logTie(player, null, after, [...ties, after]);
 }
 
@@ -2865,6 +2890,7 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         Number(args?.uid),
         Number(args?.index),
         args?.nation as number | undefined,
+        args?.club as number | undefined,
         args?.rule as number | undefined,
       ) as T;
     case "remove_tie":

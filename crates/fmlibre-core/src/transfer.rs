@@ -325,7 +325,7 @@ impl fmt::Display for MoveError {
             }
             MoveError::RelationsFull => f.write_str(
                 "the player's list of nationalities and ties has no room for another, and the editor cannot make it \
-                 bigger; change one of them instead",
+                 bigger here; change one of them instead",
             ),
             MoveError::WrongTarget => {
                 f.write_str("that is not a nation or club of the game, of the kind this tie takes")

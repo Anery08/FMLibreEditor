@@ -22,6 +22,7 @@ mod loans;
 mod locate;
 mod mass;
 mod medical;
+mod own_memory;
 mod players;
 mod profile;
 mod relations;

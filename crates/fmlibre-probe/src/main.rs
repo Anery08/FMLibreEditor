@@ -384,7 +384,7 @@ enum Command {
         #[command(flatten)]
         restore: RestoreArgs,
     },
-    /// Give a player another tie, where his list has room.
+    /// Give a player another tie: where his list has no room, it is grown into memory the editor takes.
     TieAdd {
         /// The player's UID.
         uid: u32,
@@ -594,6 +594,16 @@ enum Command {
     },
     /// Read every team's player list and show how the game's allocator spaces their buffers.
     Squads,
+    /// How the game's allocator places the buffers of the players' lists of relations: by capacity, how far apart
+    /// they are, what precedes and follows them, and which blocks between them hold no list.
+    RelationBlocks {
+        /// The capacity, in entries, to look into closely.
+        #[arg(long, default_value_t = 3)]
+        entries: u64,
+        /// How many blocks around the first buffers to print.
+        #[arg(long, default_value_t = 24)]
+        show: usize,
+    },
     /// Find the game's own allocators in the game plugin's writable data and show, for each, the header it puts
     /// before a block and its size classes: the block each size asked for gets. Only reads memory
     Allocators,
@@ -1107,6 +1117,9 @@ fn run(cli: Cli) -> Result<()> {
             refs(&process, &modules, resolve(&addr, &modules)?, parse_hex(&span)?, max)
         }
         Command::Squads => squads(&connect(process, ArraySource::ProfileFirst)?),
+        Command::RelationBlocks { entries, show } => {
+            relation_blocks(&connect(process, ArraySource::ProfileFirst)?, entries, show)
+        }
         Command::Allocators => allocators(&connect(process, ArraySource::ProfileFirst)?),
         Command::Related { clubs, players, depth, span, tolerance, linear } => {
             let session = connect(process, ArraySource::ProfileFirst)?;
@@ -1355,6 +1368,112 @@ fn holders(process: &Process, modules: &[Module], addr: u64, max: usize) -> Resu
 /// per capacity, the spacing of list buffers that share a 64 KiB page (a slab allocator
 /// puts blocks of one size class at multiples of that size), and whether the rest of the
 /// block the layout's heap gives them is zero.
+fn relation_blocks(session: &Session, entries: u64, show: usize) -> Result<()> {
+    use std::collections::{BTreeMap, BTreeSet};
+    let process = &session.process;
+    let size = session.layout.relation.size;
+    let players = session.players()?;
+    // Every list's buffer, by capacity in bytes.
+    let mut by_capacity: BTreeMap<u64, Vec<u64>> = BTreeMap::new();
+    for player in &players {
+        let Some((begin, capacity)) = session.relation_buffer(player) else { continue };
+        by_capacity.entry(capacity).or_default().push(begin);
+    }
+    println!("buffers by capacity (bytes): count, and the commonest distance to the next buffer of that capacity");
+    for (capacity, begins) in &mut by_capacity {
+        begins.sort_unstable();
+        let mut gaps: BTreeMap<u64, usize> = BTreeMap::new();
+        for pair in begins.windows(2) {
+            let gap = pair[1] - pair[0];
+            if gap <= 4096 {
+                *gaps.entry(gap).or_default() += 1;
+            }
+        }
+        let mut top: Vec<_> = gaps.into_iter().collect();
+        top.sort_by_key(|entry| std::cmp::Reverse(entry.1));
+        let top: Vec<String> = top.iter().take(5).map(|(gap, n)| format!("{gap}x{n}")).collect();
+        println!("  {capacity:>4}: {:>5}  gaps {}", begins.len(), top.join(" "));
+    }
+    // A closer look at one capacity: the 8 bytes before each buffer, the bytes after it to the next buffer.
+    let capacity = entries * size;
+    let Some(begins) = by_capacity.get(&capacity) else {
+        println!("no list of {entries} entries");
+        return Ok(());
+    };
+    let known: BTreeSet<u64> = by_capacity.values().flatten().copied().collect();
+    let mut before: BTreeMap<String, usize> = BTreeMap::new();
+    for &begin in begins {
+        let word = process.read_bytes(begin - 8, 8).map(|b| hex(&b)).unwrap_or_else(|_| "unreadable".into());
+        *before.entry(word).or_default() += 1;
+    }
+    let mut top: Vec<_> = before.into_iter().collect();
+    top.sort_by_key(|entry| std::cmp::Reverse(entry.1));
+    println!("the 8 bytes before a buffer of {capacity} bytes, commonest first:");
+    for (word, n) in top.iter().take(6) {
+        println!("  {word}  x{n}");
+    }
+    // The neighbourhood of the first buffers: each block of `stride` bytes from the first, which list holds it (if
+    // any), and its first 16 bytes.
+    let stride = {
+        let mut gaps: BTreeMap<u64, usize> = BTreeMap::new();
+        for pair in begins.windows(2) {
+            let gap = pair[1] - pair[0];
+            if gap <= 1024 {
+                *gaps.entry(gap).or_default() += 1;
+            }
+        }
+        gaps.into_iter().max_by_key(|g| g.1).map_or(capacity, |g| g.0)
+    };
+    for chunk in [0x1000u64, 0x4000, 0x10000, 0x40000] {
+        let mut offsets: BTreeMap<u64, usize> = BTreeMap::new();
+        for &begin in begins {
+            *offsets.entry((begin & (chunk - 1)) % stride).or_default() += 1;
+        }
+        let mut top: Vec<_> = offsets.into_iter().collect();
+        top.sort_by_key(|entry| std::cmp::Reverse(entry.1));
+        let top: Vec<String> = top.iter().take(6).map(|(o, n)| format!("{o}x{n}")).collect();
+        println!("  in chunks of {chunk:#x}: offset mod {stride}: {}", top.join(" "));
+    }
+    let mut bases: BTreeMap<u64, (usize, u64, u64)> = BTreeMap::new();
+    for &begin in begins {
+        if let Some(region) = fmlibre_mem::regions(process, begin, begin + 1).into_iter().next() {
+            let slot = bases.entry(region.base).or_insert((0, region.size, region.allocation_base));
+            slot.0 += 1;
+        }
+    }
+    println!("regions holding them: {}", bases.len());
+    for (base, (n, size, allocation)) in bases.iter().take(12) {
+        println!("  {base:#x} size {size:#x} (allocation {allocation:#x}): {n}");
+    }
+    println!("blocks of {stride} bytes from the buffer at {:#x}:", begins[begins.len() / 2]);
+    let start = begins[begins.len() / 2];
+    for i in 0..show as u64 {
+        let at = start + i * stride;
+        let bytes = process.read_bytes(at, 16).map(|b| hex(&b)).unwrap_or_else(|_| "unreadable".into());
+        let first = process.read_u64(at).unwrap_or(0);
+        let tag = if known.contains(&at) {
+            "list"
+        } else if is_user_pointer(first) && first.abs_diff(at) < 0x100000 {
+            "near ptr"
+        } else {
+            ""
+        };
+        println!("  {at:#x}  {bytes}  {tag}");
+    }
+    if let Ok(region) = fmlibre_mem::regions(process, start, start + 1).into_iter().next().ok_or(()) {
+        println!(
+            "region: base {:#x} size {:#x} allocation base {:#x}",
+            region.base, region.size, region.allocation_base
+        );
+    }
+    Ok(())
+}
+
+/// Bytes as hex, with a space after each 8.
+fn hex(bytes: &[u8]) -> String {
+    bytes.chunks(8).map(|c| c.iter().map(|b| format!("{b:02x}")).collect::<String>()).collect::<Vec<_>>().join(" ")
+}
+
 /// `allocators`: the game's own allocators, found in the game plugin's writable data by their shape: a list of their
 /// size classes, then a list of one entry per size asked for, up to the largest they hand out, each pointing at the
 /// class that serves it (null where the system's allocator does), then the bytes of the header they write before a
@@ -3768,7 +3887,10 @@ enum TieAction {
     Add { tie: Tie, target: TieUid, rule: Option<u8> },
 }
 
-/// Lists a player's ties, after changing them as `action` says (and putting them back with --restore).
+/// Where a relation to a person points into a player's object, and into a member of staff's (Windows).
+const PERSON_IN_PLAYER: u64 = 0x288;
+const PERSON_IN_STAFF: u64 = 0x100;
+
 /// Prints every entry of a player's list of relations as stored: the target, its class and name where known, and the
 /// bytes after it (a count, the kind of target, the kind of relation, a value, a level).
 fn relation_entries(session: &Session, uid: u32) -> Result<()> {
@@ -3780,6 +3902,29 @@ fn relation_entries(session: &Session, uid: u32) -> Result<()> {
     let club_name = |club: u64| -> Option<String> {
         let uid = process.read_u32(club + layout.club.uid).ok()?;
         clubs.get(uid).map(|c| format!("{} (club {uid})", c.name))
+    };
+    let staff = session.staff()?;
+    // A relation to a person points into his object: on Windows a player's at +0x288 past his person block's shift, a
+    // member of staff's at +0x100 (see docs/recon/fm27-nationality.md). Elsewhere, the people whose objects are close.
+    let person_name = |person: u64| -> Option<String> {
+        let player = players.iter().find(|p| p.address + PERSON_IN_PLAYER + p.shift == person);
+        let found = player.map(|p| format!("{} (player {})", p.name, p.uid)).or_else(|| {
+            let member = staff.iter().find(|s| s.address + PERSON_IN_STAFF + s.shift == person)?;
+            Some(format!("{} (staff {})", member.name, member.uid))
+        });
+        found.or_else(|| {
+            let close = |address: u64| (person as i64 - address as i64).unsigned_abs() <= 0x400;
+            let offset = |address: u64| person as i64 - address as i64;
+            let mut near: Vec<String> = players
+                .iter()
+                .filter(|p| close(p.address))
+                .map(|p| format!("player {} {:+#x}", p.uid, offset(p.address)))
+                .collect();
+            near.extend(
+                staff.iter().filter(|s| close(s.address)).map(|s| format!("staff {} {:+#x}", s.uid, offset(s.address))),
+            );
+            Some(format!("near: {}", near.join(", ")))
+        })
     };
     let entries = session.relation_entries(player)?;
     println!("{} entries:", entries.len());
@@ -3795,6 +3940,7 @@ fn relation_entries(session: &Session, uid: u32) -> Result<()> {
         let name = match kind {
             _ if !is_user_pointer(target) => None,
             1 => club_name(target),
+            3 => person_name(target),
             4 => process.read_u64(target + layout.team.club).ok().and_then(club_name).map(|c| format!("team of {c}")),
             8 => known.iter().find(|n| n.address == target).map(|n| format!("{} (nation {:?})", n.name, n.uid)),
             _ => None,
@@ -3945,9 +4091,29 @@ fn relation_kinds(session: &Session, only: Option<u8>, examples: usize) -> Resul
     type Seen = (usize, BTreeMap<u16, usize>, BTreeMap<u16, usize>, Vec<String>);
     let mut targets: BTreeMap<String, Seen> = BTreeMap::new();
     let mut read = 0;
+    // Room for a club he was trained at: [with one already, with room, without one: with room, with a favoured or
+    // disliked club, with a favoured or disliked person only, with none of those].
+    let mut club_room = [0usize; 6];
     for player in &players {
         let Ok(entries) = session.relation_entries(player) else { continue };
         read += 1;
+        let has = |relations: &[u8]| entries.iter().any(|(_, bytes)| relations.contains(&bytes[11]));
+        let room = session.relation_room(player).unwrap_or(0) > 0;
+        let without = !has(&[72]);
+        club_room[0] += usize::from(!without);
+        club_room[1] += usize::from(room);
+        if without {
+            let slot = if room {
+                2
+            } else if has(&[3, 4]) {
+                3
+            } else if has(&[1, 2]) {
+                4
+            } else {
+                5
+            };
+            club_room[slot] += 1;
+        }
         let mut seen = std::collections::HashSet::new();
         for (_, bytes) in entries {
             let (kind, relation) = (bytes[10], bytes[11]);
@@ -3982,6 +4148,26 @@ fn relation_kinds(session: &Session, only: Option<u8>, examples: usize) -> Resul
             for ((relation, kind), (with, entries)) in kinds {
                 println!("  {relation:>3} {kind:>4}  {with:>7}  {entries:>7}");
             }
+            let [with, room, without_room, clubs, people, none] = club_room;
+            println!("Trained at a club (72): {with} players; room for another tie: {room}.");
+            // Lists by length and capacity (in entries): the full ones, and those with room past their length.
+            let mut full: BTreeMap<u64, usize> = BTreeMap::new();
+            let mut spare: BTreeMap<(u64, u64), usize> = BTreeMap::new();
+            for player in &players {
+                let Some((len, cap)) = session.relation_capacity(player) else { continue };
+                if len == cap {
+                    *full.entry(len).or_default() += 1;
+                } else {
+                    *spare.entry((len, cap)).or_default() += 1;
+                }
+            }
+            println!("Full lists by length: {full:?}");
+            println!("Lists with room, (length, capacity): {spare:?}");
+            println!(
+                "Without a club: {} players; {without_room} with room, {clubs} with a favoured or disliked club (3, 4), \
+                 {people} with only a favoured or disliked person (1, 2), {none} with none of those.",
+                without_room + clubs + people + none
+            );
         }
         Some(relation) => {
             let mut rows: Vec<_> = targets.into_iter().collect();
@@ -4003,6 +4189,7 @@ fn relation_kinds(session: &Session, only: Option<u8>, examples: usize) -> Resul
     Ok(())
 }
 
+/// Lists a player's ties, after changing them as `action` says (and putting them back with --restore).
 fn tie_change(session: &Session, uid: u32, action: Option<TieAction>, restore: RestoreArgs) -> Result<()> {
     let players = PlayerIndex::new(session.players()?);
     let clubs = ClubIndex::new(session.clubs()?);
@@ -4046,6 +4233,9 @@ fn tie_change(session: &Session, uid: u32, action: Option<TieAction>, restore: R
         TieAction::Add { tie, target: by, rule } => session.plan_relation_add(player, tie, target(by)?, rule)?,
     };
     let done = session.apply_relation(&plan)?;
+    if done.grew {
+        println!("  (the list had no room: grown into memory of the editor's own)");
+    }
     show("changed")?;
     if restore.restore {
         if restore.hold > 0 {

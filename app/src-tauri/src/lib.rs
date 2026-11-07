@@ -2923,7 +2923,8 @@ fn remove_tie(state: State<'_, AppState>, uid: u32, index: usize) -> Result<Logg
 }
 
 /// Gives the player `uid` a tie of `tie` to the nation or club with the UID `target`, under the homegrown rule
-/// `rule` for a training, where his list has room. Logged and undone like any change.
+/// `rule` for a training: where his list has no room, it is grown (see `relations.rs`). Logged and undone like any
+/// change.
 #[tauri::command]
 fn add_tie(
     state: State<'_, AppState>,
