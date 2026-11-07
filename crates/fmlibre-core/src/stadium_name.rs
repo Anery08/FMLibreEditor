@@ -3,11 +3,11 @@
 //! A stadium points at its name (`[stadium] name`), an FM string: a `u32` length, the text in UTF-8 and a NUL, after a
 //! `u32` count of the objects that hold it. The allocator's block starts 8 bytes before that count, with a `u32` of the
 //! size it was asked for (the length plus 9: the count, the length, the text and the NUL) and a `u32` the editor leaves
-//! as it is. On Windows blocks come in steps of 16 bytes: 32 for up to 15 bytes of text, 48 for 16 to 31, and so on. On
-//! the Game Pass save Old Trafford (12 bytes, asked-for size 21) sits in a block of 32, right after Kenilworth Road's
-//! (15, 24). On the Mac they come in steps of 8 (`[heap] string_step`): 24 for up to 7 bytes, 32 for 8 to 15, 40 for 16
-//! to 23, so the Emirates Stadium (16 bytes) sits in a block of 40, not 48. Both steps hold up to the longest name the
-//! editor writes.
+//! as it is. On the Game Pass save Old Trafford (12 bytes, asked-for size 21) sits in a block of 32, right after
+//! Kenilworth Road's (15, 24). On the Mac blocks come in steps of 8 (`[heap] string_step`): 24 for up to 7 bytes, 32 for
+//! 8 to 15, 40 for 16 to 23, so the Emirates Stadium (16 bytes) sits in a block of 40, not 48. Steps of 8 are safe where
+//! the game's are 16 too, as a block of 8 lies within the block of 16 it falls in, so both layouts take 8; the steps hold
+//! up to the longest name the editor writes.
 //!
 //! A new name that keeps the size of the block, for a name the stadium alone holds (a count of 1), is written over the
 //! old one: the size word, the length and the text. Any other goes into memory the editor takes in the game for it
@@ -258,34 +258,34 @@ impl Session {
 mod tests {
     use super::*;
 
-    const WINDOWS: Blocks = Blocks { step: STEP };
-    const MAC: Blocks = Blocks { step: 8 };
+    const SIXTEEN: Blocks = Blocks { step: 16 };
+    const EIGHT: Blocks = Blocks { step: 8 };
 
     #[test]
     fn a_name_in_place_keeps_the_size_of_its_block() {
-        // Windows: Old Trafford (12 bytes) and Kenilworth Road (15) in blocks of 32: up to 15 bytes.
-        assert_eq!(WINDOWS.size(12), 32);
-        assert_eq!(WINDOWS.size(15), 32);
-        assert_eq!(WINDOWS.lengths(32), (1, 15));
+        // In steps of 16, as Windows was taken to have: Old Trafford (12 bytes) and Kenilworth Road (15) in blocks of 32.
+        assert_eq!(SIXTEEN.size(12), 32);
+        assert_eq!(SIXTEEN.size(15), 32);
+        assert_eq!(SIXTEEN.lengths(32), (1, 15));
         // A name of 16 to 31 bytes is in a block of 48.
-        assert_eq!(WINDOWS.size(16), 48);
-        assert_eq!(WINDOWS.size(31), 48);
-        assert_eq!(WINDOWS.lengths(48), (16, 31));
-        assert_eq!(WINDOWS.lengths(64), (32, 47));
+        assert_eq!(SIXTEEN.size(16), 48);
+        assert_eq!(SIXTEEN.size(31), 48);
+        assert_eq!(SIXTEEN.lengths(48), (16, 31));
+        assert_eq!(SIXTEEN.lengths(64), (32, 47));
         // The Mac: the Emirates Stadium (16 bytes) and The Archibalds' Stadium (23) in blocks of 40, Leicester City
         // Stadium (22) too; Old Trafford (12) in one of 32, and a name of up to 7 bytes in one of 24.
-        assert_eq!(MAC.size(16), 40);
-        assert_eq!(MAC.size(22), 40);
-        assert_eq!(MAC.size(23), 40);
-        assert_eq!(MAC.size(24), 48);
-        assert_eq!(MAC.size(12), 32);
-        assert_eq!(MAC.size(7), 24);
-        assert_eq!(MAC.lengths(24), (1, 7));
-        assert_eq!(MAC.lengths(32), (8, 15));
-        assert_eq!(MAC.lengths(40), (16, 23));
+        assert_eq!(EIGHT.size(16), 40);
+        assert_eq!(EIGHT.size(22), 40);
+        assert_eq!(EIGHT.size(23), 40);
+        assert_eq!(EIGHT.size(24), 48);
+        assert_eq!(EIGHT.size(12), 32);
+        assert_eq!(EIGHT.size(7), 24);
+        assert_eq!(EIGHT.lengths(24), (1, 7));
+        assert_eq!(EIGHT.lengths(32), (8, 15));
+        assert_eq!(EIGHT.lengths(40), (16, 23));
         // The longest name the editor writes: 104 bytes, still within the steps of 8 (up to 136).
-        assert_eq!(MAC.size(LONGEST_NAME), 104);
-        for blocks in [WINDOWS, MAC] {
+        assert_eq!(EIGHT.size(LONGEST_NAME), 104);
+        for blocks in [SIXTEEN, EIGHT] {
             for bytes in 1..=200 {
                 let (min, max) = blocks.lengths(blocks.size(bytes));
                 assert!((min..=max).contains(&bytes), "{bytes}");
@@ -298,6 +298,20 @@ mod tests {
     }
 
     #[test]
+    fn steps_of_8_stay_inside_blocks_of_16() {
+        // What steps of 8 let a name take in place lies within the block of steps of 16 too, and keeps its size there:
+        // so 8 is safe where the game's steps are 16.
+        for old in 1..=LONGEST_NAME {
+            assert!(EIGHT.size(old) <= SIXTEEN.size(old), "{old}");
+            for new in 1..=LONGEST_NAME {
+                if EIGHT.size(new) == EIGHT.size(old) {
+                    assert_eq!(SIXTEEN.size(new), SIXTEEN.size(old), "{old} {new}");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn only_a_name_held_once_or_of_the_editors_own_changes_in_place() {
         let block = |name: &str, holders, own| NameBlock {
             string: 0,
@@ -305,7 +319,7 @@ mod tests {
             name: name.to_owned(),
             holders,
             own,
-            blocks: WINDOWS,
+            blocks: SIXTEEN,
             tail: Vec::new(),
             size_word: 0,
         };
@@ -318,7 +332,7 @@ mod tests {
         assert!(!block("Maracanã", 4, false).takes_in_place(9));
         assert!(block("FML Ground", FOREVER, true).takes_in_place(12));
         // On the Mac the Emirates Stadium takes 16 to 23 bytes in place, not 31: a block of 40 holds no more.
-        let emirates = NameBlock { blocks: MAC, ..block("Emirates Stadium", 1, false) };
+        let emirates = NameBlock { blocks: EIGHT, ..block("Emirates Stadium", 1, false) };
         assert!(emirates.takes_in_place(23));
         assert!(!emirates.takes_in_place(24));
         assert!(!emirates.takes_in_place(15));
