@@ -41,7 +41,7 @@ use crate::coded::Coded;
 use crate::date::FmDate;
 use crate::edit::{EditError, Entity, Field, Kind, Target};
 use crate::health::Lock;
-use crate::own_memory::{CAN_ALLOCATE, Growth};
+use crate::own_memory::Growth;
 use crate::players::{PlayerIndex, PlayerSummary};
 use crate::profile::HeapLayout;
 use crate::selection::Leaver;
@@ -680,7 +680,7 @@ impl Session {
 
     /// The player `object` joins `list`, which holds `elements`: in its first free slot where its block has room,
     /// or else in a list grown into memory of the editor's own (see `own_memory.rs`), returned for the plan to take.
-    /// Where the editor takes no memory, a full list is refused.
+    /// Where the editor cannot grow it (see [`Session::growth`]), a full list is refused.
     pub(crate) fn join_squad(
         &self,
         list: &PointerList,
@@ -692,11 +692,9 @@ impl Session {
             self.append_patches(list, object, patches)?;
             return Ok(None);
         }
-        if !CAN_ALLOCATE {
-            return Err(MoveError::NoRoom { players: list.len() });
-        }
         let bytes = elements.iter().chain([&object]).flat_map(|element| element.to_le_bytes()).collect();
-        Ok(Some(Growth::new(list.header(), list.words(), bytes, 8)))
+        let growth = self.growth(list.header(), list.words(), bytes, 8);
+        growth.map(Some).ok_or(MoveError::NoRoom { players: list.len() })
     }
 
     /// Works out moving `player` to the senior team of `club` under the contract `terms`, and

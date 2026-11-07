@@ -233,9 +233,9 @@ export interface Stadium {
 
 /**
  * A stadium's name as `stadium_name` reads it, with the names it can take: `minBytes` to `maxBytes` bytes of UTF-8.
- * On Windows any name up to 80 bytes, written over the old one when it fits its block or given a string of its own;
- * where the editor cannot take memory in the game (macOS), only one that keeps the size of the old one's block, and
- * only for a name the stadium alone holds (`holders` 1).
+ * Any name up to 80 bytes, written over the old one when it fits its block or given a string of its own; where the
+ * editor could not take memory in the game, only one that keeps the size of the old one's block, and only for a name
+ * the stadium alone holds (`holders` 1).
  */
 export interface StadiumName {
   name: string;
@@ -512,7 +512,7 @@ export interface PlayerDetails extends PlayerSummary {
   ties: Tie[];
   /** How many more ties his list has room for: the game sizes it to what it holds, and the editor allocates nothing. */
   tieRoom: number;
-  /** Whether a tie can be added though his list has no room: the editor grows it (Windows). */
+  /** Whether a tie can be added though his list has no room: the editor grows it. */
   tiesGrow: boolean;
   /** Whether the editor can read the retirements the game has planned in this version of the game. */
   retirementKnown: boolean;

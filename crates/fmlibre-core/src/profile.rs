@@ -686,6 +686,14 @@ pub struct HeapLayout {
     /// Block sizes in bytes, ascending. A buffer of more than the first size and up to the last one sits in
     /// the smallest block at least as large as it; outside that span the block size is not known.
     pub block_sizes: Vec<u64>,
+    /// The steps, in bytes, in which the game's allocator sizes the blocks of its strings (a header of 8 bytes, a
+    /// count of holders, the length, the text and a NUL), for the names the editor writes (see `stadium_name.rs`).
+    /// 16 when not given.
+    pub string_step: Option<u64>,
+    /// The largest block the game's own allocator hands out: it gets larger ones from the system's allocator, and
+    /// gives them back to it, so the editor grows no list into memory of its own past it (see `own_memory.rs`). Not
+    /// given where it is not known.
+    pub largest_block: Option<u64>,
 }
 
 impl HeapLayout {
@@ -954,8 +962,10 @@ mod tests {
             (r.planned, r.by_person, r.person, r.date, r.player_person - l.player.identity())
         };
         assert_eq!(retirement(&mac), retirement(&windows));
-        // The game's own allocator, with the same size classes on both systems.
-        assert_eq!(mac.heap.block_sizes, windows.heap.block_sizes);
+        // The game's own allocator, with the same size classes on both systems; the Mac's go on to 4,096 bytes, read
+        // from the allocator itself.
+        assert!(mac.heap.block_sizes.starts_with(&windows.heap.block_sizes));
+        assert_eq!(mac.heap.block_sizes.last(), mac.heap.largest_block.as_ref());
     }
 
     #[test]

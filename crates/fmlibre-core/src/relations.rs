@@ -270,12 +270,10 @@ impl Session {
         let list = self.relation_list(player)?.ok_or(MoveError::RelationsFull)?;
         let after = self.new_tie(player, list.entries.len(), tie, target, rule)?;
         if self.room(&list)? == 0 {
-            if !CAN_ALLOCATE {
-                return Err(MoveError::RelationsFull);
-            }
             let mut entries = list.entries.concat();
             entries.extend(self.entry_of(&after));
-            let grow = Growth::new(list.header, [list.begin, list.end, list.capacity], entries, size);
+            let was = [list.begin, list.end, list.capacity];
+            let grow = self.growth(list.header, was, entries, size).ok_or(MoveError::RelationsFull)?;
             return Ok(RelationPlan {
                 player: player.uid,
                 after: Some(after),
