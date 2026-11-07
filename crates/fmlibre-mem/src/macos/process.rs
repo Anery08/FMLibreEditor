@@ -10,10 +10,12 @@ use mach2::mach_port::{mach_port_deallocate, mach_port_mod_refs};
 use mach2::port::{MACH_PORT_RIGHT_SEND, mach_port_t};
 use mach2::traps::{mach_task_self, task_for_pid};
 use mach2::vm::{mach_vm_allocate, mach_vm_read_overwrite, mach_vm_write};
+use mach2::vm_prot::{VM_PROT_EXECUTE, VM_PROT_WRITE};
 use mach2::vm_statistics::VM_FLAGS_ANYWHERE;
 use mach2::vm_types::{mach_vm_address_t, mach_vm_size_t};
 
 use super::bridge::request_task;
+use super::macho::MachImage;
 use super::module::list_modules;
 use super::region::region_at;
 use crate::error::{Error, Result};
@@ -209,6 +211,30 @@ impl Process {
         Ok(at)
     }
 
+    /// Writes `data` at `addr` among a module's statics, as one of the game's pools of objects keeps its first free
+    /// slot and its counts: the whole range must lie in one region the process can write and not run, within a segment
+    /// of a module's image mapped writable and not executable, other than one dyld makes read-only once it has bound it
+    /// (`__DATA_CONST`, `__AUTH_CONST`). Its code, what it only reads, and the heap are refused before the kernel is
+    /// asked, as for [`Process::write_bytes`]. The editor writes very few statics, each as the game would.
+    pub fn write_static(&self, addr: u64, data: &[u8]) -> Result<()> {
+        if !self.writable {
+            return Err(Error::ReadOnly);
+        }
+        if data.is_empty() {
+            return Ok(());
+        }
+        let len = data.len();
+        let end = addr.checked_add(len as u64).ok_or(Error::NotWritable { addr, len })?;
+        match region_at(self, addr) {
+            Some(region) if region.is_writable() && !region.is_executable() && end <= region.end() => {}
+            _ => return Err(Error::NotWritable { addr, len }),
+        }
+        if !self.in_module_data(addr..end)? {
+            return Err(Error::NotWritable { addr, len });
+        }
+        self.write_now(addr, data)
+    }
+
     fn write_checked(&self, addr: u64, data: &[u8]) -> Result<()> {
         if data.is_empty() {
             return Ok(());
@@ -224,6 +250,12 @@ impl Process {
         if self.in_a_module(addr..end)? {
             return Err(Error::NotWritable { addr, len });
         }
+        self.write_now(addr, data)
+    }
+
+    /// Writes `data` at `addr`, once the caller has checked the place.
+    fn write_now(&self, addr: u64, data: &[u8]) -> Result<()> {
+        let len = data.len();
         let count = u32::try_from(len).map_err(|_| Error::NotWritable { addr, len })?;
         let code = unsafe { mach_vm_write(self.task, addr, data.as_ptr() as usize, count) };
         if code != KERN_SUCCESS {
@@ -234,6 +266,25 @@ impl Process {
 }
 
 impl Process {
+    /// Whether `range` lies in one segment of a module's image that holds data the module writes: mapped writable and
+    /// not executable, and not one dyld makes read-only once it has bound it.
+    fn in_module_data(&self, range: Range<u64>) -> Result<bool> {
+        let Some(module) =
+            list_modules(self)?.into_iter().find(|module| (module.base..module.end()).contains(&range.start))
+        else {
+            return Ok(false);
+        };
+        let image = MachImage::read(self, module.base)?;
+        let (start, end) = (range.start - module.base, range.end - module.base);
+        Ok(image.segments.iter().any(|segment| {
+            segment.protection & VM_PROT_WRITE != 0
+                && segment.protection & VM_PROT_EXECUTE == 0
+                && !segment.name.ends_with("_CONST")
+                && segment.rva <= start
+                && end <= segment.rva + segment.size
+        }))
+    }
+
     /// Whether `range` overlaps a module (the executable, a library or a bundle).
     fn in_a_module(&self, range: Range<u64>) -> Result<bool> {
         let mut modules = self.modules.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -297,6 +348,27 @@ mod tests {
         let read_only = Process::open_read(std::process::id()).expect("open this process");
         assert!(matches!(read_only.write_bytes(addr, &[1]), Err(Error::ReadOnly)));
         drop(heap);
+    }
+
+    #[test]
+    fn writes_statics_only_where_a_module_keeps_its_data() {
+        let process = Process::open_read_write(std::process::id()).expect("open this process");
+        // A static the module writes: written as asked.
+        let data = WRITABLE_IN_THE_IMAGE.as_ptr() as u64;
+        process.write_static(data, &7u64.to_le_bytes()).expect("write the static");
+        assert_eq!(WRITABLE_IN_THE_IMAGE.load(std::sync::atomic::Ordering::SeqCst), 7);
+        WRITABLE_IN_THE_IMAGE.store(0, std::sync::atomic::Ordering::SeqCst);
+
+        // What it only reads, its code, and the heap are not.
+        let image = IN_THE_IMAGE.as_ptr() as u64;
+        assert!(matches!(process.write_static(image, &[1]), Err(Error::NotWritable { .. })));
+        let code = writes_statics_only_where_a_module_keeps_its_data as *const () as u64;
+        assert!(matches!(process.write_static(code, &[0xCC]), Err(Error::NotWritable { .. })));
+        let heap = vec![0u8; 64].into_boxed_slice();
+        assert!(matches!(process.write_static(heap.as_ptr() as u64, &[1]), Err(Error::NotWritable { .. })));
+
+        let read_only = Process::open_read(std::process::id()).expect("open this process");
+        assert!(matches!(read_only.write_static(data, &[1]), Err(Error::ReadOnly)));
     }
 
     #[test]

@@ -734,6 +734,10 @@ enum Command {
         /// How many bytes of each object --holds looks at, and `instances` prints.
         #[arg(long, default_value = "0x80")]
         span: String,
+        /// Instead of the objects, what each 8-byte place of them holds across all of them: how many are zero, how many
+        /// a pointer into the heap, into a module, or something else, and the commonest values.
+        #[arg(long)]
+        fields: bool,
     },
     /// List the extras of contracts: with a UID, one player's clauses and bonuses; without, how many contracts hold
     /// each kind of entry, its amounts and a few players who have one.
@@ -793,6 +797,16 @@ enum Command {
         /// How many bytes of the object to look through.
         #[arg(long, default_value = "0x800")]
         len: String,
+    },
+    /// List the game's pools of objects (see object_pool.rs): where each keeps its chunks, the size of its slots, how
+    /// many are free and used, and the class of the objects in it. Only reads memory
+    Pools {
+        /// Only the pool whose chunks hold this address, e.g. a contract's, and which of its slots does.
+        #[arg(long)]
+        holding: Option<String>,
+        /// Follow each pool's chain of free slots and check it against the pool's count.
+        #[arg(long)]
+        walk: bool,
     },
 }
 
@@ -1156,10 +1170,18 @@ fn run(cli: Cli) -> Result<()> {
             let modules = list_modules(&process).context("listing modules")?;
             types(&process, &modules, &text, max)
         }
-        Command::Instances { class, max, holds, span } => {
+        Command::Instances { class, max, holds, span, fields } => {
             let modules = list_modules(&process).context("listing modules")?;
             let holds = holds.map(|bytes| parse_bytes(&bytes)).transpose()?;
-            instances(&process, &modules, &class, max, holds.as_deref(), parse_hex(&span)?)
+            instances(
+                &process,
+                &modules,
+                &class,
+                if fields { usize::MAX } else { max },
+                holds.as_deref(),
+                parse_hex(&span)?,
+                fields,
+            )
         }
         Command::Clauses { uid } => clauses(&connect(process, ArraySource::ProfileFirst)?, uid),
         Command::ClauseSet { uid, index, amount, condition, restore } => {
@@ -1206,7 +1228,83 @@ fn run(cli: Cli) -> Result<()> {
             let session = connect(process, ArraySource::ProfileFirst)?;
             lists(&session, &modules, resolve(&addr, &modules)?, parse_hex(&len)?)
         }
+        Command::Pools { holding, walk } => {
+            let modules = list_modules(&process).context("listing modules")?;
+            let holding = holding.map(|addr| resolve(&addr, &modules)).transpose()?;
+            pools(&connect(process, ArraySource::ProfileFirst)?, holding, walk)
+        }
     }
+}
+
+/// Prints the game's pools of objects; with `holding`, only the one whose chunks hold that address. With `walk`, each
+/// one's chain of free slots is followed and counted.
+fn pools(session: &Session, holding: Option<u64>, walk: bool) -> Result<()> {
+    let started = Instant::now();
+    let pools = session.object_pools();
+    let plugin = &session.plugin;
+    println!(
+        "{} pool(s) in the plugin's writable data, found in {:.2} s",
+        pools.len(),
+        started.elapsed().as_secs_f64()
+    );
+    for pool in &pools {
+        let size = u64::from(pool.slot_size);
+        let chunk_of = |address: u64| {
+            pool.chunks
+                .iter()
+                .enumerate()
+                .find(|&(index, &chunk)| address >= chunk && address - chunk < pool.slots_of(index) * size)
+        };
+        if let Some(address) = holding {
+            let Some((index, &chunk)) = chunk_of(address) else {
+                continue;
+            };
+            let slot = (address - chunk) / size;
+            println!(
+                "{address:#x} is in chunk {index} ({chunk:#x}), slot {slot}, {} bytes into it",
+                (address - chunk) % size
+            );
+        }
+        // The class of its objects: that of the first slot of its first chunk that holds one.
+        let first = pool.chunks[0];
+        let class = (0..pool.slots_of(0).min(16))
+            .map(|slot| first + slot * size)
+            .find(|&slot| session.process.read_u64(slot).is_ok_and(|word| plugin.contains(word)))
+            .and_then(|slot| fmlibre_core::rtti::class_of(&session.process, plugin, slot))
+            .unwrap_or_else(|| "-".to_owned());
+        println!(
+            "  {:#x} (+{:#x})  {:>6} bytes  {:>3} chunk(s) {:>7} slots: {:>7} free {:>7} used  {class}",
+            pool.at,
+            pool.at - plugin.base,
+            pool.slot_size,
+            pool.chunks.len(),
+            pool.slots(),
+            pool.free,
+            pool.used,
+        );
+        if walk {
+            let (mut at, mut steps, mut seen) = (pool.first_free, 0u64, std::collections::HashSet::new());
+            let broke = loop {
+                if at == 0 {
+                    break None;
+                }
+                if !pool.is_slot(at) || !seen.insert(at) || steps > u64::from(pool.free) {
+                    break Some(at);
+                }
+                steps += 1;
+                at = match session.process.read_u64(at) {
+                    Ok(next) => next,
+                    Err(_) => break Some(at),
+                };
+            };
+            match broke {
+                None if steps == u64::from(pool.free) => println!("      chain of {steps} free slots, as counted"),
+                None => println!("      chain of {steps} free slots, but {} counted", pool.free),
+                Some(at) => println!("      chain breaks after {steps} free slots, at {at:#x}"),
+            }
+        }
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -2294,6 +2392,7 @@ fn instances(
     max: usize,
     holds: Option<&[u8]>,
     span: u64,
+    fields: bool,
 ) -> Result<()> {
     let plugin = find_module(modules, GAME_PLUGIN).with_context(|| format!("{GAME_PLUGIN} is not loaded"))?;
     let vtables = class_vtables(process, plugin, class)?;
@@ -2316,6 +2415,43 @@ fn instances(
         started.elapsed().as_secs_f64(),
         if holds.is_some() { format!(", {} holding the bytes", objects.len()) } else { String::new() }
     );
+    if fields {
+        use std::collections::HashMap;
+        let in_module = |word: u64| modules.iter().any(|m| (m.base..m.end()).contains(&word));
+        // At each place: zero, heap pointer, module pointer, other; and the values seen there.
+        let places = (span / 8) as usize;
+        let mut counts = vec![[0usize; 4]; places];
+        let mut values: Vec<HashMap<u64, usize>> = vec![HashMap::new(); places];
+        let mut read = 0;
+        for &at in &objects {
+            let Ok(bytes) = process.read_bytes(at, span as usize) else { continue };
+            read += 1;
+            for (i, word) in bytes.as_chunks::<8>().0.iter().map(|w| u64::from_le_bytes(*w)).enumerate() {
+                let kind = if word == 0 {
+                    0
+                } else if in_module(word) {
+                    2
+                } else if is_user_pointer(word) {
+                    1
+                } else {
+                    3
+                };
+                counts[i][kind] += 1;
+                *values[i].entry(word).or_default() += 1;
+            }
+        }
+        println!(
+            "{read} objects read; at each 8-byte place: zero / heap pointer / module pointer / other, commonest values"
+        );
+        for i in 0..places {
+            let mut top: Vec<_> = values[i].iter().collect();
+            top.sort_by_key(|entry| std::cmp::Reverse(*entry.1));
+            let top: Vec<String> = top.iter().take(3).map(|(v, n)| format!("{v:#x}x{n}")).collect();
+            let [zero, heap, module, other] = counts[i];
+            println!("  +{:#05x}  {zero:>6} {heap:>6} {module:>6} {other:>6}   {}", i * 8, top.join(" "));
+        }
+        return Ok(());
+    }
     for &at in objects.iter().take(max) {
         let Ok(bytes) = process.read_bytes(at, span as usize) else { continue };
         let words: Vec<String> =
@@ -3449,13 +3585,21 @@ fn move_player(
         Some(leaver) => session.plan_club_move_releasing(player, to, terms, leaver, &human)?,
         None => session.plan_club_move(player, to, terms, &human)?,
     };
-    let from_club = clubs.get(plan.from_club).context("his club is not in the list")?;
-    let from = from_club.name.as_str();
-    println!("{} (UID {uid}): {from} -> {}, {} writes", player.name, to.name, plan.writes());
+    // A free agent has no club, and is signed under a contract the editor makes.
+    let from_club = match plan.from_club {
+        0 => None,
+        uid => Some(clubs.get(uid).context("his club is not in the list")?),
+    };
+    let from = from_club.map_or("no club (a free agent)", |club| club.name.as_str());
+    let grown = if plan.grows() > 0 { format!(", {} squad list(s) grown", plan.grows()) } else { String::new() };
+    println!("{} (UID {uid}): {from} -> {}, {} writes{grown}", player.name, to.name, plan.writes());
     if let Some(leaver) = leaver {
         println!("  making room: {} (UID {}) is released by {}", leaver.name, leaver.uid, to.name);
     }
-    let fee_plan = fee.filter(|&fee| fee > 0).map(|fee| session.plan_fee(to, from_club, fee)).transpose()?;
+    let fee_plan = match from_club {
+        Some(from_club) => fee.filter(|&fee| fee > 0).map(|fee| session.plan_fee(to, from_club, fee)).transpose()?,
+        None => None,
+    };
     if let Some(fee_plan) = fee_plan {
         let money = |money: Option<fmlibre_core::ClubMoney>, name: &str| match money {
             Some(money) => {
@@ -3475,22 +3619,32 @@ fn move_player(
     if plan.leaves_a_human_club() {
         println!("  out of {} of the human club's selections", done.selections());
     }
-    let paid = match fee_plan {
-        Some(fee_plan) => match session.pay_fee(&fee_plan, to, from_club) {
+    let paid = match (fee_plan, from_club) {
+        (Some(fee_plan), Some(from_club)) => match session.pay_fee(&fee_plan, to, from_club) {
             Ok(paid) => paid,
             Err(err) => {
                 session.undo_club_move(&done)?;
                 return Err(err.into());
             }
         },
-        None => Vec::new(),
+        _ => Vec::new(),
     };
-    // Read him again as the lists would, from the team he now plays for, and the player released to make room.
+    // Read him again as the lists would, from the team he now plays for, with his contract, and the player released
+    // to make room.
+    let contract_fields = ["contract.wage", "contract.expires", "contract.squad_number", "contract.squad_status"];
+    let fields: Vec<_> =
+        contract_fields.iter().map(|key| session.field(Entity::Player, key)).collect::<Result<_, _>>()?;
     let clubs_now = |label: &str| -> Result<(Option<u32>, Option<u32>)> {
         let now = session.players()?;
         let find = |uid: u32| now.iter().find(|p| p.uid == uid).context("the player is gone");
         let moved = find(uid)?;
-        println!("  {label} {}", moved.club.as_deref().unwrap_or("-"));
+        let values = session.read_fields(&moved.target(), &fields)?;
+        let contract: Vec<String> = contract_fields
+            .iter()
+            .zip(values)
+            .map(|(key, value)| format!("{key} {}", value.map_or("-".to_owned(), |v| v.to_string())))
+            .collect();
+        println!("  {label} {}; {}", moved.club.as_deref().unwrap_or("no club"), contract.join(", "));
         let released = match leaver {
             Some(leaver) => {
                 let released = find(leaver.uid)?;
@@ -3512,7 +3666,7 @@ fn move_player(
         session.refund_fee(&paid)?;
         session.undo_club_move(&done)?;
         let (moved, released) = clubs_now("moved back to")?;
-        ensure!(moved == Some(plan.from_club), "the player is not back at {from}");
+        ensure!(moved == from_club.map(|club| club.uid), "the player is not back at {from}");
         ensure!(leaver.is_none() || released == Some(club), "the player released is not back at {}", to.name);
         if !paid.is_empty() {
             println!("  fee taken back");

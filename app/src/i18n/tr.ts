@@ -114,7 +114,7 @@ const errors: ErrorTexts = {
   "edit.conflict": (p) => `${field(p.field)} şu an ${p.found}, ${p.expected} değil: oyun o zamandan beri değiştirmiş.`,
   "move.moved": () => `Oyuncu oyunun belleğinde yer değiştirmiş; ${reload}.`,
   "move.notAClub": () => "Bu kulübün oyuncunun katılabileceği bir A takımı yok.",
-  "move.freeAgent": () => "Oyuncunun kulübü yok; serbest oyuncular henüz taşınamıyor.",
+  "move.freeAgent": () => "Oyuncu serbest: ayrılacağı ya da takas edileceği bir kulübü yok.",
   "move.sameClub": () => "Oyuncu zaten bu kulüpte.",
   "move.onLoan": () =>
     "Oyuncu kiralık: önce profilindeki Kiralık bölümünden geri çağırın ya da kiralığı kalıcı yapın.",
@@ -127,7 +127,14 @@ const errors: ErrorTexts = {
   "move.menAndWomen": () => "Kulüplerden biri erkek, diğeri kadın kulübü.",
   "move.notListed": () => "Kadro listeleri oyuncuyu olması gereken yerde tutmuyor.",
   "move.noRoom": (p) =>
-    `Kulübün kadro listesinde bir oyuncuya daha yer yok (şu an ${p.players} oyuncu) ve düzenleyici listeyi büyütemez.`,
+    `Kulübün kadro listesinde bir oyuncuya daha yer yok (şu an ${p.players} oyuncu) ve düzenleyici bu sistemde listeyi büyütemez.`,
+  "sign.noPool": () =>
+    "Düzenleyici, oyunun bu sürümünde sözleşmeleri nerede tuttuğunu bulamıyor; bu yüzden serbest oyuncuya sözleşme veremiyor.",
+  "sign.poolFull": () =>
+    "Oyunun başka bir sözleşmeye yeri yok; yer, oyun günler geçtikçe kendi sözleşmelerini yaptıkça açılır. Oyunda bir gün ilerleyip tekrar deneyin.",
+  "sign.noModel": () =>
+    "Kulübün A takımında yeni sözleşmeye örnek alınacak, olağan sözleşmeli bir oyuncu yok.",
+  "sign.noDate": () => "Düzenleyici oyun içi tarihi okuyamıyor; yeni sözleşme o tarihte başlar.",
   "move.outOfRange": (p) => `${field(p.field)} için ${p.value} geçersiz: ${p.min} ile ${p.max} arasında olmalı.`,
   "move.changed": () => `Oyun bu belleği o zamandan beri değiştirmiş; ${reload}.`,
   "move.notApplied": () => "Belleğe yazıldı ama geri okunan farklı çıktı.",
@@ -1494,8 +1501,8 @@ export const tr: Strings = {
     noRoom: (club) => `${club} kadrosunda boş yer yok.`,
     noRoomInfoLabel: "Neden?",
     noRoomInfo:
-      "Editör, kadro listesini oyunu riske atmadan büyütemiyor. Yer açmak şimdilik geçici ama güvenli bir çözüm; " +
-      "listeyi büyütmenin bir yolu üzerinde çalışılıyor.",
+      "Editör dolu kadro listesini yapabildiği yerde büyütür, ama bu listeyi büyütemez: yer açmak için bir " +
+      "oyuncunun ayrılması gerekir.",
     noRoomNeed: (player) => `${player} transferi için kadrodan bir oyuncunun ayrılması gerekiyor.`,
     releaseChoice: "Serbest bırak:",
     releasePickLabel: "Serbest bırakılacak oyuncu",
@@ -1553,6 +1560,30 @@ export const tr: Strings = {
       "Bedel ödenmez; kariyer geçmişi güncellenmez",
       "Değişiklikler bölümünde tek değişiklik olarak listelenir; geri alınırsa ikisi de eski kulübüne döner",
     ],
+
+    // Signing a free agent
+    signButtonTitle: "Bu serbest oyuncuyu oyunda bir kulüple sözleşme imzalat",
+    signTitle: "Serbest oyuncuyla sözleşme",
+    signChooseClub: "Oyuncunun imza atacağı kulübü seçin.",
+    signChecking: "İmza kontrol ediliyor…",
+    signTerms:
+      "Boş bırakırsanız maaş, kulüpte yeteneği ona en yakın oyuncunun maaşı olur; sözleşme gelecek sezonun sonuna " +
+      "kadar sürer.",
+    signRoute: (to) => `Serbest oyuncu → ${to}`,
+    signContract: (wage, expires, status) => `Yeni sözleşme: haftalık ${wage}, ${expires} tarihine kadar, ${status}`,
+    signDoesHeading: "İmza ne yapar",
+    signDoes: [
+      "Kulübün A takımına katılır; kadro listesi doluysa büyütülür",
+      "Oyundaki tarihle başlayan yeni bir sözleşme, oyunun kendi boş sözleşme yuvalarından birinde, oyunun yaptığı gibi",
+      "Sözleşme, kulüpte yeteneği ona en yakın oyuncununkini örnek alır: aynı sözleşme türü ve aynı forma süresi",
+      "Sizin girdiğiniz maaş ve bitiş tarihi; boşsa o oyuncunun maaşı ve gelecek sezonun sonu",
+      "Forma numarası, sadakat primi, madde ve prim yok",
+      "Oyunun transfer geçmişinde henüz görünmez",
+      "Değişiklikler bölümünde listelenir; tek geri alma hepsini geri alır",
+    ],
+    signHint: "Siz imzalatmadan oyunda hiçbir şey değişmez.",
+    sign: "İmzalat",
+    signing: "İmzalatılıyor…",
 
     // The foot
     hint: "Siz transfer etmeden oyunda hiçbir şey değişmez.",

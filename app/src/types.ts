@@ -695,7 +695,8 @@ export interface LoggedChange {
    * its new value.
    */
   moved?: {
-    from: string;
+    /** Absent for a free agent signed, who had no club. */
+    from?: string;
     /** Absent for a release, after which the player has no club. */
     to?: string;
     /** For a swap of two players, logged as one change, the player who went the other way. */
@@ -837,11 +838,30 @@ export interface RoomMaker extends PlayerSummary {
 }
 
 /** From `plan_club_move`: the move can be made, between these clubs. */
+/** A club by its UID and name, as a plan names it. */
+export interface ClubName {
+  uid: number;
+  name: string;
+}
+
 export interface MovePreview {
-  from: { uid: number; name: string };
-  to: { uid: number; name: string };
+  /** Absent for a free agent, who has no club. */
+  from?: ClubName;
+  to: ClubName;
   /** What the fee does to the two clubs' money, when one is to be paid. */
   fee?: FeePlan;
+  /** For a free agent, the contract the editor makes for him. */
+  contract?: NewContract;
+}
+
+/** The contract the editor makes for a free agent it signs, as the plan has it. */
+export interface NewContract {
+  /** Pounds per week. */
+  wage: number;
+  /** The end date, as a number like 20290630. */
+  expires: number;
+  /** The squad status's code. */
+  squadStatus: number;
 }
 
 /** An amount of money before and after a fee is paid, in pounds. */

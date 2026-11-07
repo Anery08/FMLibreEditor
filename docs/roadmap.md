@@ -136,14 +136,15 @@ before trusting them.
 ## Phase 6: Game Pass completeness (in progress)
 
 - [x] Move a player to another club's senior team, on his contract or new terms,
-  with undo. Nothing is allocated in the game, so the new club's squad list must
-  have room in its block. Loans and free agents are refused. A player at a human manager's
+  with undo. At first nothing was allocated in the game, so the new club's squad list had
+  to have room in its block; since free agents are signed (Phase 7, Wave 2), a full list is
+  grown. Loans are refused. A player at a human manager's
   club also leaves its team selections (see Transfers in Phase 7).
 - [x] Make room in a full squad list: the dialog offers to release one of the club's
   players in the same transfer (the weakest who is neither injured nor a captain, by
   default), who leaves his place in the list to the player who joins; or to make it a
-  swap with him. One change, one undo. Growing the list the way the game does is left
-  for later.
+  swap with him. One change, one undo. The list is grown instead now; this stays for a
+  list the editor cannot grow.
 - [x] The rough edges of what shipped:
   - opening a mass edit asks about unapplied profile edits;
   - the Changes view pages and folds mass edits;
@@ -274,6 +275,14 @@ changes many at once, and undo.
   - [x] Release a player on a free: he leaves his club's lists, and his team and contract pointers are
     cleared, as the game's own free agents have them. A captaincy he held is left empty; so is one a player
     gives up by moving. Checked on the Mac Steam build and both Windows builds, restored.
+  - [x] Sign a free agent: the Transfer dialog, without fee or swap, signs him for a club's senior team
+    under a contract the editor makes. The game keeps its contracts in a pool of 200-byte slots, a static of the game
+    plugin (one of 279 pools in its data, each chaining its free slots): the editor takes the first free slot as the
+    game does, writing the pool's first free slot and counts (the only statics of the game it writes), and fills it
+    with a copy of the contract of the club's player nearest his ability (the same kind of contract and squad status,
+    a goalkeeper's for a goalkeeper), on the wage and end date given, or that player's wage and the end of next
+    season, with no squad number, clauses or bonuses. A full squad list is grown, as the lists of ties are, and so is
+    one a transfer or a swap joins. See the [pool notes](recon/fm27-object-pools.md); the probe's `pools` and `move`.
   - [x] Contract bonuses and release clauses: read, edited and removed, and a release clause added where the list
     has room (see the contract extras below).
   - [x] Suspensions: lift a player's bans, or all of a squad's. A player's bans are listed in the record his

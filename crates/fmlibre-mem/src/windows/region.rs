@@ -42,6 +42,12 @@ impl Region {
         self.is_private() && self.is_writable() && !self.is_executable()
     }
 
+    /// Whether the editor may write one of a module's statics here: committed memory of a module's image that the
+    /// process writes and does not run, its data and not its code.
+    pub fn holds_statics(&self) -> bool {
+        self.is_image() && self.is_committed() && self.is_writable() && !self.is_executable()
+    }
+
     pub fn is_readable(&self) -> bool {
         self.is_committed() && self.protect != 0 && self.protect & (PAGE_NOACCESS | PAGE_GUARD) == 0
     }

@@ -1673,8 +1673,8 @@ export const en = {
     /** The name of the (i) button after the first line, for assistive technology, and the note it shows. */
     noRoomInfoLabel: "Why?",
     noRoomInfo:
-      "The editor cannot grow a squad list without putting the game at risk. Making room is a temporary but safe " +
-      "solution for now; a way to grow the list is being worked on.",
+      "The editor makes a full squad list bigger where it can, but it cannot make this one bigger: a player has to " +
+      "leave to make room.",
     /** The second line, which also names the choices under it; `player` is the player transferred. */
     noRoomNeed: (player: string, club: string) => `For ${player} to join, a player has to leave ${club}.`,
     /** The first choice: a player of the club picked from a list, who becomes a free agent. */
@@ -1747,6 +1747,34 @@ export const en = {
       "No fees are paid; career history is not updated",
       "Listed under Changes as one change, which undoes both moves",
     ],
+
+    // Signing a free agent, who has no club: the same dialog with no fee and no swap, and a contract the editor makes.
+    signButtonTitle: "Sign this free agent for a club in the game",
+    signTitle: "Sign a free agent",
+    signChooseClub: "Choose the club to sign the player for.",
+    signChecking: "Checking the signing…",
+    /** Under the contract's inputs. */
+    signTerms:
+      "Leave them empty for the wage of the club's player nearest his ability, and a contract to the end of next " +
+      "season.",
+    /** The signing can be made: `to` is the club. */
+    signRoute: (to: string) => `Free agent → ${to}`,
+    /** The contract the editor makes: `wage` and `expires` written out, `status` the squad status's name. */
+    signContract: (wage: string, expires: string, status: string) =>
+      `New contract: ${wage} a week until ${expires}, ${status}`,
+    signDoesHeading: "What the signing does",
+    signDoes: [
+      "Joins the senior team of the club; a full squad list is made bigger",
+      "A new contract from the game's date, in one of the game's own free contract slots, as the game makes one",
+      "Modelled on the contract of the club's player nearest his ability: the same kind of contract and squad status",
+      "Your wage and contract end, or that player's wage and the end of next season",
+      "No squad number, loyalty bonus, clauses or bonuses",
+      "The game's transfer history does not list it yet",
+      "Listed under Changes, where one undo takes it all back",
+    ],
+    signHint: "Nothing changes in the game until you press Sign.",
+    sign: "Sign",
+    signing: "Signing…",
 
     // The foot
     /** Nothing changes in the game until Transfer, or Swap. */

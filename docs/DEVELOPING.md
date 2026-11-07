@@ -20,17 +20,25 @@ For installing and using the app, see [INSTALL.md](INSTALL.md).
 FM27's interface is Unity (IL2CPP), but the game itself, its database and
 simulation, lives in a native, anti-tamper protected module: `game_plugin.dll`.
 FMLibreEditor runs as a separate process and reads that module's heap data with
-`ReadProcessMemory`. To edit, it writes values back with `WriteProcessMemory`, and
-only into the game's heap. It never patches the game's code. It takes memory in the
-game (`VirtualAllocEx` on Windows, `mach_vm_allocate` on the game's task port on macOS,
-see `own_memory.rs`) for two things: a stadium's name that does not fit the block of the
-old one, a string laid out as the game's with a count of holders the game never brings
-down to nothing, so the game never hands it to its allocator (see `stadium_name.rs`); and
-a list with no room for one more, a player's relations for a tie added (see
-`relations.rs`) or a club's department for a member of staff (see `staff_move.rs`), whose
-elements it moves there (see `own_memory.rs`). It never gives that memory back. On Windows
-it puts no code of its own in the game; on macOS the game loads one small library of ours,
-the bridge (see [On macOS](#on-macos)).
+`ReadProcessMemory`. To edit, it writes values back with `WriteProcessMemory`, into the
+game's heap, and into the plugin's own data at one place only: the pool of contracts
+(below). It never patches the game's code. It takes memory in the game (`VirtualAllocEx`
+on Windows, `mach_vm_allocate` on the game's task port on macOS, see `own_memory.rs`) for
+two things: a stadium's name that does not fit the block of the old one, a string laid out
+as the game's with a count of holders the game never brings down to nothing, so the game
+never hands it to its allocator (see `stadium_name.rs`); and a list with no room for one
+more, a player's relations for a tie added (see `relations.rs`), a club's department for
+a member of staff (see `staff_move.rs`) or a squad for a player who joins it (see
+`transfer.rs`), whose elements it moves there (see `own_memory.rs`). It never gives that
+memory back.
+
+A contract for a free agent it signs is the game's own: the game keeps its contracts in a
+pool, a static of the plugin that hands out 200-byte slots and chains the free ones, and
+the editor takes the first free slot as the game does, writing the pool's first free slot
+and its counts (`object_pool.rs`, `signing.rs`; `Process::write_static` writes only a
+module's writable data, never its code). On Windows it puts no code of its own in the
+game; on macOS the game loads one small library of ours, the bridge (see
+[On macOS](#on-macos)).
 
 Before every write it checks four things:
 - the object still belongs to the same person;

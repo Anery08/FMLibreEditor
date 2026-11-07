@@ -247,7 +247,7 @@ const errors: ErrorTexts = {
     `${field(p.field)} vale ahora ${p.found}, no ${p.expected}: el juego lo ha cambiado desde entonces.`,
   "move.moved": () => `El jugador ha cambiado de sitio en la memoria del juego; ${reload}.`,
   "move.notAClub": () => "Este club no tiene un primer equipo al que pueda unirse el jugador.",
-  "move.freeAgent": () => "El jugador no tiene club; los agentes libres aún no se pueden traspasar.",
+  "move.freeAgent": () => "El jugador es agente libre: no tiene un club que dejar ni con el que intercambiar.",
   "move.sameClub": () => "El jugador ya está en este club.",
   "move.onLoan": () =>
     "El jugador está cedido: repéscalo primero o haz la cesión definitiva, en la parte Cesión de su perfil.",
@@ -261,7 +261,16 @@ const errors: ErrorTexts = {
   "move.notListed": () => "Las listas de la plantilla no tienen al jugador donde deberían.",
   "move.noRoom": (p) =>
     `La lista de la plantilla del club no tiene sitio para otro jugador (ahora ${p.players}) y el editor no puede ` +
-    "ampliarla.",
+    "ampliarla en este sistema.",
+  "sign.noPool": () =>
+    "El editor no encuentra dónde guarda el juego sus contratos en esta versión, así que no puede darle uno a un " +
+    "agente libre.",
+  "sign.poolFull": () =>
+    "El juego no tiene sitio para otro contrato hasta que haga uno él mismo, como hace al pasar los días: avanza un " +
+    "día en el juego y vuelve a intentarlo.",
+  "sign.noModel": () =>
+    "El club no tiene en su primer equipo ningún jugador con un contrato corriente en el que basar el nuevo.",
+  "sign.noDate": () => "El editor no puede leer la fecha del juego, que es cuando empieza el nuevo contrato.",
   "move.outOfRange": (p) => `${p.value} no es un valor válido para ${field(p.field)}: admite de ${p.min} a ${p.max}.`,
   "move.changed": () => `El juego ha cambiado esa memoria desde entonces; ${reload}.`,
   "move.notApplied": () => "Se escribió en la memoria, pero al releerla dio otra cosa.",
@@ -1552,8 +1561,8 @@ export const es: Strings = {
     noRoom: (club) => `${club} no tiene sitio en su plantilla.`,
     noRoomInfoLabel: "¿Por qué?",
     noRoomInfo:
-      "El editor no puede ampliar la lista de la plantilla sin poner el juego en riesgo. Por ahora, hacer sitio es " +
-      "una solución temporal pero segura; se está trabajando en una forma de ampliar la lista.",
+      "El editor amplía una lista de plantilla llena donde puede, pero esta no puede ampliarla: tiene que salir un " +
+      "jugador para hacer sitio.",
     noRoomNeed: (player) => `Para que llegue ${player}, tiene que salir un jugador de la plantilla.`,
     releaseChoice: "Rescindir:",
     releasePickLabel: "Jugador cuyo contrato se rescinde",
@@ -1611,6 +1620,30 @@ export const es: Strings = {
       "No se paga ningún precio; la trayectoria no se actualiza",
       "Aparece en Cambios como un solo cambio, que deshace los dos movimientos",
     ],
+
+    // Fichar a un agente libre
+    signButtonTitle: "Fichar a este agente libre por un club en el juego",
+    signTitle: "Fichar a un agente libre",
+    signChooseClub: "Elige el club por el que fichará el jugador.",
+    signChecking: "Comprobando el fichaje…",
+    signTerms:
+      "Si los dejas vacíos, el salario es el del jugador del club con la habilidad más cercana a la suya, y el " +
+      "contrato dura hasta el final de la próxima temporada.",
+    signRoute: (to) => `Agente libre → ${to}`,
+    signContract: (wage, expires, status) => `Nuevo contrato: ${wage} a la semana hasta el ${expires}, ${status}`,
+    signDoesHeading: "Qué hace el fichaje",
+    signDoes: [
+      "Se une al primer equipo del club; una lista de plantilla llena se amplía",
+      "Un contrato nuevo con fecha del día del juego, en uno de los huecos libres de contrato del propio juego, como los hace el juego",
+      "Basado en el contrato del jugador del club con la habilidad más cercana: el mismo tipo de contrato y estatus",
+      "Tu salario y fin de contrato, o el salario de ese jugador y el final de la próxima temporada",
+      "Sin dorsal, prima de fidelidad, cláusulas ni primas",
+      "El historial de traspasos del juego aún no lo recoge",
+      "Aparece en Cambios, donde deshacerlo lo revierte todo",
+    ],
+    signHint: "Nada cambia en el juego hasta que pulsas Fichar.",
+    sign: "Fichar",
+    signing: "Fichando…",
 
     // El pie
     hint: "Nada cambia en el juego hasta que pulsas Traspasar.",
