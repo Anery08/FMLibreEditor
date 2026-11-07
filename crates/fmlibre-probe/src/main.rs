@@ -384,7 +384,7 @@ enum Command {
         #[command(flatten)]
         restore: RestoreArgs,
     },
-    /// Give a player another tie: where his list has no room, it is grown into memory the editor takes (Windows).
+    /// Give a player another tie: where his list has no room, it is grown into memory the editor takes.
     TieAdd {
         /// The player's UID.
         uid: u32,

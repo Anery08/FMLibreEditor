@@ -512,7 +512,7 @@ export interface PlayerDetails extends PlayerSummary {
   ties: Tie[];
   /** How many more ties his list has room for: the game sizes it to what it holds, and the editor allocates nothing. */
   tieRoom: number;
-  /** Whether a tie can be added though his list has no room: the editor grows it (Windows). */
+  /** Whether a tie can be added though his list has no room: the editor grows it. */
   tiesGrow: boolean;
   /** Whether the editor can read the retirements the game has planned in this version of the game. */
   retirementKnown: boolean;

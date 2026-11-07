@@ -285,7 +285,7 @@ changes many at once, and undo.
     page, and on both Windows builds: see the [nationality notes](recon/fm27-nationality.md).
   - [x] Trained at club: the dialog points a club he was trained at at another one, found by a search, and adds one.
     The game sizes each list to what it holds, so a full list (all of them after a load) is grown into memory the
-    editor takes in the game (Windows), and the undo points it back at its old buffer. The probe's `tie-add`,
+    editor takes in the game, and the undo points it back at its old buffer. The probe's `tie-add`,
     `relation-kinds` (room) and `relation-blocks` (how the allocator places the buffers).
   - [ ] Place of birth: a pointer to a city record (`+0x2C8` on macOS), whose nation the game shows.
   - [ ] Appearance. FM27 keeps a person's looks as dozens of 3D face values for the match engine

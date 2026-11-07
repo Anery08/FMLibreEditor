@@ -280,7 +280,9 @@ reputation = 0xA8         # Tottenham: 7650
 # blocks of the same size classes as on Windows (blocks of 8 bytes too, which malloc never
 # hands out). Measured natively with probe `squads`: 837 of the 853 team lists of 145 to
 # 512 bytes had their class's slack zeroed after their capacity. The other 16 had grown
-# past their length and held old data there, at their class's spacing.
+# past their length and held old data there, at their class's spacing. The classes past
+# 512, up to the largest, 4,096, were read from the allocator itself (game_plugin+0x56C1630
+# on arm64, probe `allocators`); a larger block comes from malloc and goes back to free().
 #
 # Strings (a stadium's name) come from another of the game's allocators, game_plugin+0x56C18D8
 # on arm64, which writes the size it was asked for into a header of 8 bytes before each block
@@ -288,7 +290,8 @@ reputation = 0xA8         # Tottenham: 7650
 # Stadium (22 bytes, asked for 31), The Odsal Stadium (17), the Emirates Stadium (16) and
 # The Archibalds' Stadium (23) sit 40 bytes apart, all in one chunk of 1,638 blocks of 40.
 [heap]
-block_sizes = [144, 160, 192, 224, 256, 288, 320, 384, 448, 512]
+block_sizes = [144, 160, 192, 224, 256, 288, 320, 384, 448, 512, 640, 768, 896, 1024, 1280, 1536, 2048, 2560, 3072, 3584, 4096]
+largest_block = 4096
 string_step = 8
 
 # Tottenham Hotspur (UID 728): 50,000 season tickets, founded 1882, supporter traits
