@@ -652,6 +652,22 @@ impl HeapLayout {
         }
         sizes.iter().copied().find(|&size| size >= bytes)
     }
+
+    /// The size of a block of the editor's own for a list's buffer of `bytes`, to be at least as large as the game's
+    /// allocator would give it, so that the game can hand it out again once it lets the list go. Within the classes
+    /// the layout lists, that class; past them, where the class is not known, the next power of two, which holds it (on
+    /// the Mac every class past 512 bytes lies below it); a smaller buffer gets its own size, as the classes below the
+    /// first come in steps of 8 and then 16. None past `largest_block`: the game would give that block to `free()`.
+    pub fn grown_block(&self, bytes: u64) -> Option<u64> {
+        if self.largest_block.is_some_and(|largest| bytes > largest) {
+            return None;
+        }
+        if let Some(size) = self.block_size(bytes) {
+            return Some(size);
+        }
+        let past_classes = self.block_sizes.last().is_some_and(|&last| bytes > last);
+        Some(if past_classes { bytes.next_power_of_two() } else { bytes })
+    }
 }
 
 /// Addresses that change with every build of the game plugin.
@@ -913,6 +929,7 @@ mod tests {
         // from the allocator itself.
         assert!(mac.heap.block_sizes.starts_with(&windows.heap.block_sizes));
         assert_eq!(mac.heap.block_sizes.last(), mac.heap.largest_block.as_ref());
+        assert_eq!(mac.heap.largest_block, windows.heap.largest_block);
     }
 
     #[test]
@@ -924,6 +941,26 @@ mod tests {
         assert_eq!(mach_o.to_string(), "UUID 9E8E47DE-F704-314C-917D-C32D12637678");
         assert!(toml::from_str::<PluginFingerprint>(r#"uuid = "9E8E47DE-F704""#).is_err());
         assert!(toml::from_str::<PluginFingerprint>("size_of_image = 1\nlink_timestamp = 2\nuuid = 3").is_err());
+    }
+
+    #[test]
+    fn a_grown_list_gets_a_block_the_game_can_hand_out_again() {
+        let windows: Layout = parse(WINDOWS);
+        let mac: Layout = parse(MACOS);
+        // Within the classes listed, the class: 20 pointers and room for 3 more in 192 bytes.
+        assert_eq!(windows.heap.grown_block(23 * 8), Some(192));
+        assert_eq!(mac.heap.grown_block(23 * 8), Some(192));
+        // Past Windows' 512, a power of two, at least the class the Mac reads (75 pointers: 600 bytes, a class of 640).
+        assert_eq!(windows.heap.grown_block(600), Some(1024));
+        assert_eq!(mac.heap.grown_block(600), Some(640));
+        for bytes in (520..=4096).step_by(8) {
+            let class = mac.heap.grown_block(bytes).expect("a class");
+            assert!(windows.heap.grown_block(bytes).expect("a block") >= class, "{bytes}");
+        }
+        // Below the first class, its own size; past the largest block, none.
+        assert_eq!(windows.heap.grown_block(96), Some(96));
+        assert_eq!(windows.heap.grown_block(4104), None);
+        assert_eq!(mac.heap.grown_block(4104), None);
     }
 
     #[test]
