@@ -39,15 +39,22 @@ export async function run({ app, report, probe }) {
     .rows;
   // The first the app agrees to sign for the best known club: player-coaches are left out.
   let found = null;
+  const refusals = new Set();
   for (const player of agents) {
     const plan = await app.invoke("plan_club_move", { uid: player.uid, club: clubs[0].uid, terms: {}, fee: null, release: null });
     if (plan.ok) {
       found = { player, plan: plan.value };
       break;
     }
+    refusals.add(plan.error.code);
+  }
+  if (!found && refusals.has("sign.poolFull")) {
+    // Right after a save is loaded the game's pool of contracts is full, until the game makes a contract itself.
+    report.skip("signs a free agent", "the game has no free contract slot yet: continue a day in the game");
+    return;
   }
   if (!found) {
-    report.check("finds a free agent the app agrees to sign", false, `${agents.length} free agents refused`);
+    report.check("finds a free agent the app agrees to sign", false, `${agents.length} refused: ${[...refusals].join(", ")}`);
     return;
   }
   const { player, plan } = found;
