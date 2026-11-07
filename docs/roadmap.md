@@ -295,8 +295,9 @@ changes many at once, and undo.
     build (Old Trafford 74,879; the Emirates 60,704) and on the Mac Steam build, where stadiums are laid out alike.
   - [x] Stadium name, in the club's Stadium tab: any name of 1 to 80 bytes. One that keeps the size of the old name's
     block is written over it, for a name the stadium alone holds; any other goes into memory the editor takes in the
-    game (Windows), as a string the game never lets go, and the stadium is pointed at it (also for the 2,293 shared
-    names of the Game Pass save, such as the Maracanã's). On macOS only the first kind. See `stadium_name.rs`; the
+    game, as a string the game never lets go, and the stadium is pointed at it (also for the 2,293 shared names of the
+    Game Pass save, such as the Maracanã's). On the Mac the game's strings come in blocks of steps of 8 bytes, not 16
+    (`[heap] string_step`), so the Emirates Stadium takes 16 to 23 bytes in place there. See `stadium_name.rs`; the
     probe's `stadium-name`. The game keeps no stadium names in its saves: it gives every stadium the name in its
     database (`lang_db.dat`) whenever it loads one, and an `.lnc` in the editor data folder does not reach a save
     already started. So the app remembers each new name for the save, in `frozen.json` beside what is frozen, and

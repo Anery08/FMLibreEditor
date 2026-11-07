@@ -604,6 +604,9 @@ enum Command {
         #[arg(long, default_value_t = 24)]
         show: usize,
     },
+    /// Find the game's own allocators in the game plugin's writable data and show, for each, the header it puts
+    /// before a block and its size classes: the block each size asked for gets. Only reads memory
+    Allocators,
     /// Find where clubs or players keep a value seen in another tool: from each club and its senior
     /// team, or from each player, follow pointers up to --depth hops and print the places where every
     /// one given holds its own value, under several encodings.
@@ -1117,6 +1120,7 @@ fn run(cli: Cli) -> Result<()> {
         Command::RelationBlocks { entries, show } => {
             relation_blocks(&connect(process, ArraySource::ProfileFirst)?, entries, show)
         }
+        Command::Allocators => allocators(&connect(process, ArraySource::ProfileFirst)?),
         Command::Related { clubs, players, depth, span, tolerance, linear } => {
             let session = connect(process, ArraySource::ProfileFirst)?;
             let roots = related_roots(&session, &clubs, &players)?;
@@ -1468,6 +1472,82 @@ fn relation_blocks(session: &Session, entries: u64, show: usize) -> Result<()> {
 /// Bytes as hex, with a space after each 8.
 fn hex(bytes: &[u8]) -> String {
     bytes.chunks(8).map(|c| c.iter().map(|b| format!("{b:02x}")).collect::<String>()).collect::<Vec<_>>().join(" ")
+}
+
+/// `allocators`: the game's own allocators, found in the game plugin's writable data by their shape: a list of their
+/// size classes, then a list of one entry per size asked for, up to the largest they hand out, each pointing at the
+/// class that serves it (null where the system's allocator does), then the bytes of the header they write before a
+/// block (the size asked for) and a byte that is 1 while they are in use. A block holds the largest size its class
+/// serves and the header. Seen on the Mac (arm64): the lists of the game's objects come from one without a header, of
+/// 34 classes up to 4,096 bytes; its strings from one with a header of 8 bytes.
+fn allocators(session: &Session) -> Result<()> {
+    const SHAPE: usize = 0x38;
+    let process = &session.process;
+    let plugin = &session.plugin;
+    let word = |bytes: &[u8], at: usize| u64::from_le_bytes(bytes[at..at + 8].try_into().expect("8 bytes"));
+    let list = |bytes: &[u8], at: usize, most: u64| {
+        let (begin, end, capacity) = (word(bytes, at), word(bytes, at + 8), word(bytes, at + 16));
+        let fits = is_user_pointer(begin)
+            && begin < end
+            && end <= capacity
+            && (end - begin).is_multiple_of(8)
+            && (end - begin) / 8 <= most;
+        fits.then_some((begin, (end - begin) / 8))
+    };
+    let mut found = 0;
+    for region in regions(process, plugin.base, plugin.end()).into_iter().filter(|r| r.is_writable()) {
+        let Ok(bytes) = process.read_bytes(region.base, region.size as usize) else { continue };
+        for at in (0..bytes.len().saturating_sub(SHAPE)).step_by(8) {
+            let shape = &bytes[at..at + SHAPE];
+            let header = u32::from_le_bytes(shape[0x30..0x34].try_into().expect("4 bytes"));
+            if shape[0x34] != 1 || ![0, 4, 8, 16].contains(&header) {
+                continue;
+            }
+            let (Some((classes_at, classes)), Some((sizes_at, sizes))) =
+                (list(shape, 0, 64), list(shape, 0x18, 0x1_0001))
+            else {
+                continue;
+            };
+            if sizes < 65 {
+                continue;
+            }
+            let (Ok(classes), Ok(by_size)) = (
+                process.read_bytes(classes_at, classes as usize * 8),
+                process.read_bytes(sizes_at, sizes as usize * 8),
+            ) else {
+                continue;
+            };
+            let classes: Vec<u64> = classes.as_chunks::<8>().0.iter().map(|w| u64::from_le_bytes(*w)).collect();
+            let by_size: Vec<u64> = by_size.as_chunks::<8>().0.iter().map(|w| u64::from_le_bytes(*w)).collect();
+            if by_size.iter().any(|class| *class != 0 && !classes.contains(class)) {
+                continue;
+            }
+            // Runs of sizes served by one class: the block holds the largest of them and the header.
+            let mut blocks = Vec::new();
+            let mut start = 0;
+            for size in 1..=by_size.len() {
+                if size == by_size.len() || by_size[size] != by_size[start] {
+                    if by_size[start] != 0 {
+                        let largest = size as u64 - 1;
+                        blocks.push(format!("{} ({}-{largest})", largest + u64::from(header), start.max(1)));
+                    }
+                    start = size;
+                }
+            }
+            found += 1;
+            println!(
+                "{GAME_PLUGIN}+{:#x}: header {header} bytes, {} classes, sizes up to {} from them, larger from the system",
+                region.base + at as u64 - plugin.base,
+                classes.len(),
+                by_size.len() - 1
+            );
+            for line in blocks.chunks(8) {
+                println!("  blocks {}", line.join(", "));
+            }
+        }
+    }
+    println!("{found} allocator(s) in {}'s writable data", GAME_PLUGIN);
+    Ok(())
 }
 
 fn squads(session: &Session) -> Result<()> {

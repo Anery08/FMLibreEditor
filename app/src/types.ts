@@ -233,9 +233,9 @@ export interface Stadium {
 
 /**
  * A stadium's name as `stadium_name` reads it, with the names it can take: `minBytes` to `maxBytes` bytes of UTF-8.
- * On Windows any name up to 80 bytes, written over the old one when it fits its block or given a string of its own;
- * where the editor cannot take memory in the game (macOS), only one that keeps the size of the old one's block, and
- * only for a name the stadium alone holds (`holders` 1).
+ * Any name up to 80 bytes, written over the old one when it fits its block or given a string of its own; where the
+ * editor could not take memory in the game, only one that keeps the size of the old one's block, and only for a name
+ * the stadium alone holds (`holders` 1).
  */
 export interface StadiumName {
   name: string;
