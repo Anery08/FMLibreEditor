@@ -282,9 +282,13 @@ export function SquadTab({ clubUid, version, panel }: SquadTabProps) {
           ? on
             ? text.frozeAttributes
             : text.unfrozeAttributes
-          : on
-            ? text.frozeFitness
-            : text.unfrozeFitness;
+          : kind === "fitness"
+            ? on
+              ? text.frozeFitness
+              : text.unfrozeFitness
+            : on
+              ? text.frozePositions
+              : text.unfrozePositions;
       return {
         team: target.index,
         message: said(done.changed),
@@ -562,6 +566,12 @@ function TeamFreezes({ team, editable, busy, onFreeze }: TeamFreezesProps) {
       title: text.freezeFitnessTitle,
       frozen: team.players.filter((player) => player.fitnessFrozen).length,
     },
+    {
+      kind: "positions",
+      label: text.freezePositions,
+      title: text.freezePositionsTitle,
+      frozen: team.players.filter((player) => player.positionsFrozen).length,
+    },
   ];
 
   return (
@@ -796,8 +806,11 @@ function Tags({ player }: { player: SquadPlayer }) {
           </span>
         )
       )}
-      {(player.attributesFrozen || player.fitnessFrozen) && (
-        <span className="tag frozen" title={text.frozenTitle(player.attributesFrozen, player.fitnessFrozen)}>
+      {(player.attributesFrozen || player.fitnessFrozen || player.positionsFrozen) && (
+        <span
+          className="tag frozen"
+          title={text.frozenTitle(player.attributesFrozen, player.fitnessFrozen, player.positionsFrozen)}
+        >
           {text.frozen}
         </span>
       )}

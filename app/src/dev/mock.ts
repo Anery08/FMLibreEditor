@@ -1906,6 +1906,7 @@ function clubSquads(clubUid: number): ClubTeam[] {
         bans: d.bans.length,
         attributesFrozen: frozenAttributes.has(uid),
         fitnessFrozen: frozenFitness.has(uid),
+        positionsFrozen: frozenPositions.has(uid),
       };
     }),
   }));
@@ -1924,7 +1925,7 @@ function freezeTeam(clubUid: number, index: number, kind: FreezeKind, frozen: bo
       { field: "attribute.corners", check: "attributes" },
     );
   }
-  const held = kind === "attributes" ? frozenAttributes : frozenFitness;
+  const held = kind === "attributes" ? frozenAttributes : kind === "fitness" ? frozenFitness : frozenPositions;
   let changed = 0;
   for (const player of team.players) {
     if (held.has(player.uid) !== frozen) {
@@ -2404,6 +2405,9 @@ const frozenStaff = new Set<number>();
 /** The players whose energy and match sharpness are frozen in this page, likewise. */
 const frozenFitness = new Set<number>();
 
+/** The players whose positions are frozen in this page, likewise. */
+const frozenPositions = new Set<number>();
+
 /** The fixture connection, once `connect` has been called in this page. */
 let mockConnection: ConnectionInfo | null = null;
 
@@ -2539,6 +2543,7 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         staff: staff.slice(0, 2).map((s) => s.name),
         clubs: [clubs[0].name],
         fitness: players.slice(0, 7).map((p) => p.name),
+        positions: [],
         waiting: 1,
       };
       return { ...info, refrozen: again } as T;
@@ -2682,6 +2687,17 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
     }
     case "frozen_fitness":
       return [...frozenFitness] as T;
+    case "freeze_positions": {
+      const uid = Number(args?.uid);
+      if (args?.frozen) {
+        frozenPositions.add(uid);
+      } else {
+        frozenPositions.delete(uid);
+      }
+      return [...frozenPositions] as T;
+    }
+    case "frozen_positions":
+      return [...frozenPositions] as T;
     case "freeze_team":
       return freezeTeam(Number(args?.club), Number(args?.team), args?.kind as FreezeKind, Boolean(args?.frozen)) as T;
     case "export_players": {

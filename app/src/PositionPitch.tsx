@@ -1,5 +1,9 @@
+import { useContext, useEffect, useState } from "react";
 import { EditableValue } from "./EditControls";
+import { freezePositions, frozenPositions } from "./editing";
+import { describeError } from "./format";
 import { POSITION_LABELS, profileText, type PositionKey } from "./labels";
+import { EditorContext, useEditSession } from "./useProfileEditing";
 
 /** Rating bands, best first. `range` is what the legend prints. */
 const TIERS = [
@@ -127,5 +131,60 @@ export function PositionRatings({ ratings }: { ratings: Record<string, number> }
         })}
       </dl>
     </section>
+  );
+}
+
+/**
+ * The box that freezes a player's position ratings, so the engine cannot recalculate or change them.
+ * Independent from the general attribute freeze.
+ */
+export function PositionFreeze({ uid }: { uid: number }) {
+  const { editable, readOnlyNote, onEdited } = useContext(EditorContext);
+  const editing = useEditSession() !== null;
+  const [frozen, setFrozen] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let current = true;
+    frozenPositions()
+      .then((players) => current && setFrozen(players.includes(uid)))
+      .catch(() => current && setFrozen(false));
+    return () => {
+      current = false;
+    };
+  }, [uid]);
+
+  if (editing || frozen === null) {
+    return null;
+  }
+
+  const freeze = async (on: boolean) => {
+    setError(null);
+    try {
+      setFrozen((await freezePositions(uid, on)).includes(uid));
+      onEdited();
+    } catch (e) {
+      setError(describeError(e));
+    }
+  };
+
+  return (
+    <div className="fitness-freeze" style={{ marginTop: "0.75rem" }}>
+      <label className="freeze-toggle" title={editable ? profileText.freezePositionsNote : readOnlyNote}>
+        <input
+          type="checkbox"
+          checked={frozen}
+          disabled={!editable}
+          onChange={(e) => void freeze(e.currentTarget.checked)}
+        />
+        <span>{profileText.freezePositions}</span>
+      </label>
+      {frozen && <p className="note">{profileText.freezePositionsNote}</p>}
+      {error && (
+        <p className="note error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

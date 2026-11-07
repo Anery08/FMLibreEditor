@@ -69,6 +69,15 @@ export const freezeFitness = (uid: number, frozen: boolean) => call<number[]>("f
 export const frozenFitness = () => call<number[]>("frozen_fitness");
 
 /**
+ * Freezes the position ratings of the player `uid`, or unfreezes them; the players whose positions are frozen now.
+ */
+export const freezePositions = (uid: number, frozen: boolean) =>
+  call<number[]>("freeze_positions", { uid, frozen });
+
+/** The players whose position ratings are frozen: while the app is connected, they stay as they are. */
+export const frozenPositions = () => call<number[]>("frozen_positions");
+
+/**
  * Freezes what `kind` names for every player of the team `team` of the club `club`, those out on loan too, or
  * unfreezes it. Refused at once while those fields may not be written; a player who cannot be frozen is in `failed`.
  */

@@ -17,7 +17,13 @@ const names = (list: string[]) =>
 
 /** What connecting froze again, by name, and how many wait; it stays until it is dismissed. */
 export function FrozenNotice({ refrozen, onDismiss }: { refrozen: Refrozen; onDismiss: () => void }) {
-  const again = refrozen.players.length + refrozen.staff.length + refrozen.fitness.length + refrozen.clubs.length > 0;
+  const again =
+    refrozen.players.length +
+      refrozen.staff.length +
+      refrozen.fitness.length +
+      refrozen.positions.length +
+      refrozen.clubs.length >
+    0;
   return (
     <div className="frozen-notice" role="status">
       <div className="compatibility-text">
@@ -25,6 +31,7 @@ export function FrozenNotice({ refrozen, onDismiss }: { refrozen: Refrozen; onDi
         {refrozen.players.length > 0 && <p>{text.players(names(refrozen.players))}</p>}
         {refrozen.staff.length > 0 && <p>{text.staff(names(refrozen.staff))}</p>}
         {refrozen.fitness.length > 0 && <p>{text.fitness(names(refrozen.fitness))}</p>}
+        {refrozen.positions.length > 0 && <p>{text.positions(names(refrozen.positions))}</p>}
         {refrozen.clubs.length > 0 && <p>{text.clubs(names(refrozen.clubs))}</p>}
         {refrozen.waiting > 0 && <p>{text.waiting(refrozen.waiting)}</p>}
       </div>

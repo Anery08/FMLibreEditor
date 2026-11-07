@@ -742,6 +742,10 @@ export const en = {
     freezeFitnessNote:
       "While the app is open and connected, his energy and match sharpness do not go down: what the game takes is put " +
       "back, and gains still count, so at 100% he stays there. The app remembers this for this save.",
+    /** Freezing his position ratings, under them in the Positions section. */
+    freezePositions: "Freeze positions",
+    freezePositionsNote:
+      "While the app is open and connected, his position ratings stay exactly as they are: what the game recalculates or retrains is put back. The app remembers this for this save.",
 
     // Staff
     /** Badge on the manager the user controls. */
@@ -1085,6 +1089,7 @@ export const en = {
       staff: (names: string) => `Staff attributes: ${names}`,
       clubs: (names: string) => `Money: ${names}`,
       fitness: (names: string) => `Energy and sharpness: ${names}`,
+      positions: (names: string) => `Positions: ${names}`,
       /** After the first few names. */
       more: (count: number) => `and ${format(count)} more`,
       /** What was left for later: an update of the game, say. */
@@ -1950,6 +1955,10 @@ export const en = {
     freezeFitnessTitle:
       "While the app is open and connected, the energy and match sharpness of every player in this team do not go " +
       "down: what the game takes is put back. Refresh all first to keep them at 100%",
+    freezePositions: "Freeze positions",
+    freezePositionsTitle:
+      "While the app is open and connected, the position ratings of every player in this team stay as they are: " +
+      "what the game recalculates or retrains is put back",
     /** After a box: how many of the team's `total` players are frozen that way, while some are and some are not. */
     frozenCount: (frozen: number, total: number) => `${format(frozen)} of ${format(total)}`,
     /** Beside the boxes: whom freezing covers, and for how long. */
@@ -1965,6 +1974,9 @@ export const en = {
         ? "Their energy and sharpness were frozen already"
         : `Froze the energy and sharpness of ${playerCount(count)}`,
     unfrozeFitness: (count: number) => `Unfroze the energy and sharpness of ${playerCount(count)}`,
+    frozePositions: (count: number) =>
+      count === 0 ? "Their positions were frozen already" : `Froze the positions of ${playerCount(count)}`,
+    unfrozePositions: (count: number) => `Unfroze the positions of ${playerCount(count)}`,
 
     // What an action did, under the buttons
     /** `count` is how many values were written. */
@@ -2038,12 +2050,16 @@ export const en = {
     elsewhereTitle: "Plays for another team of the club",
     frozen: "Frozen",
     /** Hover text of Frozen: what is frozen. */
-    frozenTitle: (attributes: boolean, fitness: boolean): string =>
-      attributes && fitness
-        ? "His attributes, energy and match sharpness are frozen"
-        : attributes
-          ? "His attributes are frozen"
-          : "His energy and match sharpness are frozen",
+    frozenTitle: (attributes: boolean, fitness: boolean, positions?: boolean): string => {
+      const parts: string[] = [];
+      if (attributes) parts.push("attributes");
+      if (fitness) parts.push("energy and match sharpness");
+      if (positions) parts.push("positions");
+      if (parts.length === 3) return "His attributes, energy, match sharpness and positions are frozen";
+      if (parts.length === 2) return `His ${parts[0]} and ${parts[1]} are frozen`;
+      if (parts.length === 1) return `His ${parts[0]} are frozen`;
+      return "Frozen";
+    },
   },
 
   /** The game, as `describeGame` in `format.ts` names it. */

@@ -78,11 +78,17 @@ struct Frozen {
     /// The players whose energy and match sharpness are frozen, with the least each may be, as stored: what it was
     /// when it was frozen, or more once he was fitter. A player frozen at full energy stays at it.
     fitness: BTreeMap<u32, BTreeMap<String, i64>>,
+    /// The players whose positions are frozen at their exact ratings: neither lower nor higher.
+    positions: BTreeMap<u32, BTreeMap<String, i64>>,
 }
 
 impl Frozen {
     fn is_empty(&self) -> bool {
-        self.money.is_empty() && self.attributes.is_empty() && self.staff.is_empty() && self.fitness.is_empty()
+        self.money.is_empty()
+            && self.attributes.is_empty()
+            && self.staff.is_empty()
+            && self.fitness.is_empty()
+            && self.positions.is_empty()
     }
 
     /// The players frozen in the way `kind` names, with what they are held at.
@@ -90,16 +96,22 @@ impl Frozen {
         match kind {
             FreezeKind::Attributes => &mut self.attributes,
             FreezeKind::Fitness => &mut self.fitness,
+            FreezeKind::Positions => &mut self.positions,
         }
     }
 
     /// A value the editor just wrote to a frozen field becomes what it is held at, so it is not taken back as if the
     /// game had changed it.
     fn note(&mut self, change: &Change, value: i64) {
-        let players = if change.field.starts_with("attribute.") { &mut self.attributes } else { &mut self.fitness };
         let held = match change.entity {
             Entity::Club if change.field == "finance.balance" => self.money.get_mut(&change.uid),
-            Entity::Player => players.get_mut(&change.uid).and_then(|held| held.get_mut(&change.field)),
+            Entity::Player if change.field.starts_with("position.") => {
+                self.positions.get_mut(&change.uid).and_then(|held| held.get_mut(&change.field))
+            }
+            Entity::Player if change.field.starts_with("attribute.") => {
+                self.attributes.get_mut(&change.uid).and_then(|held| held.get_mut(&change.field))
+            }
+            Entity::Player => self.fitness.get_mut(&change.uid).and_then(|held| held.get_mut(&change.field)),
             Entity::Staff => self.staff.get_mut(&change.uid).and_then(|held| held.get_mut(&change.field)),
             _ => None,
         };
@@ -129,11 +141,18 @@ struct RememberedSave {
     /// The players whose energy and match sharpness are frozen; not in the files of versions before it.
     #[serde(default)]
     fitness: BTreeSet<u32>,
+    /// The players whose position ratings are frozen; not in the files of versions before it.
+    #[serde(default)]
+    positions: BTreeSet<u32>,
 }
 
 impl RememberedSave {
     fn is_empty(&self) -> bool {
-        self.players.is_empty() && self.staff.is_empty() && self.clubs.is_empty() && self.fitness.is_empty()
+        self.players.is_empty()
+            && self.staff.is_empty()
+            && self.clubs.is_empty()
+            && self.fitness.is_empty()
+            && self.positions.is_empty()
     }
 
     /// The players frozen in the way `kind` names.
@@ -141,6 +160,7 @@ impl RememberedSave {
         match kind {
             FreezeKind::Attributes => &mut self.players,
             FreezeKind::Fitness => &mut self.fitness,
+            FreezeKind::Positions => &mut self.positions,
         }
     }
 }
@@ -193,6 +213,8 @@ struct Refrozen {
     clubs: Vec<String>,
     /// The players whose energy and match sharpness are frozen again, by name.
     fitness: Vec<String>,
+    /// The players whose positions are frozen again, by name.
+    positions: Vec<String>,
     /// How many are left for later, still remembered: the editor has no profile for this version of the game, or a
     /// check did not pass.
     waiting: usize,
@@ -204,6 +226,7 @@ impl Refrozen {
             && self.staff.is_empty()
             && self.clubs.is_empty()
             && self.fitness.is_empty()
+            && self.positions.is_empty()
             && self.waiting == 0
     }
 }
@@ -244,6 +267,32 @@ fn hold_people(
                 let _ = session.write_field_if(&target, field, now, *limit);
             } else {
                 *limit = now;
+            }
+        }
+    }
+}
+
+/// Keeps the position ratings of each player in `held` exactly at what they are held at:
+/// if the game's simulation engine tries to raise or lower them, what the user set is put back.
+fn hold_positions(
+    session: &Session,
+    target_of: impl Fn(u32) -> Option<Target>,
+    held: &mut BTreeMap<u32, BTreeMap<String, i64>>,
+    fields: &[Field],
+) {
+    for (&uid, targets) in held.iter_mut() {
+        let Some(target) = target_of(uid) else {
+            continue;
+        };
+        let Ok(values) = session.read_fields(&target, fields) else {
+            continue;
+        };
+        for (field, now) in fields.iter().zip(values) {
+            let (Some(now), Some(target_val)) = (now, targets.get_mut(&field.key)) else {
+                continue;
+            };
+            if now != *target_val {
+                let _ = session.write_field_if(&target, field, now, *target_val);
             }
         }
     }
@@ -290,14 +339,16 @@ impl Connection {
         let Some(entry) = remembered.saves.get_mut(&save) else {
             return refrozen;
         };
-        let count = entry.players.len() + entry.staff.len() + entry.clubs.len() + entry.fitness.len();
+        let count =
+            entry.players.len() + entry.staff.len() + entry.clubs.len() + entry.fitness.len() + entry.positions.len();
         entry.players.retain(|&uid| self.players.get(uid).is_some());
         entry.staff.retain(|&uid| self.staff.get(uid).is_some());
         entry.clubs.retain(|&uid| self.clubs.get(uid).is_some());
         entry.fitness.retain(|&uid| self.players.get(uid).is_some());
+        entry.positions.retain(|&uid| self.players.get(uid).is_some());
         let (players, staff) = (entry.players.clone(), entry.staff.clone());
-        let (clubs, fitness) = (entry.clubs.clone(), entry.fitness.clone());
-        if players.len() + staff.len() + clubs.len() + fitness.len() < count {
+        let (clubs, fitness, positions) = (entry.clubs.clone(), entry.fitness.clone(), entry.positions.clone());
+        if players.len() + staff.len() + clubs.len() + fitness.len() + positions.len() < count {
             remembered.saves.retain(|_, save| !save.is_empty());
             let _ = remembered.write(path);
         }
@@ -323,6 +374,12 @@ impl Connection {
         for uid in clubs {
             match safe.then(|| self.freeze_club(uid)) {
                 Some(Ok(())) => refrozen.clubs.push(self.club_name(uid)),
+                _ => refrozen.waiting += 1,
+            }
+        }
+        for uid in positions {
+            match safe.then(|| self.freeze_positions(uid)) {
+                Some(Ok(())) => refrozen.positions.push(self.player_name(uid)),
                 _ => refrozen.waiting += 1,
             }
         }
@@ -365,6 +422,13 @@ impl Connection {
         Ok(())
     }
 
+    /// Freezes the position ratings of the player `uid` at what they are now. Refused while they may not be written.
+    fn freeze_positions(&mut self, uid: u32) -> Result<(), Failure> {
+        let held = self.held_values(Entity::Player, uid, &self.position_fields())?;
+        self.frozen.positions.insert(uid, held);
+        Ok(())
+    }
+
     /// Freezes what `kind` names for each of the players `uids`, or unfreezes it, and has the file at `path` remember
     /// it for this save. Those frozen already keep what they are held at. Refused at once while those fields may not
     /// be written; a player who cannot be frozen otherwise is said, and the others are frozen all the same.
@@ -378,6 +442,7 @@ impl Connection {
         let fields = match kind {
             FreezeKind::Attributes => self.attribute_fields(Entity::Player),
             FreezeKind::Fitness => self.fitness_fields()?,
+            FreezeKind::Positions => self.position_fields(),
         };
         // The fields share one check, which is the same for every player.
         if frozen
@@ -1064,6 +1129,11 @@ impl Connection {
             let target_of = |uid| self.players.get(uid).map(|player| player.target());
             hold_people(&self.session, target_of, &mut self.frozen.fitness, &fields);
         }
+        if !self.frozen.positions.is_empty() {
+            let fields = self.position_fields();
+            let target_of = |uid| self.players.get(uid).map(|player| player.target());
+            hold_positions(&self.session, target_of, &mut self.frozen.positions, &fields);
+        }
     }
 
     fn hold_money(&mut self) {
@@ -1094,6 +1164,12 @@ impl Connection {
     /// A player's energy and match sharpness, which freezing his fitness holds.
     fn fitness_fields(&self) -> Result<Vec<Field>, EditError> {
         FITNESS.iter().map(|key| self.session.field(Entity::Player, key)).collect()
+    }
+
+    /// A player's position ratings, which freezing his positions holds.
+    fn position_fields(&self) -> Vec<Field> {
+        let fields = self.session.fields(Entity::Player).into_iter();
+        fields.filter(|field| field.key.starts_with("position.")).collect()
     }
 
     /// Every attribute of a player or of a member of staff (as `entity` says) at its best: 20, or 1 where lower is
@@ -1289,9 +1365,10 @@ struct SquadRow {
     morale: u8,
     injuries: usize,
     bans: usize,
-    /// Whether his attributes are frozen, and his energy and match sharpness (see `freeze_team`).
+    /// Whether his attributes are frozen, his energy and match sharpness, or his positions (see `freeze_team`).
     attributes_frozen: bool,
     fitness_frozen: bool,
+    positions_frozen: bool,
 }
 
 /// A player a move can release to make room: his list row, and what makes him a worse choice.
@@ -2168,12 +2245,36 @@ fn frozen_fitness(state: State<'_, AppState>) -> Result<Vec<u32>, Failure> {
     Ok(guard.as_ref().map(|connection| connection.frozen.fitness.keys().copied().collect()).unwrap_or_default())
 }
 
-/// What freezing a player holds: his attributes, or his energy and match sharpness.
+/// Freezes the position ratings of the player `uid`, or unfreezes them: while the app is connected, they stay as
+/// they are. Refused while they may not be written. The app remembers it for this save, and freezes them again when
+/// it connects to the save another time. Returns the players whose positions are frozen now.
+#[tauri::command]
+fn freeze_positions(
+    state: State<'_, AppState>,
+    file: State<'_, FrozenFile>,
+    uid: u32,
+    frozen: bool,
+) -> Result<Vec<u32>, Failure> {
+    let mut guard = state.0.lock()?;
+    let connection = guard.as_mut().ok_or_else(not_connected)?;
+    connection.set_frozen(file.0.as_deref(), FreezeKind::Positions, &[uid], frozen)?;
+    Ok(connection.frozen.positions.keys().copied().collect())
+}
+
+/// The players whose position ratings are frozen.
+#[tauri::command]
+fn frozen_positions(state: State<'_, AppState>) -> Result<Vec<u32>, Failure> {
+    let guard = state.0.lock()?;
+    Ok(guard.as_ref().map(|connection| connection.frozen.positions.keys().copied().collect()).unwrap_or_default())
+}
+
+/// What freezing a player holds: his attributes, his energy and match sharpness, or his position ratings.
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum FreezeKind {
     Attributes,
     Fitness,
+    Positions,
 }
 
 impl FreezeKind {
@@ -2182,6 +2283,7 @@ impl FreezeKind {
         match self {
             FreezeKind::Attributes => "attributes",
             FreezeKind::Fitness => "fitness",
+            FreezeKind::Positions => "positions",
         }
     }
 }
@@ -2812,6 +2914,7 @@ fn club_squads(state: State<'_, AppState>, uid: u32) -> Result<Vec<TeamView>, Fa
                         bans: member.bans,
                         attributes_frozen: connection.frozen.attributes.contains_key(&member.uid),
                         fitness_frozen: connection.frozen.fitness.contains_key(&member.uid),
+                        positions_frozen: connection.frozen.positions.contains_key(&member.uid),
                     })
                 })
                 .collect(),
@@ -3142,6 +3245,8 @@ pub fn run() {
             max_staff_attributes,
             freeze_fitness,
             frozen_fitness,
+            freeze_positions,
+            frozen_positions,
             freeze_team,
             edit_fields,
             read_values,
@@ -3214,6 +3319,14 @@ mod tests {
     }
 
     #[test]
+    fn frozen_files_without_positions_are_read() {
+        // As 0.4.3 wrote it, before positions could be frozen.
+        let file = r#"{ "saves": { "Steam:1000": { "players": [1], "clubs": [], "fitness": [], "staff": [] } } }"#;
+        let remembered: Remembered = serde_json::from_str(file).expect("an earlier file");
+        assert!(remembered.saves["Steam:1000"].positions.is_empty());
+    }
+
+    #[test]
     fn remembered_staff_keep_a_save_from_being_empty() {
         let mut save = RememberedSave::default();
         assert!(save.is_empty());
@@ -3231,8 +3344,9 @@ mod tests {
         save.of(FreezeKind::Fitness).insert(7);
         assert!(save.fitness.contains(&7) && save.players.is_empty() && !save.is_empty());
         save.of(FreezeKind::Attributes).insert(8);
+        save.of(FreezeKind::Positions).insert(9);
         let written = serde_json::to_string(&save).expect("written");
         let read: RememberedSave = serde_json::from_str(&written).expect("read back");
-        assert!(read.players.contains(&8) && read.fitness.contains(&7));
+        assert!(read.players.contains(&8) && read.fitness.contains(&7) && read.positions.contains(&9));
     }
 }
